@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="sr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nemvida Finance — Vesti uživo</title>
+<style>
+  :root {
+    --bg-grad: radial-gradient(ellipse 80% 50% at 15% -10%, rgba(37,99,235,0.10), transparent),
+               radial-gradient(ellipse 60% 40% at 100% 0%, rgba(16,185,129,0.08), transparent),
+               linear-gradient(180deg, #f7f9fc 0%, #eef1f7 100%);
+    --card-bg: rgba(255,255,255,0.75);
+    --border: #e4e4e7;
+    --text: #171717;
+    --muted: #6b7280;
+    --accent: #2563eb;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg-grad: radial-gradient(ellipse 80% 50% at 15% -10%, rgba(37,99,235,0.16), transparent),
+                 radial-gradient(ellipse 60% 40% at 100% 0%, rgba(16,185,129,0.10), transparent),
+                 linear-gradient(180deg, #0a0a0a 0%, #030712 100%);
+      --card-bg: rgba(24,24,27,0.6);
+      --border: #27272a;
+      --text: #ededed;
+      --muted: #9ca3af;
+      --accent: #60a5fa;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: var(--bg-grad);
+    background-attachment: fixed;
+    color: var(--text);
+    font-family: Arial, Helvetica, sans-serif;
+  }
+  header {
+    border-bottom: 1px solid var(--border);
+    padding: 16px 20px;
+    position: sticky;
+    top: 0;
+    backdrop-filter: blur(8px);
+    background: var(--card-bg);
+    z-index: 10;
+  }
+  header h1 { margin: 0; font-size: 1.3rem; }
+  header h1 span { color: var(--accent); }
+  main { max-width: 860px; margin: 0 auto; padding: 24px 16px 60px; }
+  p.lead { color: var(--muted); margin-top: 0; }
+  .filters { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0; }
+  .filters button {
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text);
+    padding: 6px 14px;
+    border-radius: 999px;
+    font-size: 0.85rem;
+    cursor: pointer;
+  }
+  .filters button.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .toolbar .status { font-size: 0.85rem; color: var(--muted); }
+  #refreshBtn {
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    padding: 10px 18px;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  #refreshBtn:disabled { opacity: 0.6; cursor: default; }
+  ul.news { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 12px; }
+  ul.news li a {
+    display: block;
+    border: 1px solid var(--border);
+    background: var(--card-bg);
+    backdrop-filter: blur(6px);
+    border-radius: 10px;
+    padding: 14px 16px;
+    text-decoration: none;
+    color: inherit;
+  }
+  ul.news li a:hover { border-color: var(--accent); }
+  .meta { font-size: 0.75rem; color: var(--muted); margin-bottom: 6px; }
+  .meta b { color: var(--accent); }
+  h3.title { margin: 0; font-size: 1rem; line-height: 1.35; }
+  .empty, .error { text-align: center; color: var(--muted); padding: 40px 0; }
+  .error { color: #b45309; }
+  footer {
+    border-top: 1px solid var(--border);
+    padding: 20px 16px;
+    color: var(--muted);
+    font-size: 0.8rem;
+    max-width: 860px;
+    margin: 0 auto;
+  }
+</style>
+</head>
+<body>
+  <header>
+    <h1>Nemvida <span>Finance</span></h1>
+  </header>
+
+  <main>
+    <p class="lead">
+      Besplatne vesti za Visa, Mastercard, American Express, Nvidia, Amazon,
+      Meta, Alphabet, Microsoft, Merck, TSMC i Investor AB. Klikni
+      "Osveži" da povučeš najnovije vesti.
+    </p>
+
+    <div class="filters" id="filters"></div>
+
+    <div class="toolbar">
+      <button id="refreshBtn" onclick="loadNews()">Osveži sada</button>
+      <span class="status" id="status">Klikni "Osveži sada" za učitavanje vesti.</span>
+    </div>
+
+    <div id="content"></div>
+  </main>
+
+  <footer>
+    <p>Sve vesti su besplatne i otvorene za sve čitaoce. Klikom na naslov otvara se originalni članak na sajtu izvora.</p>
+    <p>Vesti se preuzimaju uživo u tvom browseru preko javnog RSS servisa (Google News), bez potrebe za bilo kakvim serverom.</p>
+  </footer>
+
+<script>
+  const companies = [
+    { ticker: "V", name: "Visa", query: "Visa Inc stock" },
+    { ticker: "MA", name: "Mastercard", query: "Mastercard stock" },
+    { ticker: "AXP", name: "American Express", query: "American Express stock" },
+    { ticker: "NVDA", name: "Nvidia", query: "Nvidia stock" },
+    { ticker: "AMZN", name: "Amazon", query: "Amazon stock" },
+    { ticker: "META", name: "Meta Platforms", query: "Meta Platforms stock" },
+    { ticker: "GOOGL", name: "Alphabet", query: "Alphabet Google stock" },
+    { ticker: "MSFT", name: "Microsoft", query: "Microsoft stock" },
+    { ticker: "MRK", name: "Merck", query: "Merck stock" },
+    { ticker: "TSMC", name: "TSMC", query: "TSMC Taiwan Semiconductor stock" },
+    { ticker: "INVEB", name: "Investor AB", query: "Investor AB Wallenberg stock" },
+  ];
+
+  let selected = null;
+
+  function renderFilters() {
+    const el = document.getElementById("filters");
+    el.innerHTML = "";
+    const allBtn = document.createElement("button");
+    allBtn.textContent = "Sve kompanije";
+    allBtn.className = selected === null ? "active" : "";
+    allBtn.onclick = () => { selected = null; renderFilters(); loadNews(); };
+    el.appendChild(allBtn);
+    companies.forEach((c) => {
+      const btn = document.createElement("button");
+      btn.textContent = c.ticker;
+      btn.className = selected === c.ticker ? "active" : "";
+      btn.onclick = () => { selected = c.ticker; renderFilters(); loadNews(); };
+      el.appendChild(btn);
+    });
+  }
+
+  function timeAgo(dateStr) {
+    const diffMs = Date.now() - new Date(dateStr).getTime();
+    const minutes = Math.floor(diffMs / 60000);
+    if (minutes < 1) return "upravo sada";
+    if (minutes < 60) return `pre ${minutes} min`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `pre ${hours} h`;
+    const days = Math.floor(hours / 24);
+    return `pre ${days} d`;
+  }
+
+  async function fetchCompanyNews(company) {
+    const googleRssUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(company.query)}&hl=en-US&gl=US&ceid=US:US`;
+    const apiUrl = `https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(googleRssUrl)}`;
+    try {
+      const res = await fetch(apiUrl);
+      if (!res.ok) return [];
+      const data = await res.json();
+      if (!data.items) return [];
+      return data.items.map((item) => ({
+        title: item.title,
+        link: item.link,
+        source: (item.author || "Google News"),
+        pubDate: item.pubDate,
+        ticker: company.ticker,
+      }));
+    } catch (e) {
+      return [];
+    }
+  }
+
+  function dedupeAndSort(items) {
+    const seen = new Set();
+    const unique = [];
+    for (const item of items) {
+      const key = item.title.trim().toLowerCase();
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      unique.push(item);
+    }
+    return unique.sort((a, b) => new Date(b.pubDate) - new Date(a.pubDate));
+  }
+
+  async function loadNews() {
+    const btn = document.getElementById("refreshBtn");
+    const status = document.getElementById("status");
+    const content = document.getElementById("content");
+    btn.disabled = true;
+    status.textContent = "Učitavanje...";
+    content.innerHTML = `<div class="empty">Učitavanje vesti...</div>`;
+
+    const targets = selected ? companies.filter((c) => c.ticker === selected) : companies;
+
+    try {
+      const results = await Promise.all(targets.map(fetchCompanyNews));
+      const merged = dedupeAndSort(results.flat()).slice(0, 100);
+
+      if (merged.length === 0) {
+        content.innerHTML = `<div class="error">Trenutno nije moguće učitati vesti. Proveri internet konekciju i pokušaj ponovo.</div>`;
+      } else {
+        const ul = document.createElement("ul");
+        ul.className = "news";
+        merged.forEach((item) => {
+          const li = document.createElement("li");
+          const a = document.createElement("a");
+          a.href = item.link;
+          a.target = "_blank";
+          a.rel = "noopener noreferrer nofollow";
+          a.innerHTML = `
+            <div class="meta"><b>${item.ticker}</b> • ${item.source} • ${timeAgo(item.pubDate)}</div>
+            <h3 class="title">${item.title}</h3>
+          `;
+          li.appendChild(a);
+          ul.appendChild(li);
+        });
+        content.innerHTML = "";
+        content.appendChild(ul);
+      }
+      status.textContent = `Ažurirano: ${new Date().toLocaleTimeString("sr-RS")}`;
+    } catch (e) {
+      content.innerHTML = `<div class="error">Došlo je do greške prilikom učitavanja vesti.</div>`;
+      status.textContent = "Greška pri učitavanju.";
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  renderFilters();
+</script>
+</body>
+</html>
