@@ -105,6 +105,73 @@
     max-width: 860px;
     margin: 0 auto;
   }
+  .overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.5);
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 40px 16px;
+    overflow-y: auto;
+    z-index: 100;
+  }
+  .overlay[hidden] { display: none; }
+  .modal {
+    background: var(--card-bg);
+    backdrop-filter: blur(10px);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    max-width: 640px;
+    width: 100%;
+    padding: 24px;
+  }
+  .modal .modal-meta { font-size: 0.75rem; color: var(--muted); margin-bottom: 8px; }
+  .modal h2 { margin: 0 0 14px; font-size: 1.15rem; line-height: 1.35; }
+  .modal .summary-label {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--accent);
+    font-weight: 700;
+    margin-bottom: 8px;
+  }
+  .modal .summary-text { line-height: 1.6; font-size: 0.95rem; white-space: pre-line; }
+  .modal .summary-note { font-size: 0.78rem; color: var(--muted); margin-top: 14px; }
+  .modal .modal-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 20px;
+    flex-wrap: wrap;
+  }
+  .modal .modal-actions a, .modal .modal-actions button {
+    padding: 9px 16px;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    text-decoration: none;
+    cursor: pointer;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text);
+  }
+  .modal .modal-actions a.primary {
+    background: var(--accent);
+    color: #fff;
+    border-color: var(--accent);
+  }
+  .spinner {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    vertical-align: middle;
+    margin-right: 8px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
 </style>
 </head>
 <body>
@@ -130,9 +197,23 @@
   </main>
 
   <footer>
-    <p>Sve vesti su besplatne i otvorene za sve čitaoce. Klikom na naslov otvara se originalni članak na sajtu izvora.</p>
-    <p>Vesti se preuzimaju uživo u tvom browseru preko javnog RSS servisa (Google News), bez potrebe za bilo kakvim serverom.</p>
+    <p>Sve vesti su besplatne i otvorene za sve čitaoce. Klik na naslov prvo prikazuje kratak rezime, sa opcijom da otvoriš ceo originalni članak.</p>
+    <p>Vesti se preuzimaju uživo u tvom browseru preko javnog RSS servisa (Google News), bez potrebe za bilo kakvim serverom. Rezimei se generišu automatski iz teksta članka, bez upotrebe plaćenih AI servisa.</p>
   </footer>
+
+  <div class="overlay" id="overlay" hidden onclick="if(event.target===this) closeModal()">
+    <div class="modal">
+      <div class="modal-meta" id="modalMeta"></div>
+      <h2 id="modalTitle"></h2>
+      <div class="summary-label">Rezime</div>
+      <div class="summary-text" id="modalSummary"></div>
+      <div class="summary-note" id="modalNote"></div>
+      <div class="modal-actions">
+        <a href="#" id="modalOriginalLink" class="primary" target="_blank" rel="noopener noreferrer nofollow">Pročitaj ceo originalni članak</a>
+        <button onclick="closeModal()">Zatvori</button>
+      </div>
+    </div>
+  </div>
 
 <script>
   const companies = [
@@ -193,6 +274,7 @@
         source: (item.author || "Google News"),
         pubDate: item.pubDate,
         ticker: company.ticker,
+        description: item.description || item.content || "",
       }));
     } catch (e) {
       return [];
@@ -209,6 +291,116 @@
       unique.push(item);
     }
     return unique.sort((a, b) => new Date(b.pubDate) - new Date(a.pubDate));
+  }
+
+  // ---- Rezime članka (ekstraktivna sumarizacija, bez AI/API-ja) ----
+
+  const STOPWORDS = new Set(`a about above after again against all also am an and any are aren't as at be because been before being below between both but by can't cannot could couldn't did didn't do does doesn't doing don't down during each few for from further had hadn't has hasn't have haven't having he he'd he'll he's her here here's hers herself him himself his how how's i i'd i'll i'm i've if in into is isn't it it's its itself just let's me more most mustn't my myself new news no nor not now of off on once only or other ought our ours ourselves out over own said same say says shan't she she'd she'll she's should shouldn't so some such than that that's the their theirs them themselves then there there's these they they'd they'll they're they've this those through to too under until up very was wasn't we we'd we'll we're we've were weren't what what's when when's where where's which while who who's whom why why's will with won't would wouldn't you you'd you'll you're you've your yours yourself yourselves also inc corp ltd co reuters ap afp bloomberg according reported report reports says said`.split(/\s+/));
+
+  const BOILERPLATE_PATTERNS = /subscribe|newsletter|sign up|cookie|advertisement|all rights reserved|terms of service|privacy policy|follow us|share this|related articles|read more|click here|log in|log out|sign in|skip to content|©|javascript is disabled/i;
+
+  function splitSentences(text) {
+    return text
+      .replace(/\s+/g, " ")
+      .trim()
+      .split(/(?<=[.!?])\s+(?=[A-Z0-9"'])/)
+      .map((s) => s.trim())
+      .filter((s) => s.length > 25 && s.length < 400 && !BOILERPLATE_PATTERNS.test(s));
+  }
+
+  function extractArticleText(html) {
+    try {
+      const doc = new DOMParser().parseFromString(html, "text/html");
+      doc.querySelectorAll("script,style,nav,header,footer,aside,form,noscript,iframe").forEach((el) => el.remove());
+      const root = doc.querySelector("article") || doc.body;
+      if (!root) return "";
+      const paragraphs = Array.from(root.querySelectorAll("p"))
+        .map((p) => p.textContent.trim())
+        .filter((t) => t.length > 40 && !BOILERPLATE_PATTERNS.test(t));
+      return paragraphs.join(" ");
+    } catch (e) {
+      return "";
+    }
+  }
+
+  function summarize(text, maxSentences) {
+    const sentences = splitSentences(text);
+    if (sentences.length === 0) return null;
+    if (sentences.length <= maxSentences) return sentences.join(" ");
+
+    const freq = {};
+    sentences.forEach((s) => {
+      s.toLowerCase().match(/[a-zà-öø-ÿčćžšđ']+/g)?.forEach((w) => {
+        if (w.length > 2 && !STOPWORDS.has(w)) freq[w] = (freq[w] || 0) + 1;
+      });
+    });
+
+    const scored = sentences.map((s, idx) => {
+      const words = s.toLowerCase().match(/[a-zà-öø-ÿčćžšđ']+/g) || [];
+      const raw = words.reduce((sum, w) => sum + (freq[w] || 0), 0);
+      const score = words.length ? raw / Math.sqrt(words.length) : 0;
+      const positionBonus = idx < 3 ? (3 - idx) * 0.8 : 0;
+      return { s, idx, score: score + positionBonus };
+    });
+
+    const top = scored
+      .sort((a, b) => b.score - a.score)
+      .slice(0, maxSentences)
+      .sort((a, b) => a.idx - b.idx);
+
+    return top.map((t) => t.s).join(" ");
+  }
+
+  async function fetchArticleHtml(url) {
+    const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
+    const res = await fetch(proxyUrl, { signal: AbortSignal.timeout(12000) });
+    if (!res.ok) throw new Error("fetch failed");
+    return res.text();
+  }
+
+  function closeModal() {
+    document.getElementById("overlay").hidden = true;
+  }
+
+  async function openSummary(item) {
+    const overlay = document.getElementById("overlay");
+    const meta = document.getElementById("modalMeta");
+    const title = document.getElementById("modalTitle");
+    const summaryEl = document.getElementById("modalSummary");
+    const note = document.getElementById("modalNote");
+    const originalLink = document.getElementById("modalOriginalLink");
+
+    meta.innerHTML = `<b>${item.ticker}</b> • ${item.source} • ${timeAgo(item.pubDate)}`;
+    title.textContent = item.title;
+    originalLink.href = item.link;
+    summaryEl.innerHTML = `<span class="spinner"></span>Preuzimam i analiziram tekst članka...`;
+    note.textContent = "";
+    overlay.hidden = false;
+
+    try {
+      const html = await fetchArticleHtml(item.link);
+      const fullText = extractArticleText(html);
+      const summary = fullText ? summarize(fullText, 4) : null;
+
+      if (summary) {
+        summaryEl.textContent = summary;
+        note.textContent = "Automatski rezime na osnovu teksta izvornog članka.";
+      } else if (item.description) {
+        summaryEl.textContent = item.description.replace(/<[^>]+>/g, "").trim();
+        note.textContent = "Nije bilo moguće preuzeti ceo tekst članka — prikazan je kratak izvod dostupan uz vest.";
+      } else {
+        summaryEl.textContent = "Rezime trenutno nije dostupan za ovaj članak.";
+        note.textContent = "Otvori originalni članak za pun tekst.";
+      }
+    } catch (e) {
+      if (item.description) {
+        summaryEl.textContent = item.description.replace(/<[^>]+>/g, "").trim();
+        note.textContent = "Sajt izvora ne dozvoljava automatsko preuzimanje teksta — prikazan je kratak izvod dostupan uz vest.";
+      } else {
+        summaryEl.textContent = "Nije moguće učitati rezime za ovaj članak.";
+        note.textContent = "Otvori originalni članak za pun tekst.";
+      }
+    }
   }
 
   async function loadNews() {
@@ -234,12 +426,14 @@
           const li = document.createElement("li");
           const a = document.createElement("a");
           a.href = item.link;
-          a.target = "_blank";
-          a.rel = "noopener noreferrer nofollow";
           a.innerHTML = `
             <div class="meta"><b>${item.ticker}</b> • ${item.source} • ${timeAgo(item.pubDate)}</div>
             <h3 class="title">${item.title}</h3>
           `;
+          a.addEventListener("click", (e) => {
+            e.preventDefault();
+            openSummary(item);
+          });
           li.appendChild(a);
           ul.appendChild(li);
         });

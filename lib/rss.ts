@@ -8,6 +8,7 @@ export type FeedItem = {
   isoDate: string;
   ticker: string;
   companyName: string;
+  description: string;
 };
 
 const parser = new XMLParser({
@@ -62,6 +63,7 @@ export async function fetchGoogleNewsFeed(
         isoDate: safeDate(pubDate),
         ticker,
         companyName,
+        description: stripCdata(item.description).replace(/<[^>]+>/g, "").trim(),
       };
     });
   } catch {
@@ -98,6 +100,7 @@ export async function fetchYahooFinanceFeed(
         isoDate: safeDate(pubDate),
         ticker,
         companyName,
+        description: stripCdata(item.description).replace(/<[^>]+>/g, "").trim(),
       };
     });
   } catch {

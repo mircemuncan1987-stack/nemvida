@@ -7,7 +7,9 @@ export default function Footer() {
         </p>
         <p>
           Vesti se preuzimaju sa javno dostupnih izvora (Google News, Yahoo
-          Finance) i prikazuju izvorni naslov uz link na originalni članak.
+          Finance). Klik na naslov prvo prikazuje automatski generisan
+          rezime članka, bez upotrebe plaćenih AI servisa, uz opciju da
+          otvoriš ceo originalni tekst.
         </p>
         <p>© {new Date().getFullYear()} Nemvida Finance</p>
       </div>

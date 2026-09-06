@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { companies } from "@/lib/companies";
 import type { FeedItem } from "@/lib/rss";
+import SummaryModal from "@/components/SummaryModal";
 
 const REFRESH_MS = 60_000;
 
@@ -23,6 +24,7 @@ export default function NewsFeed() {
   const [loading, setLoading] = useState(true);
   const [updatedAt, setUpdatedAt] = useState<string | null>(null);
   const [error, setError] = useState(false);
+  const [activeItem, setActiveItem] = useState<FeedItem | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -111,11 +113,9 @@ export default function NewsFeed() {
         <ul className="space-y-3">
           {grouped.map((item, idx) => (
             <li key={`${item.link}-${idx}`}>
-              <a
-                href={item.link}
-                target="_blank"
-                rel="noopener noreferrer nofollow"
-                className="block rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white/70 dark:bg-zinc-900/50 backdrop-blur-sm p-4 hover:border-blue-400 dark:hover:border-blue-600 hover:bg-white/90 dark:hover:bg-zinc-900/70 transition-colors"
+              <button
+                onClick={() => setActiveItem(item)}
+                className="block w-full text-left rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white/70 dark:bg-zinc-900/50 backdrop-blur-sm p-4 hover:border-blue-400 dark:hover:border-blue-600 hover:bg-white/90 dark:hover:bg-zinc-900/70 transition-colors"
               >
                 <div className="flex items-center gap-2 mb-1.5 text-xs">
                   <span className="font-semibold text-blue-600 dark:text-blue-400">
@@ -131,10 +131,14 @@ export default function NewsFeed() {
                 <h3 className="font-medium text-zinc-900 dark:text-zinc-100 leading-snug">
                   {item.title}
                 </h3>
-              </a>
+              </button>
             </li>
           ))}
         </ul>
+      )}
+
+      {activeItem && (
+        <SummaryModal item={activeItem} onClose={() => setActiveItem(null)} />
       )}
     </div>
   );
