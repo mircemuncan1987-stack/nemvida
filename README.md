@@ -17,12 +17,14 @@ stručnim člancima za kompanije: Visa (V), Mastercard (MA), American Express
   (`sr`, `en`, `no` ili `sv`) polja u zaglavlju (frontmatter).
 - **Rezime vesti** — klik na naslov vesti otvara prozorčić sa automatskim
   rezimeom članka umesto da odmah vodi na sajt izvora. Ruta
-  `/api/summarize` na serveru preuzima ceo tekst originalnog članka,
-  uklanja nebitne delove (meniji, reklame, "pretplati se" i sl.) i
-  algoritamski (bez plaćenih AI servisa) izdvaja 3-4 najvažnije rečenice
+  `/api/summarize` na serveru prvo pokušava preko javnog "reader" servisa
+  (`r.jina.ai`), koji dobro probija bot-zaštitu i Google-ove preusmeravajuće
+  linkove, a ako to ne uspe pokušava direktan pristup originalnom sajtu.
+  Zatim se uklanjaju nebitni delovi (meniji, reklame, "pretplati se" i sl.)
+  i algoritamski (bez plaćenih AI servisa) izdvaja 3-4 najvažnije rečenice
   na osnovu učestalosti ključnih reči i pozicije u tekstu (vidi
-  `lib/summarize.ts`). Ako sajt izvora blokira preuzimanje teksta, prikazuje
-  se kratak izvod koji već stiže uz RSS vest.
+  `lib/summarize.ts`). Neki sajtovi i dalje mogu blokirati oba pokušaja —
+  tada se prikazuje kratak izvod koji već stiže uz RSS vest.
 - Sav sadržaj je besplatan, bez registracije i bez paywall-a.
 
 ## Dodavanje novog članka

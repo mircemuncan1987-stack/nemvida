@@ -16,6 +16,25 @@ function decodeEntities(str: string): string {
     .replace(/&nbsp;/g, " ");
 }
 
+export function cleanReaderText(text: string): string {
+  return text
+    .split("\n")
+    .filter((line) => {
+      const t = line.trim();
+      if (!t) return false;
+      if (/^(title|url source|published time|markdown content|image \d*):/i.test(t)) return false;
+      if (/^[#>*-]{0,3}\s*\[.*\]\(.*\)\s*$/.test(t)) return false;
+      return true;
+    })
+    .join(" ")
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, " ")
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+    .replace(/https?:\/\/\S+/g, " ")
+    .replace(/[#*_`>]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 export function extractParagraphs(html: string): string {
   const withoutJunk = html.replace(/<(script|style|nav|header|footer|aside|form|noscript)[^>]*>[\s\S]*?<\/\1>/gi, "");
   const matches = [...withoutJunk.matchAll(/<p[^>]*>([\s\S]*?)<\/p>/gi)];
