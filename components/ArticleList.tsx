@@ -52,7 +52,7 @@ export default function ArticleList({ articles }: { articles: ArticleMeta[] }) {
             <li key={article.slug}>
               <Link
                 href={`/clanci/${article.slug}`}
-                className="block rounded-lg border border-zinc-200 dark:border-zinc-800 p-4 hover:border-blue-400 dark:hover:border-blue-600 transition-colors"
+                className="block rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white/70 dark:bg-zinc-900/50 backdrop-blur-sm p-4 hover:border-blue-400 dark:hover:border-blue-600 hover:bg-white/90 dark:hover:bg-zinc-900/70 transition-colors"
               >
                 <div className="flex items-center gap-2 mb-1">
                   <span className="text-xs font-semibold px-2 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300">

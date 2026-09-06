@@ -99,7 +99,7 @@ export default function NewsFeed() {
           {Array.from({ length: 6 }).map((_, i) => (
             <div
               key={i}
-              className="h-20 rounded-lg bg-zinc-100 dark:bg-zinc-900 animate-pulse"
+              className="h-20 rounded-lg bg-zinc-200/60 dark:bg-zinc-900/60 animate-pulse"
             />
           ))}
         </div>
@@ -115,7 +115,7 @@ export default function NewsFeed() {
                 href={item.link}
                 target="_blank"
                 rel="noopener noreferrer nofollow"
-                className="block rounded-lg border border-zinc-200 dark:border-zinc-800 p-4 hover:border-blue-400 dark:hover:border-blue-600 transition-colors"
+                className="block rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white/70 dark:bg-zinc-900/50 backdrop-blur-sm p-4 hover:border-blue-400 dark:hover:border-blue-600 hover:bg-white/90 dark:hover:bg-zinc-900/70 transition-colors"
               >
                 <div className="flex items-center gap-2 mb-1.5 text-xs">
                   <span className="font-semibold text-blue-600 dark:text-blue-400">
