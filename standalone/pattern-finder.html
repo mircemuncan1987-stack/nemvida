@@ -235,25 +235,38 @@
   "use strict";
 
   // ---------- CORS proxy fetch chain (isti princip kao u ostatku sajta) ----------
+  // Svi kandidati se probaju ISTOVREMENO (Promise.any) — koristi se prvi koji uspe,
+  // umesto da se čeka da svaki redom istekne (to je pravilo sporo učitavanje pre).
+  // Ako jedan proxy vrati grešku (npr. corsproxy.io 401 kad Origin nije registrovan),
+  // to više ne blokira ceo zahtev dok god bar jedan drugi uspe.
   const PROXIES = [
     (url) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
     (url) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
     (url) => `https://corsproxy.io/?url=${encodeURIComponent(url)}`,
+    (url) => `https://thingproxy.freeboard.io/fetch/${url}`,
   ];
 
-  async function fetchJSON(url, timeoutMs = 15000) {
-    let lastErr;
-    for (const proxyFn of PROXIES) {
+  async function fetchJSON(url, timeoutMs = 9000) {
+    const attempts = PROXIES.map(async (proxyFn) => {
+      const proxyUrl = proxyFn(url);
+      let host = proxyUrl;
+      try { host = new URL(proxyUrl).host; } catch (e) {}
+      const res = await fetch(proxyUrl, { signal: AbortSignal.timeout(timeoutMs) });
+      if (!res.ok) throw new Error(`${host} → HTTP ${res.status}`);
+      const text = await res.text();
+      if (!text) throw new Error(`${host} → prazan odgovor`);
       try {
-        const res = await fetch(proxyFn(url), { signal: AbortSignal.timeout(timeoutMs) });
-        if (!res.ok) throw new Error("HTTP " + res.status);
-        const text = await res.text();
         return JSON.parse(text);
       } catch (e) {
-        lastErr = e;
+        throw new Error(`${host} → nevažeći odgovor`);
       }
+    });
+    try {
+      return await Promise.any(attempts);
+    } catch (aggErr) {
+      const details = (aggErr.errors || []).map((e) => e.message).join("; ");
+      throw new Error(details || "Svi proxy izvori nisu uspeli");
     }
-    throw lastErr || new Error("Svi proxy izvori nisu uspeli");
   }
 
   // ---------- Poznati datumi FOMC (Fed) odluka o kamatnoj stopi ----------
