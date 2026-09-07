@@ -33,7 +33,18 @@ const fmtPct = (x: number | null | undefined, digits = 1) =>
 const fmtMoney = (x: number | null | undefined, currency: string) =>
   x === null || x === undefined || Number.isNaN(x) ? "—" : `${x.toLocaleString("en-US", { maximumFractionDigits: 2 })} ${currency}`;
 
-async function fetchValuationFundamentals(symbol: string): Promise<{ fundamentals: Fundamentals; qualitative: QualitativeInputs }> {
+interface CompanyProfile {
+  summary: string | null;
+  sector: string | null;
+  industry: string | null;
+  city: string | null;
+  state: string | null;
+  country: string | null;
+  website: string | null;
+  employees: number | null;
+}
+
+async function fetchValuationFundamentals(symbol: string): Promise<{ fundamentals: Fundamentals; qualitative: QualitativeInputs; profile: CompanyProfile }> {
   const res = await fetch(`/api/stock?symbol=${encodeURIComponent(symbol)}&type=valuation`, { cache: "no-store" });
   const data = await res.json();
   if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
@@ -47,6 +58,7 @@ async function fetchValuationFundamentals(symbol: string): Promise<{ fundamental
   const cashflowStatements = result.cashflowStatementHistory?.cashflowStatements || [];
   const incomeStatements = result.incomeStatementHistory?.incomeStatementHistory || [];
   const recTrend = result.recommendationTrend?.trend?.[0] || null;
+  const assetProfile = result.assetProfile || {};
 
   const fcfHistory: number[] = cashflowStatements
     .slice()
@@ -112,7 +124,18 @@ async function fetchValuationFundamentals(symbol: string): Promise<{ fundamental
       : null,
   };
 
-  return { fundamentals, qualitative };
+  const profile: CompanyProfile = {
+    summary: assetProfile.longBusinessSummary || null,
+    sector: assetProfile.sector || null,
+    industry: assetProfile.industry || null,
+    city: assetProfile.city || null,
+    state: assetProfile.state || null,
+    country: assetProfile.country || null,
+    website: assetProfile.website || null,
+    employees: assetProfile.fullTimeEmployees ?? null,
+  };
+
+  return { fundamentals, qualitative, profile };
 }
 
 export default function ValuationCalculator() {
@@ -121,6 +144,7 @@ export default function ValuationCalculator() {
   const [error, setError] = useState("");
   const [fundamentals, setFundamentals] = useState<Fundamentals | null>(null);
   const [qualitativeInputs, setQualitativeInputs] = useState<QualitativeInputs | null>(null);
+  const [profile, setProfile] = useState<CompanyProfile | null>(null);
   const [assumptions, setAssumptions] = useState<Assumptions>(DEFAULT_ASSUMPTIONS);
   const searchParams = useSearchParams();
 
@@ -130,10 +154,12 @@ export default function ValuationCalculator() {
     setError("");
     setFundamentals(null);
     setQualitativeInputs(null);
+    setProfile(null);
     try {
-      const { fundamentals: f, qualitative: q } = await fetchValuationFundamentals(sym);
+      const { fundamentals: f, qualitative: q, profile: p } = await fetchValuationFundamentals(sym);
       setFundamentals(f);
       setQualitativeInputs(q);
+      setProfile(p);
       const suggestedGrowth = estimateFcfCagr(f.fcfHistory);
       setAssumptions((prev) => ({
         ...prev,
@@ -227,6 +253,8 @@ export default function ValuationCalculator() {
               <div className="text-lg font-bold">{fmtMoney(fundamentals.currentPrice, fundamentals.currency)}</div>
             </div>
           </div>
+
+          {profile && <CompanyProfileCard profile={profile} />}
 
           {verdict && <VerdictBanner verdict={verdict} avgUpside={avgUpside} />}
 
@@ -332,6 +360,47 @@ function VerdictBanner({
       <div className="text-xs uppercase tracking-wide text-zinc-500 dark:text-zinc-400 mb-1">Sud (kvantitativno + kvalitativno)</div>
       <div className="text-lg font-bold mb-2">{verdict.label}</div>
       <p className="text-sm leading-relaxed">{verdict.detail}</p>
+    </div>
+  );
+}
+
+function CompanyProfileCard({ profile }: { profile: CompanyProfile }) {
+  const location = [profile.city, profile.state, profile.country].filter(Boolean).join(", ");
+  return (
+    <div className="border border-zinc-200 dark:border-zinc-800 bg-white/70 dark:bg-zinc-900/50 rounded-xl p-5 mb-4">
+      <h3 className="text-sm font-semibold pb-2 mb-3 border-b border-zinc-200 dark:border-zinc-800">O kompaniji</h3>
+      {profile.summary ? (
+        <p className="text-sm leading-relaxed mb-3">{profile.summary}</p>
+      ) : (
+        <p className="text-sm italic text-zinc-500 dark:text-zinc-400 mb-3">Opis poslovanja nije dostupan za ovaj tiker.</p>
+      )}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
+        <div>
+          <div className="text-xs text-zinc-500 dark:text-zinc-400">Sektor</div>
+          <div>{profile.sector || "—"}</div>
+        </div>
+        <div>
+          <div className="text-xs text-zinc-500 dark:text-zinc-400">Industrija</div>
+          <div>{profile.industry || "—"}</div>
+        </div>
+        <div>
+          <div className="text-xs text-zinc-500 dark:text-zinc-400">Sedište</div>
+          <div>{location || "—"}</div>
+        </div>
+        <div>
+          <div className="text-xs text-zinc-500 dark:text-zinc-400">Zaposleni</div>
+          <div>{profile.employees != null ? profile.employees.toLocaleString("en-US") : "—"}</div>
+        </div>
+      </div>
+      {profile.website && (
+        <a href={profile.website} target="_blank" rel="noopener noreferrer" className="inline-block mt-3 text-sm text-blue-600 dark:text-blue-400 hover:underline">
+          {profile.website}
+        </a>
+      )}
+      <p className="mt-3 text-xs text-zinc-500 dark:text-zinc-400">
+        Godina osnivanja nije dostupna u ovom izvoru podataka (Yahoo Finance je ne prikazuje) — nije prikazana da se
+        ne bi nagađala.
+      </p>
     </div>
   );
 }
