@@ -13,6 +13,7 @@ import {
   type Assumptions,
   type Fundamentals,
 } from "@/lib/valuation";
+import { combineVerdict, summarizeQualitative, type QualitativeInputs, type Verdict } from "@/lib/qualitative";
 
 const DEFAULT_ASSUMPTIONS: Assumptions = {
   growthRateY1to5: 0.08,
@@ -31,7 +32,7 @@ const fmtPct = (x: number | null | undefined, digits = 1) =>
 const fmtMoney = (x: number | null | undefined, currency: string) =>
   x === null || x === undefined || Number.isNaN(x) ? "—" : `${x.toLocaleString("en-US", { maximumFractionDigits: 2 })} ${currency}`;
 
-async function fetchValuationFundamentals(symbol: string): Promise<Fundamentals> {
+async function fetchValuationFundamentals(symbol: string): Promise<{ fundamentals: Fundamentals; qualitative: QualitativeInputs }> {
   const res = await fetch(`/api/stock?symbol=${encodeURIComponent(symbol)}&type=valuation`, { cache: "no-store" });
   const data = await res.json();
   if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
@@ -43,6 +44,8 @@ async function fetchValuationFundamentals(symbol: string): Promise<Fundamentals>
   const keyStats = result.defaultKeyStatistics || {};
   const financialData = result.financialData || {};
   const cashflowStatements = result.cashflowStatementHistory?.cashflowStatements || [];
+  const incomeStatements = result.incomeStatementHistory?.incomeStatementHistory || [];
+  const recTrend = result.recommendationTrend?.trend?.[0] || null;
 
   const fcfHistory: number[] = cashflowStatements
     .slice()
@@ -55,10 +58,16 @@ async function fetchValuationFundamentals(symbol: string): Promise<Fundamentals>
     })
     .filter((v: number | null): v is number => v != null);
 
+  const revenueHistory: number[] = incomeStatements
+    .slice()
+    .reverse()
+    .map((s: any) => s.totalRevenue?.raw) // eslint-disable-line @typescript-eslint/no-explicit-any
+    .filter((v: number | null | undefined): v is number => v != null);
+
   const currentPrice = price.regularMarketPrice?.raw ?? financialData.currentPrice?.raw;
   if (!currentPrice) throw new Error("Trenutna cena nije dostupna za ovaj tiker.");
 
-  return {
+  const fundamentals: Fundamentals = {
     companyName: price.longName || price.shortName || symbol,
     currency: price.currency || "USD",
     currentPrice,
@@ -76,6 +85,33 @@ async function fetchValuationFundamentals(symbol: string): Promise<Fundamentals>
     fcfHistory,
     revenueGrowth: financialData.revenueGrowth?.raw ?? null,
   };
+
+  const qualitative: QualitativeInputs = {
+    currentRatio: financialData.currentRatio?.raw ?? null,
+    quickRatio: financialData.quickRatio?.raw ?? null,
+    debtToEquity: financialData.debtToEquity?.raw ?? null,
+    returnOnEquity: financialData.returnOnEquity?.raw ?? null,
+    returnOnAssets: financialData.returnOnAssets?.raw ?? null,
+    grossMargins: financialData.grossMargins?.raw ?? null,
+    operatingMargins: financialData.operatingMargins?.raw ?? null,
+    profitMargins: financialData.profitMargins?.raw ?? null,
+    revenueGrowth: financialData.revenueGrowth?.raw ?? null,
+    earningsGrowth: financialData.earningsGrowth?.raw ?? null,
+    revenueHistory,
+    targetMeanPrice: financialData.targetMeanPrice?.raw ?? null,
+    currentPrice,
+    recommendation: recTrend
+      ? {
+          strongBuy: recTrend.strongBuy ?? 0,
+          buy: recTrend.buy ?? 0,
+          hold: recTrend.hold ?? 0,
+          sell: recTrend.sell ?? 0,
+          strongSell: recTrend.strongSell ?? 0,
+        }
+      : null,
+  };
+
+  return { fundamentals, qualitative };
 }
 
 export default function ValuationCalculator() {
@@ -83,6 +119,7 @@ export default function ValuationCalculator() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [fundamentals, setFundamentals] = useState<Fundamentals | null>(null);
+  const [qualitativeInputs, setQualitativeInputs] = useState<QualitativeInputs | null>(null);
   const [assumptions, setAssumptions] = useState<Assumptions>(DEFAULT_ASSUMPTIONS);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -92,9 +129,11 @@ export default function ValuationCalculator() {
     setLoading(true);
     setError("");
     setFundamentals(null);
+    setQualitativeInputs(null);
     try {
-      const f = await fetchValuationFundamentals(sym);
+      const { fundamentals: f, qualitative: q } = await fetchValuationFundamentals(sym);
       setFundamentals(f);
+      setQualitativeInputs(q);
       const suggestedGrowth = estimateFcfCagr(f.fcfHistory);
       setAssumptions((prev) => ({
         ...prev,
@@ -128,6 +167,10 @@ export default function ValuationCalculator() {
   const avgValue = validValues.length ? validValues.reduce((a, b) => a + b, 0) / validValues.length : null;
   const minValue = validValues.length ? Math.min(...validValues) : null;
   const maxValue = validValues.length ? Math.max(...validValues) : null;
+  const avgUpside = fundamentals && avgValue != null ? summarizeUpside(fundamentals.currentPrice, avgValue) : null;
+
+  const qualitativeSummary = qualitativeInputs ? summarizeQualitative(qualitativeInputs) : null;
+  const verdict = qualitativeSummary ? combineVerdict(avgUpside, qualitativeSummary) : null;
 
   return (
     <div className="max-w-4xl mx-auto px-4 pb-16">
@@ -168,6 +211,8 @@ export default function ValuationCalculator() {
               <div className="text-lg font-bold">{fmtMoney(fundamentals.currentPrice, fundamentals.currency)}</div>
             </div>
           </div>
+
+          {verdict && <VerdictBanner verdict={verdict} avgUpside={avgUpside} />}
 
           <AssumptionsPanel assumptions={assumptions} setAssumptions={setAssumptions} wacc={wacc} />
 
@@ -237,9 +282,66 @@ export default function ValuationCalculator() {
             )}
           </div>
 
+          {qualitativeSummary && <QualitativeSection summary={qualitativeSummary} />}
+
           <MethodologyNotes />
         </div>
       )}
+    </div>
+  );
+}
+
+function verdictColor(v: Verdict) {
+  if (v === "pozitivno") return "text-emerald-600 dark:text-emerald-400";
+  if (v === "negativno") return "text-red-600 dark:text-red-400";
+  return "text-zinc-500 dark:text-zinc-400";
+}
+
+function verdictIcon(v: Verdict) {
+  if (v === "pozitivno") return "▲";
+  if (v === "negativno") return "▼";
+  return "●";
+}
+
+function VerdictBanner({
+  verdict,
+  avgUpside,
+}: {
+  verdict: { label: string; detail: string };
+  avgUpside: number | null;
+}) {
+  const tone = avgUpside == null ? "" : avgUpside > 0.05 ? "border-emerald-400 dark:border-emerald-700" : avgUpside < -0.05 ? "border-red-400 dark:border-red-700" : "border-zinc-300 dark:border-zinc-700";
+  return (
+    <div className={`rounded-xl border-2 ${tone} bg-white/70 dark:bg-zinc-900/50 p-5 mb-4`}>
+      <div className="text-xs uppercase tracking-wide text-zinc-500 dark:text-zinc-400 mb-1">Sud (kvantitativno + kvalitativno)</div>
+      <div className="text-lg font-bold mb-2">{verdict.label}</div>
+      <p className="text-sm leading-relaxed">{verdict.detail}</p>
+    </div>
+  );
+}
+
+function QualitativeSection({ summary }: { summary: ReturnType<typeof summarizeQualitative> }) {
+  return (
+    <div className="border border-zinc-200 dark:border-zinc-800 bg-white/70 dark:bg-zinc-900/50 rounded-xl p-5 mb-4">
+      <h3 className="text-sm font-semibold pb-2 mb-3 border-b border-zinc-200 dark:border-zinc-800">
+        Objektivni kvalitativni pokazatelji — {summary.overallLabel}
+      </h3>
+      <div className="space-y-3">
+        {summary.dimensions.map((d) => (
+          <div key={d.label} className="flex items-start gap-3">
+            <span className={`text-lg leading-none ${verdictColor(d.verdict)}`}>{verdictIcon(d.verdict)}</span>
+            <div>
+              <div className="text-sm font-semibold">{d.label}</div>
+              <div className="text-sm text-zinc-600 dark:text-zinc-400">{d.detail}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+      <p className="mt-4 text-xs text-zinc-500 dark:text-zinc-400">
+        Svaki pokazatelj se izračunava iz merljivih finansijskih podataka (marže, zaduženost, rast, konsenzus
+        analitičara) prema fiksnim pragovima — namerno je isključena subjektivna procena (npr. kvalitet menadžmenta,
+        snaga brenda) jer se ne može objektivno meriti.
+      </p>
     </div>
   );
 }

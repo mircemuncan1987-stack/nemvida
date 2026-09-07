@@ -1,9 +1,9 @@
 import ValuationCalculator from "@/components/ValuationCalculator";
 
 export const metadata = {
-  title: "Procena unutrašnje vrednosti akcije | Nemvida Finance",
+  title: "Procena vrednosti akcije | Nemvida Finance",
   description:
-    "Besplatan alat za procenu unutrašnje (intrinsične) vrednosti akcije preko više modela: DCF, Graham Number, Dividend Discount Model, relativna procena i reverse DCF.",
+    "Besplatan alat za procenu akcije preko više kvantitativnih modela (DCF, Graham Number, Dividend Discount Model, relativna procena, reverse DCF) i objektivnih kvalitativnih pokazatelja (finansijsko zdravlje, profitabilnost, rast, konsenzus analitičara).",
 };
 
 export default function VrednostPage() {
@@ -11,11 +11,12 @@ export default function VrednostPage() {
     <main className="flex-1 w-full">
       <div className="max-w-4xl mx-auto px-4 pt-8">
         <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-50">
-          Procena unutrašnje vrednosti
+          Procena vrednosti akcije
         </h1>
         <p className="text-zinc-600 dark:text-zinc-400 mt-1">
-          Izračunaj procenjenu unutrašnju vrednost bilo koje akcije preko više modela — DCF, Graham Number,
-          Dividend Discount Model, relativna procena i reverse DCF — sa pretpostavkama koje sam podešavaš.
+          Sud o akciji zasnovan na kvantitativnoj proceni cene (DCF, Graham Number, Dividend Discount Model,
+          relativna procena, reverse DCF) i objektivnim kvalitativnim pokazateljima (finansijsko zdravlje,
+          profitabilnost, rast, konsenzus analitičara) — sve iz merljivih podataka, bez subjektivnih ocena.
         </p>
       </div>
       <ValuationCalculator />
