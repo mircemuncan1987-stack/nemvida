@@ -58,42 +58,21 @@ async function fetchUpstream(buildUrl: (crumb: string) => string, forceRefresh =
 
 export async function GET(request: NextRequest) {
   const symbol = request.nextUrl.searchParams.get("symbol");
-  const type = request.nextUrl.searchParams.get("type") || "chart";
-  const range = request.nextUrl.searchParams.get("range") || "5y";
+  const type = request.nextUrl.searchParams.get("type") || "valuation";
 
   if (!symbol) {
     return NextResponse.json({ error: "Nedostaje parametar 'symbol'" }, { status: 400 });
   }
 
   try {
-    if (type === "chart") {
-      const data = await fetchUpstream(
-        (crumb) =>
-          `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(
-            symbol
-          )}?range=${encodeURIComponent(range)}&interval=1d&events=div,splits&crumb=${encodeURIComponent(crumb)}`
-      );
-      return NextResponse.json(data);
-    }
-
-    if (type === "quoteSummary") {
+    if (type === "valuation") {
       const modules =
-        "assetProfile,defaultKeyStatistics,summaryDetail,institutionOwnership,insiderTransactions,majorHoldersBreakdown";
+        "price,summaryDetail,defaultKeyStatistics,financialData,cashflowStatementHistory,incomeStatementHistory,balanceSheetHistory";
       const data = await fetchUpstream(
         (crumb) =>
           `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(
             symbol
           )}?modules=${modules}&crumb=${encodeURIComponent(crumb)}`
-      );
-      return NextResponse.json(data);
-    }
-
-    if (type === "options") {
-      const data = await fetchUpstream(
-        (crumb) =>
-          `https://query1.finance.yahoo.com/v7/finance/options/${encodeURIComponent(
-            symbol
-          )}?crumb=${encodeURIComponent(crumb)}`
       );
       return NextResponse.json(data);
     }
