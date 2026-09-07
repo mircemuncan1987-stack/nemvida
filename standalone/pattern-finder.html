@@ -244,28 +244,57 @@
     (url) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
     (url) => `https://corsproxy.io/?url=${encodeURIComponent(url)}`,
     (url) => `https://thingproxy.freeboard.io/fetch/${url}`,
+    // allorigins "get" varijanta ima drugačiji format odgovora ({contents: "..."})
+    // pa se obrađuje posebno, ali je to ISTA infrastruktura kao "raw" — ako je
+    // allorigins.win potpuno nedostupan ovo ionako neće pomoći, ali ako je samo
+    // "raw" putanja imala privremeni problem, ovo je nezavisan pokušaj.
+    (url) => `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`,
   ];
 
-  async function fetchJSON(url, timeoutMs = 9000) {
+  async function raceProxies(url, timeoutMs) {
     const attempts = PROXIES.map(async (proxyFn) => {
       const proxyUrl = proxyFn(url);
       let host = proxyUrl;
-      try { host = new URL(proxyUrl).host; } catch (e) {}
+      try { host = new URL(proxyUrl).host + new URL(proxyUrl).pathname; } catch (e) {}
       const res = await fetch(proxyUrl, { signal: AbortSignal.timeout(timeoutMs) });
       if (!res.ok) throw new Error(`${host} → HTTP ${res.status}`);
       const text = await res.text();
       if (!text) throw new Error(`${host} → prazan odgovor`);
       try {
-        return JSON.parse(text);
+        const parsed = JSON.parse(text);
+        // allorigins /get vraća { contents: "<json string>", status: {...} }
+        if (parsed && typeof parsed.contents === "string" && parsed.status) {
+          return JSON.parse(parsed.contents);
+        }
+        return parsed;
       } catch (e) {
         throw new Error(`${host} → nevažeći odgovor`);
       }
     });
+    return Promise.any(attempts);
+  }
+
+  function sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  // Ako SVI proxy-ji padnu u prvom pokušaju (npr. privremeni rate-limit), sačekaj
+  // kratko i probaj još jednom pre nego što se korisniku prikaže greška — ovo je
+  // tačno slučaj koji je prijavljen (401 + timeout na sva 4 izvora istovremeno).
+  async function fetchJSON(url, timeoutMs = 9000) {
     try {
-      return await Promise.any(attempts);
-    } catch (aggErr) {
-      const details = (aggErr.errors || []).map((e) => e.message).join("; ");
-      throw new Error(details || "Svi proxy izvori nisu uspeli");
+      return await raceProxies(url, timeoutMs);
+    } catch (firstErr) {
+      await sleep(1500);
+      try {
+        return await raceProxies(url, timeoutMs);
+      } catch (secondErr) {
+        const details = (secondErr.errors || []).map((e) => e.message).join("; ");
+        throw new Error(
+          (details || "Svi proxy izvori nisu uspeli ni posle ponovnog pokušaja") +
+          " — javni CORS proxy servisi su trenutno preopterećeni ili nedostupni, probaj ponovo za minut."
+        );
+      }
     }
   }
 
