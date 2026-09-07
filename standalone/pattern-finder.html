@@ -86,7 +86,8 @@
     gap: 10px;
     align-items: center;
   }
-  form.controls input[type="text"] {
+  form.controls input[type="text"],
+  form.controls input[type="password"] {
     flex: 1 1 160px;
     padding: 10px 12px;
     border-radius: 8px;
@@ -94,8 +95,8 @@
     background: transparent;
     color: var(--text);
     font-size: 1rem;
-    text-transform: uppercase;
   }
+  form.controls input#ticker { text-transform: uppercase; }
   form.controls select {
     padding: 10px 12px;
     border-radius: 8px;
@@ -116,6 +117,9 @@
   }
   form.controls button:disabled { opacity: 0.6; cursor: default; }
   .tickers-hint { font-size: 0.78rem; color: var(--muted); margin-top: 8px; }
+  .tickers-hint a { color: var(--accent); }
+  label.field-label { font-size: 0.72rem; color: var(--muted); display: block; margin-bottom: 3px; }
+  .field-group { display: flex; flex-direction: column; flex: 1 1 220px; }
 
   .status { font-size: 0.85rem; color: var(--muted); margin-top: 10px; display: flex; align-items: center; gap: 8px; }
   .spinner {
@@ -125,7 +129,7 @@
   }
   @keyframes spin { to { transform: rotate(360deg); } }
 
-  .error { color: var(--down); font-size: 0.85rem; margin-top: 10px; }
+  .error { color: var(--down); font-size: 0.85rem; margin-top: 10px; white-space: pre-line; }
 
   #memo { display: none; }
   #memo.visible { display: block; }
@@ -192,31 +196,46 @@
 
 <header>
   <h1>Nemvida <span>Pattern Finder</span></h1>
-  <p>Kvantitativna istorijska analiza obrazaca za bilo koji tiker — sezonalnost, dani u nedelji, Fed sastanci, insajderi, institucije, short interest i sektor.</p>
+  <p>Kvantitativna istorijska analiza obrazaca za bilo koji tiker — sezonalnost, dani u nedelji, Fed sastanci, insajderi, institucije i sektor.</p>
 </header>
 
 <main>
   <div class="disclaimer">
     <b>⚠ Ovo NIJE finansijski savet.</b> Alat prikazuje isključivo opisnu (deskriptivnu) statistiku istorijskih cena
     i javno dostupnih podataka — istorijski obrasci ne garantuju buduće rezultate i ne predstavljaju "sigurnu
-    prednost" na tržištu. Podaci dolaze iz besplatnih javnih izvora (Yahoo Finance, preko javnog CORS proxy-ja) i
-    mogu kasniti, biti nepotpuni ili privremeno nedostupni — posebno insajdersko trgovanje, institucionalno
-    vlasništvo, short interest i opcije, jer ti moduli često zahtevaju plaćeni pristup podacima. Uvek proveri
-    podatke iz više izvora i donesi sopstvenu odluku, ili se posavetuj sa licenciranim finansijskim savetnikom.
+    prednost" na tržištu. Podaci dolaze sa Financial Modeling Prep (FMP) API-ja, direktno iz tvog browsera, uz tvoj
+    lični API ključ — neki moduli (insajderi, institucionalno vlasništvo) zavise od tvog FMP plana i mogu biti
+    nedostupni ako tvoj plan ne uključuje te podatke. Uvek proveri podatke iz više izvora i donesi sopstvenu odluku,
+    ili se posavetuj sa licenciranim finansijskim savetnikom.
   </div>
 
   <div class="card">
     <form class="controls" id="form">
-      <input type="text" id="ticker" placeholder="Unesi ticker, npr. AAPL, NVDA, TSLA..." autocomplete="off" required>
-      <select id="range">
-        <option value="2y">2 godine</option>
-        <option value="5y" selected>5 godina</option>
-        <option value="10y">10 godina</option>
-        <option value="max">Maksimalno</option>
-      </select>
-      <button type="submit" id="submitBtn">Analiziraj</button>
+      <div class="field-group">
+        <label class="field-label" for="ticker">Ticker</label>
+        <input type="text" id="ticker" placeholder="npr. AAPL, NVDA, TSLA..." autocomplete="off" required>
+      </div>
+      <div class="field-group" style="flex: 0 1 140px;">
+        <label class="field-label" for="range">Period</label>
+        <select id="range">
+          <option value="2y">2 godine</option>
+          <option value="5y" selected>5 godina</option>
+          <option value="10y">10 godina</option>
+          <option value="max">Maksimalno</option>
+        </select>
+      </div>
+      <div class="field-group">
+        <label class="field-label" for="apiKey">FMP API ključ</label>
+        <input type="password" id="apiKey" placeholder="Tvoj Financial Modeling Prep ključ" autocomplete="off" required>
+      </div>
+      <button type="submit" id="submitBtn" style="align-self: flex-end;">Analiziraj</button>
     </form>
-    <div class="tickers-hint">Radi sa svim tikerima dostupnim na Yahoo Finance (akcije, ETF-ovi, na svim berzama — npr. AAPL, SAP.DE, VOD.L).</div>
+    <div class="tickers-hint">
+      Radi sa svim tikerima koje pokriva Financial Modeling Prep (američke i mnoge svetske berze). Ključ se čuva
+      samo lokalno u tvom browseru (localStorage) i šalje se direktno ka financialmodelingprep.com — nikad ka bilo
+      kom trećem serveru. Nemaš ključ? Napravi besplatan na
+      <a href="https://site.financialmodelingprep.com/developer/docs" target="_blank" rel="noopener">financialmodelingprep.com</a>.
+    </div>
     <div class="status" id="status" hidden></div>
     <div class="error" id="error" hidden></div>
   </div>
@@ -225,77 +244,41 @@
 </main>
 
 <footer>
-  Nemvida Finance — Pattern Finder je edukativni alat otvorenog koda. Ne čuva niti šalje tvoje podatke bilo kom
-  serveru osim javnih API-ja potrebnih za preuzimanje tržišnih podataka. Nije povezan sa Renaissance Technologies
-  niti bilo kojom investicionom firmom.
+  Nemvida Finance — Pattern Finder je edukativni alat otvorenog koda. Podaci se preuzimaju direktno iz tvog browsera
+  ka Financial Modeling Prep API-ju uz tvoj lični ključ — ništa se ne šalje ka nemvida.rs ili bilo kom drugom
+  serveru. Nije povezan sa Renaissance Technologies niti bilo kojom investicionom firmom.
 </footer>
 
 <script>
 (function () {
   "use strict";
 
-  // ---------- CORS proxy fetch chain (isti princip kao u ostatku sajta) ----------
-  // Svi kandidati se probaju ISTOVREMENO (Promise.any) — koristi se prvi koji uspe,
-  // umesto da se čeka da svaki redom istekne (to je pravilo sporo učitavanje pre).
-  // Ako jedan proxy vrati grešku (npr. corsproxy.io 401 kad Origin nije registrovan),
-  // to više ne blokira ceo zahtev dok god bar jedan drugi uspe.
-  const PROXIES = [
-    (url) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
-    (url) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
-    (url) => `https://corsproxy.io/?url=${encodeURIComponent(url)}`,
-    (url) => `https://thingproxy.freeboard.io/fetch/${url}`,
-    // allorigins "get" varijanta ima drugačiji format odgovora ({contents: "..."})
-    // pa se obrađuje posebno, ali je to ISTA infrastruktura kao "raw" — ako je
-    // allorigins.win potpuno nedostupan ovo ionako neće pomoći, ali ako je samo
-    // "raw" putanja imala privremeni problem, ovo je nezavisan pokušaj.
-    (url) => `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`,
-  ];
+  const FMP_BASE = "https://financialmodelingprep.com";
+  const API_KEY_STORAGE = "nemvida_pattern_finder_fmp_key";
 
-  async function raceProxies(url, timeoutMs) {
-    const attempts = PROXIES.map(async (proxyFn) => {
-      const proxyUrl = proxyFn(url);
-      let host = proxyUrl;
-      try { host = new URL(proxyUrl).host + new URL(proxyUrl).pathname; } catch (e) {}
-      const res = await fetch(proxyUrl, { signal: AbortSignal.timeout(timeoutMs) });
-      if (!res.ok) throw new Error(`${host} → HTTP ${res.status}`);
-      const text = await res.text();
-      if (!text) throw new Error(`${host} → prazan odgovor`);
-      try {
-        const parsed = JSON.parse(text);
-        // allorigins /get vraća { contents: "<json string>", status: {...} }
-        if (parsed && typeof parsed.contents === "string" && parsed.status) {
-          return JSON.parse(parsed.contents);
-        }
-        return parsed;
-      } catch (e) {
-        throw new Error(`${host} → nevažeći odgovor`);
-      }
-    });
-    return Promise.any(attempts);
-  }
-
-  function sleep(ms) {
-    return new Promise((resolve) => setTimeout(resolve, ms));
-  }
-
-  // Ako SVI proxy-ji padnu u prvom pokušaju (npr. privremeni rate-limit), sačekaj
-  // kratko i probaj još jednom pre nego što se korisniku prikaže greška — ovo je
-  // tačno slučaj koji je prijavljen (401 + timeout na sva 4 izvora istovremeno).
-  async function fetchJSON(url, timeoutMs = 9000) {
+  async function fmpFetch(path, apiKey) {
+    const sep = path.includes("?") ? "&" : "?";
+    const url = `${FMP_BASE}${path}${sep}apikey=${encodeURIComponent(apiKey)}`;
+    let res;
     try {
-      return await raceProxies(url, timeoutMs);
-    } catch (firstErr) {
-      await sleep(1500);
-      try {
-        return await raceProxies(url, timeoutMs);
-      } catch (secondErr) {
-        const details = (secondErr.errors || []).map((e) => e.message).join("; ");
-        throw new Error(
-          (details || "Svi proxy izvori nisu uspeli ni posle ponovnog pokušaja") +
-          " — javni CORS proxy servisi su trenutno preopterećeni ili nedostupni, probaj ponovo za minut."
-        );
-      }
+      res = await fetch(url, { signal: AbortSignal.timeout(20000) });
+    } catch (e) {
+      throw new Error(`Ne mogu da se povežem sa FMP-om (${e.message}). Proveri internet konekciju.`);
     }
+    if (res.status === 401 || res.status === 403) {
+      throw new Error("FMP je odbio zahtev (401/403) — proveri da li je API ključ tačan.");
+    }
+    if (res.status === 429) {
+      throw new Error("Dostignut je limit poziva na tvom FMP planu (429). Sačekaj malo i probaj ponovo.");
+    }
+    if (!res.ok) {
+      throw new Error(`FMP HTTP ${res.status}`);
+    }
+    const data = await res.json();
+    if (data && typeof data === "object" && !Array.isArray(data) && data["Error Message"]) {
+      throw new Error(data["Error Message"]);
+    }
+    return data;
   }
 
   // ---------- Poznati datumi FOMC (Fed) odluka o kamatnoj stopi ----------
@@ -333,44 +316,54 @@
   const pctClass = (x) => (x === null || x === undefined || Number.isNaN(x)) ? "" : (x >= 0 ? "up" : "down");
   const fmtNum = (x) => (x === null || x === undefined || Number.isNaN(x)) ? "—" : Number(x).toLocaleString("en-US");
 
-  // ---------- Preuzimanje istorije cena (Yahoo chart API) ----------
-  async function fetchChart(symbol, range) {
-    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=${range}&interval=1d&events=div,splits`;
-    const data = await fetchJSON(url);
-    const result = data?.chart?.result?.[0];
-    if (!result || !result.timestamp) throw new Error("Nema podataka o ceni za ovaj tiker.");
-    const ts = result.timestamp;
-    const q = result.indicators.quote[0];
-    const adj = result.indicators.adjclose ? result.indicators.adjclose[0].adjclose : q.close;
-    const rows = [];
-    for (let i = 0; i < ts.length; i++) {
-      if (q.close[i] == null || q.open[i] == null) continue;
-      rows.push({
-        date: new Date(ts[i] * 1000),
-        open: q.open[i],
-        close: q.close[i],
-        adjclose: adj[i] != null ? adj[i] : q.close[i],
-        volume: q.volume[i],
-      });
-    }
-    return { rows, meta: result.meta };
+  // ---------- Preuzimanje istorije cena (FMP historical-price-full) ----------
+  function computeFromDate(range) {
+    const years = range === "2y" ? 2 : range === "5y" ? 5 : range === "10y" ? 10 : null;
+    if (years === null) return null; // "max" -> ne šalji "from", vrati se sva dostupna istorija
+    const d = new Date();
+    d.setUTCFullYear(d.getUTCFullYear() - years);
+    return d.toISOString().slice(0, 10);
   }
 
-  async function fetchQuoteSummary(symbol) {
-    const modules = "assetProfile,defaultKeyStatistics,summaryDetail,institutionOwnership,insiderTransactions,majorHoldersBreakdown";
-    const url = `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(symbol)}?modules=${modules}`;
-    const data = await fetchJSON(url);
-    const result = data?.quoteSummary?.result?.[0];
-    if (!result) throw new Error("quoteSummary nedostupan");
-    return result;
+  async function fetchChart(symbol, range, apiKey) {
+    const from = computeFromDate(range);
+    const path = `/api/v3/historical-price-full/${encodeURIComponent(symbol)}${from ? `?from=${from}` : ""}`;
+    const data = await fmpFetch(path, apiKey);
+    const historical = data && data.historical;
+    if (!historical || !historical.length) throw new Error("Nema podataka o ceni za ovaj tiker (proveri da li je ticker tačan).");
+    const rows = historical
+      .slice()
+      .reverse()
+      .filter((h) => h.open != null && h.close != null)
+      .map((h) => ({
+        date: new Date(h.date + "T00:00:00Z"),
+        open: h.open,
+        close: h.close,
+        adjclose: h.adjClose != null ? h.adjClose : h.close,
+        volume: h.volume,
+      }));
+    return { rows };
   }
 
-  async function fetchOptions(symbol) {
-    const url = `https://query1.finance.yahoo.com/v7/finance/options/${encodeURIComponent(symbol)}`;
-    const data = await fetchJSON(url);
-    const result = data?.optionChain?.result?.[0];
-    if (!result || !result.options || !result.options.length) throw new Error("Opcije nedostupne");
-    return result;
+  async function fetchProfile(symbol, apiKey) {
+    const data = await fmpFetch(`/api/v3/profile/${encodeURIComponent(symbol)}`, apiKey);
+    if (!Array.isArray(data) || !data.length) return null;
+    return data[0];
+  }
+
+  async function fetchInsiderTrading(symbol, apiKey) {
+    const data = await fmpFetch(`/api/v4/insider-trading?symbol=${encodeURIComponent(symbol)}&page=0`, apiKey);
+    if (!Array.isArray(data) || !data.length) throw new Error("Nema podataka");
+    return data;
+  }
+
+  async function fetchInstitutionalOwnership(symbol, apiKey) {
+    const data = await fmpFetch(
+      `/api/v4/institutional-ownership/symbol-ownership?symbol=${encodeURIComponent(symbol)}&includeCurrentQuarter=false`,
+      apiKey
+    );
+    if (!Array.isArray(data) || !data.length) throw new Error("Nema podataka");
+    return data;
   }
 
   // ---------- Statistika ----------
@@ -533,23 +526,27 @@
       <p class="na-text" style="margin-top:8px;">Metodologija: dani sa overnight gap-om (open naspram prethodnog close-a) statistički znatno većim od proseka verovatno su povezani sa zaradama ili važnim vestima — ovo NIJE potvrđena lista datuma objave zarada, već statistička detekcija na osnovu same cene.</p>`;
   }
 
-  function renderInsiders(qs) {
-    const tx = qs?.insiderTransactions?.transactions;
-    if (!tx || !tx.length) return { html: `<p class="na-text">Podaci o insajderskom trgovanju trenutno nisu dostupni preko javnog API-ja za ovaj tiker.</p>`, ok: false };
-    const rowsHtml = tx.slice(0, 12).map((t) => `
+  function renderInsiders(tx) {
+    if (!tx || !tx.length) {
+      return {
+        html: `<p class="na-text">Podaci o insajderskom trgovanju nisu dostupni — ili nema prijava za ovaj tiker, ili tvoj FMP plan ne uključuje ovaj modul (obično zahteva plan iznad besplatnog).</p>`,
+        ok: false,
+      };
+    }
+    const sorted = [...tx].sort((a, b) => new Date(b.transactionDate) - new Date(a.transactionDate));
+    const rowsHtml = sorted.slice(0, 12).map((t) => `
       <tr>
-        <td>${t.startDate?.fmt || "—"}</td>
-        <td>${t.filerName || "—"}</td>
-        <td>${t.filerRelation || "—"}</td>
-        <td>${t.transactionText || "—"}</td>
-        <td class="num">${fmtNum(t.shares?.raw)}</td>
+        <td>${t.transactionDate || "—"}</td>
+        <td>${t.reportingName || "—"}</td>
+        <td>${t.typeOfOwner || "—"}</td>
+        <td>${t.transactionType || "—"}</td>
+        <td class="num">${fmtNum(t.securitiesTransacted)}</td>
       </tr>`).join("");
     let netShares = 0;
-    tx.forEach((t) => {
-      const txt = (t.transactionText || "").toLowerCase();
-      const sh = t.shares?.raw || 0;
-      if (txt.includes("sale")) netShares -= sh;
-      else if (txt.includes("purchase") || txt.includes("buy")) netShares += sh;
+    sorted.forEach((t) => {
+      const sh = Number(t.securitiesTransacted) || 0;
+      if (t.acquisitionOrDisposition === "A") netShares += sh;
+      else if (t.acquisitionOrDisposition === "D") netShares -= sh;
     });
     return { html: `
       <div class="table-wrap"><table>
@@ -560,99 +557,38 @@
       ok: true };
   }
 
-  function renderInstitutions(qs) {
-    const own = qs?.institutionOwnership?.ownershipList;
-    const major = qs?.majorHoldersBreakdown;
-    if ((!own || !own.length) && !major) return { html: `<p class="na-text">Podaci o institucionalnom vlasništvu trenutno nisu dostupni preko javnog API-ja za ovaj tiker.</p>`, ok: false };
-    let summary = "";
-    if (major) {
-      summary = `
-        <table>
-          <tr><th>% u vlasništvu institucija</th><td class="num">${major.institutionsPercentHeld ? (major.institutionsPercentHeld.raw * 100).toFixed(2) + "%" : "—"}</td></tr>
-          <tr><th>% u vlasništvu insajdera</th><td class="num">${major.insidersPercentHeld ? (major.insidersPercentHeld.raw * 100).toFixed(2) + "%" : "—"}</td></tr>
-          <tr><th>Broj institucionalnih vlasnika</th><td class="num">${fmtNum(major.institutionsCount?.raw)}</td></tr>
-        </table>`;
+  function renderInstitutions(own) {
+    if (!own || !own.length) {
+      return {
+        html: `<p class="na-text">Podaci o institucionalnom vlasništvu nisu dostupni — obično zahteva FMP plan iznad besplatnog.</p>`,
+        ok: false,
+      };
     }
-    let listHtml = "";
-    if (own && own.length) {
-      listHtml = `<div class="table-wrap" style="margin-top:10px;"><table>
-        <thead><tr><th>Institucija</th><th>Datum izveštaja</th><th class="num">% udela</th><th class="num">Akcije</th></tr></thead>
-        <tbody>${own.slice(0, 8).map((o) => `
-          <tr>
-            <td>${o.organization || "—"}</td>
-            <td>${o.reportDate?.fmt || "—"}</td>
-            <td class="num">${o.pctHeld ? (o.pctHeld.raw * 100).toFixed(2) + "%" : "—"}</td>
-            <td class="num">${fmtNum(o.position?.raw)}</td>
-          </tr>`).join("")}</tbody>
-      </table></div>`;
-    }
-    return { html: summary + listHtml, ok: true };
-  }
-
-  function renderShortInterest(qs) {
-    const ks = qs?.defaultKeyStatistics;
-    const sd = qs?.summaryDetail;
-    if (!ks) return { html: `<p class="na-text">Podaci o short interest-u trenutno nisu dostupni preko javnog API-ja za ovaj tiker.</p>`, ok: false };
-    const shortPctFloat = ks.shortPercentOfFloat?.raw;
-    const shortRatio = ks.shortRatio?.raw;
-    const sharesShort = ks.sharesShort?.raw;
-    const sharesShortPrior = ks.sharesShortPriorMonth?.raw;
-    const trend = (sharesShort != null && sharesShortPrior != null)
-      ? (sharesShort > sharesShortPrior ? "raste" : sharesShort < sharesShortPrior ? "opada" : "bez promene")
+    const sorted = [...own].sort((a, b) => new Date(b.date) - new Date(a.date));
+    const latest = sorted[0];
+    const trend = (latest.investorsHoldingChange != null)
+      ? (latest.investorsHoldingChange > 0 ? "raste" : latest.investorsHoldingChange < 0 ? "opada" : "bez promene")
       : null;
-    const squeezeFlag = (shortPctFloat != null && shortRatio != null && shortPctFloat > 0.15 && shortRatio > 4);
     return { html: `
       <table>
-        <tr><th>Short % of Float</th><td class="num">${shortPctFloat != null ? (shortPctFloat * 100).toFixed(2) + "%" : "—"}</td></tr>
-        <tr><th>Short Ratio (dana za pokrivanje)</th><td class="num">${shortRatio != null ? shortRatio.toFixed(2) : "—"}</td></tr>
-        <tr><th>Akcija u short poziciji</th><td class="num">${fmtNum(sharesShort)}</td></tr>
-        <tr><th>Prethodni mesec</th><td class="num">${fmtNum(sharesShortPrior)}</td></tr>
-        <tr><th>Trend short interesa</th><td class="num">${trend || "—"}</td></tr>
-      </table>
-      ${squeezeFlag ? `<p style="margin-top:8px; color:var(--warn-text); font-size:0.85rem;">⚠ Povišen short interest i broj dana za pokrivanje — teoretski povećan potencijal za short squeeze, ali ovo NIJE predikcija niti signal za trgovanje.</p>` : ""}`,
+        <tr><th>Datum izveštaja</th><td class="num">${latest.date || "—"}</td></tr>
+        <tr><th>% u vlasništvu institucija</th><td class="num">${latest.ownershipPercent != null ? latest.ownershipPercent.toFixed(2) + "%" : "—"}</td></tr>
+        <tr><th>Broj institucionalnih vlasnika</th><td class="num">${fmtNum(latest.investorsHolding)}</td></tr>
+        <tr><th>Broj akcija u vlasništvu institucija</th><td class="num">${fmtNum(latest.numberOf13Fshares)}</td></tr>
+        <tr><th>Trend broja institucionalnih vlasnika</th><td class="num">${trend || "—"}</td></tr>
+        <tr><th>Novih pozicija ovog kvartala</th><td class="num">${fmtNum(latest.newPositions)}</td></tr>
+      </table>`,
       ok: true };
   }
 
-  function renderOptions(opt) {
-    if (!opt) return { html: `<p class="na-text">Podaci o opcijama trenutno nisu dostupni preko javnog API-ja za ovaj tiker (Yahoo često zahteva autentifikaciju za ovaj modul).</p>`, ok: false };
-    const o = opt.options[0];
-    const calls = o.calls || [], puts = o.puts || [];
-    const sum = (arr, key) => arr.reduce((a, b) => a + (b[key] || 0), 0);
-    const callVol = sum(calls, "volume"), putVol = sum(puts, "volume");
-    const callOI = sum(calls, "openInterest"), putOI = sum(puts, "openInterest");
-    const pcRatioVol = callVol ? putVol / callVol : null;
-    const pcRatioOI = callOI ? putOI / callOI : null;
-    const expDate = new Date(o.expirationDate * 1000).toISOString().slice(0, 10);
-    const topByOI = [...calls, ...puts].sort((a, b) => (b.openInterest || 0) - (a.openInterest || 0)).slice(0, 5);
-    return { html: `
-      <table>
-        <tr><th>Najbliži datum isteka opcija</th><td class="num">${expDate}</td></tr>
-        <tr><th>Put/Call odnos (volumen)</th><td class="num">${pcRatioVol != null ? pcRatioVol.toFixed(2) : "—"}</td></tr>
-        <tr><th>Put/Call odnos (open interest)</th><td class="num">${pcRatioOI != null ? pcRatioOI.toFixed(2) : "—"}</td></tr>
-        <tr><th>Ukupan volumen (call)</th><td class="num">${fmtNum(callVol)}</td></tr>
-        <tr><th>Ukupan volumen (put)</th><td class="num">${fmtNum(putVol)}</td></tr>
-      </table>
-      <div class="table-wrap" style="margin-top:10px;"><table>
-        <thead><tr><th>Strike</th><th>Tip</th><th class="num">Open interest</th><th class="num">Volumen</th></tr></thead>
-        <tbody>${topByOI.map((c) => `
-          <tr>
-            <td class="num">${c.strike}</td>
-            <td>${calls.includes(c) ? "Call" : "Put"}</td>
-            <td class="num">${fmtNum(c.openInterest)}</td>
-            <td class="num">${fmtNum(c.volume)}</td>
-          </tr>`).join("")}</tbody>
-      </table></div>
-      <p class="na-text" style="margin-top:8px;">Najveći open interest po strike ceni ukazuje gde učesnici na tržištu očekuju kretanje/otpor, ali to nije garancija budućeg kretanja cene.</p>`,
-      ok: true };
-  }
-
-  async function renderSector(sector, rows, range) {
+  async function renderSector(profile, rows, range, apiKey) {
+    const sector = profile && profile.sector;
     if (!sector || !SECTOR_ETF[sector]) return { html: `<p class="na-text">Sektor nije dostupan za ovaj tiker.</p>`, ok: false };
     const etf = SECTOR_ETF[sector];
     try {
       const [etfData, spyData] = await Promise.all([
-        fetchChart(etf, range),
-        fetchChart("SPY", range),
+        fetchChart(etf, range, apiKey),
+        fetchChart("SPY", range, apiKey),
       ]);
       const stockRet = totalReturn(rows);
       const etfRet = totalReturn(etfData.rows);
@@ -664,7 +600,7 @@
         : "Mešoviti signal — akcija se ponaša drugačije od sopstvenog sektora u odnosu na šire tržište.";
       return { html: `
         <table>
-          <tr><th>Sektor (GICS)</th><td>${sector}</td></tr>
+          <tr><th>Sektor</th><td>${sector}</td></tr>
           <tr><th>Sektorski ETF korišćen za poređenje</th><td>${etf}</td></tr>
           <tr><th>Ukupan prinos akcije (period)</th><td class="num ${pctClass(stockRet)}">${fmtPct(stockRet)}</td></tr>
           <tr><th>Ukupan prinos sektorskog ETF-a</th><td class="num ${pctClass(etfRet)}">${fmtPct(etfRet)}</td></tr>
@@ -675,7 +611,7 @@
         <p style="margin-top:8px; font-size:0.85rem;">${verdict}</p>`,
         ok: true };
     } catch (e) {
-      return { html: `<p class="na-text">Poređenje sa sektorom trenutno nije uspelo (podaci o sektorskom ETF-u nisu dostupni).</p>`, ok: false };
+      return { html: `<p class="na-text">Poređenje sa sektorom trenutno nije uspelo (${e.message || "podaci o sektorskom ETF-u nisu dostupni"}).</p>`, ok: false };
     }
   }
 
@@ -690,8 +626,6 @@
       bullets.push(`Na dane FOMC odluka akcija se u proseku kreće ${diff >= 0 ? "jače" : "slabije"} nego u proseku (razlika ${fmtPct(diff, 3)}), na osnovu ${parts.fomc.n} sastanaka.`);
     }
     if (parts.gaps?.n) bullets.push(`Detektovano ${parts.gaps.n} statistički neuobičajenih "gap" dana (verovatno zarade/vesti), sa prosečnim gap-om od ${fmtPct(parts.gaps.avgPostGap)}.`);
-    if (parts.shortFlag) bullets.push(`Short interest je povišen — teoretski povećan short-squeeze potencijal (samo statistička opservacija, ne signal).`);
-    if (parts.sectorVerdict) bullets.push(parts.sectorVerdict);
     if (!bullets.length) bullets.push("Nema dovoljno statistički izraženih obrazaca u dostupnim podacima za ovaj period.");
     bullets.push("Sve gore navedeno je deskriptivna statistika prošlosti — ne predstavlja garantovanu niti statistički značajnu prednost za buduće trgovanje.");
     return bullets;
@@ -709,10 +643,16 @@
   const form = document.getElementById("form");
   const tickerInput = document.getElementById("ticker");
   const rangeSelect = document.getElementById("range");
+  const apiKeyInput = document.getElementById("apiKey");
   const submitBtn = document.getElementById("submitBtn");
   const statusEl = document.getElementById("status");
   const errorEl = document.getElementById("error");
   const memoEl = document.getElementById("memo");
+
+  try {
+    const savedKey = localStorage.getItem(API_KEY_STORAGE);
+    if (savedKey) apiKeyInput.value = savedKey;
+  } catch (e) { /* localStorage nedostupan (privatni mod i sl.) — nije kritično */ }
 
   function setStatus(msg) {
     if (!msg) { statusEl.hidden = true; return; }
@@ -728,7 +668,10 @@
     e.preventDefault();
     const ticker = tickerInput.value.trim().toUpperCase();
     const range = rangeSelect.value;
-    if (!ticker) return;
+    const apiKey = apiKeyInput.value.trim();
+    if (!ticker || !apiKey) return;
+
+    try { localStorage.setItem(API_KEY_STORAGE, apiKey); } catch (e) { /* nije kritično */ }
 
     submitBtn.disabled = true;
     setError("");
@@ -737,7 +680,10 @@
 
     try {
       setStatus(`Preuzimam istoriju cena za ${ticker}...`);
-      const { rows, meta } = await fetchChart(ticker, range);
+      const [{ rows }, profile] = await Promise.all([
+        fetchChart(ticker, range, apiKey),
+        fetchProfile(ticker, apiKey).catch(() => null),
+      ]);
       if (rows.length < 20) throw new Error("Nedovoljno istorijskih podataka za analizu ovog tikera.");
       const rets = dailyReturns(rows);
 
@@ -748,37 +694,31 @@
       const fomc = fomcCorrelation(rets);
       const gaps = volatilityGapEvents(rows);
 
-      setStatus(`Preuzimam podatke o insajderima, institucijama i short interest-u...`);
-      let qs = null, qsOk = true;
-      try { qs = await fetchQuoteSummary(ticker); } catch (e) { qsOk = false; }
-
-      setStatus(`Preuzimam podatke o opcijama...`);
-      let opt = null;
-      try { opt = await fetchOptions(ticker); } catch (e) { opt = null; }
+      setStatus(`Preuzimam podatke o insajderima i institucionalnom vlasništvu...`);
+      let insidersR, institR;
+      try {
+        const tx = await fetchInsiderTrading(ticker, apiKey);
+        insidersR = renderInsiders(tx);
+      } catch (e) {
+        insidersR = renderInsiders(null);
+      }
+      try {
+        const own = await fetchInstitutionalOwnership(ticker, apiKey);
+        institR = renderInstitutions(own);
+      } catch (e) {
+        institR = renderInstitutions(null);
+      }
 
       setStatus(`Poredim sa sektorom i tržištem...`);
-      const sector = qs?.assetProfile?.sector || null;
-      const sectorR = await renderSector(sector, rows, range);
-
-      const insidersR = qs ? renderInsiders(qs) : { html: `<p class="na-text">Podaci o insajderima trenutno nisu dostupni.</p>`, ok: false };
-      const institR = qs ? renderInstitutions(qs) : { html: `<p class="na-text">Podaci o institucionalnom vlasništvu trenutno nisu dostupni.</p>`, ok: false };
-      const shortR = qs ? renderShortInterest(qs) : { html: `<p class="na-text">Podaci o short interest-u trenutno nisu dostupni.</p>`, ok: false };
-      const optR = renderOptions(opt);
+      const sectorR = await renderSector(profile, rows, range, apiKey);
 
       const lastRow = rows[rows.length - 1];
       const firstDate = rows[0].date.toISOString().slice(0, 10);
       const lastDate = lastRow.date.toISOString().slice(0, 10);
-      const currency = meta?.currency || "";
-      const companyName = meta?.longName || meta?.shortName || ticker;
+      const currency = (profile && profile.currency) || "";
+      const companyName = (profile && profile.companyName) || ticker;
 
-      const shortPctFloat = qs?.defaultKeyStatistics?.shortPercentOfFloat?.raw;
-      const shortRatio = qs?.defaultKeyStatistics?.shortRatio?.raw;
-      const shortFlag = (shortPctFloat != null && shortRatio != null && shortPctFloat > 0.15 && shortRatio > 4);
-
-      const edgeBullets = buildEdgeSummary({
-        season: seasonR, dow: dowR, fomc, gaps, shortFlag,
-        sectorVerdict: sectorR.ok ? null : null,
-      });
+      const edgeBullets = buildEdgeSummary({ season: seasonR, dow: dowR, fomc, gaps });
 
       memoEl.innerHTML = `
         <div class="card">
@@ -794,11 +734,10 @@
         ${sectionWrap("5. Korelacija sa FOMC (Fed) sastancima", fomc.n > 0, renderFomc(fomc))}
         ${sectionWrap("6. Insajdersko kupovanje/prodaja (poslednje prijave)", insidersR.ok, insidersR.html)}
         ${sectionWrap("7. Trend institucionalnog vlasništva", institR.ok, institR.html)}
-        ${sectionWrap("8. Short interest i squeeze potencijal", shortR.ok, shortR.html)}
-        ${sectionWrap("9. Neuobičajena aktivnost opcija", optR.ok, optR.html)}
-        ${sectionWrap("10. Ponašanje cene oko statistički detektovanih šokova (verovatno zarade/vesti)", gaps.n > 0, renderGapEvents(gaps))}
-        ${sectionWrap("11. Signal rotacije sektora", sectorR.ok, sectorR.html)}
-        ${sectionWrap("12. Statistički rezime", true, `<ul class="bullets">${edgeBullets.map((b) => `<li>${b}</li>`).join("")}</ul>`)}
+        ${sectionWrap("8. Ponašanje cene oko statistički detektovanih šokova (verovatno zarade/vesti)", gaps.n > 0, renderGapEvents(gaps))}
+        ${sectionWrap("9. Signal rotacije sektora", sectorR.ok, sectorR.html)}
+        ${sectionWrap("10. Statistički rezime", true, `<ul class="bullets">${edgeBullets.map((b) => `<li>${b}</li>`).join("")}</ul>`)}
+        ${sectionWrap("Short interest i opcije", false, `<p class="na-text">Nisu uključeni u ovoj (bez-server) verziji — FMP zahteva poseban dodatak/enterprise plan za short interest i lance opcija. Ako ti ovo treba, javi da dodamo podršku za tvoj konkretan plan ili pređemo na server-side verziju sajta.</p>`)}
 
         <div class="card actions">
           <button type="button" id="copyBtn">📋 Kopiraj memorandum kao tekst</button>
@@ -820,7 +759,7 @@
       });
     } catch (err) {
       console.error(err);
-      setError(`Greška: ${err.message || "Nije moguće preuzeti podatke. Proveri da li je ticker ispravan i pokušaj ponovo."}`);
+      setError(`Greška: ${err.message || "Nije moguće preuzeti podatke. Proveri ticker i API ključ, pa pokušaj ponovo."}`);
       setStatus("");
     } finally {
       submitBtn.disabled = false;
