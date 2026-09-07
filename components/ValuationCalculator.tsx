@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   computeDcf,
   computeDdm,
@@ -121,10 +122,9 @@ export default function ValuationCalculator() {
   const [fundamentals, setFundamentals] = useState<Fundamentals | null>(null);
   const [qualitativeInputs, setQualitativeInputs] = useState<QualitativeInputs | null>(null);
   const [assumptions, setAssumptions] = useState<Assumptions>(DEFAULT_ASSUMPTIONS);
+  const searchParams = useSearchParams();
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    const sym = ticker.trim().toUpperCase();
+  async function runAnalysis(sym: string) {
     if (!sym) return;
     setLoading(true);
     setError("");
@@ -145,6 +145,22 @@ export default function ValuationCalculator() {
     } finally {
       setLoading(false);
     }
+  }
+
+  useEffect(() => {
+    const fromUrl = searchParams.get("ticker");
+    if (fromUrl) {
+      const sym = fromUrl.trim().toUpperCase();
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- inicijalno popunjavanje iz URL parametra, jednokratno
+      setTicker(sym);
+      runAnalysis(sym);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    await runAnalysis(ticker.trim().toUpperCase());
   }
 
   const wacc = fundamentals ? estimateWacc(fundamentals, assumptions) : null;

@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import ValuationCalculator from "@/components/ValuationCalculator";
 
 export const metadata = {
@@ -19,7 +20,9 @@ export default function VrednostPage() {
           profitabilnost, rast, konsenzus analitičara) — sve iz merljivih podataka, bez subjektivnih ocena.
         </p>
       </div>
-      <ValuationCalculator />
+      <Suspense fallback={null}>
+        <ValuationCalculator />
+      </Suspense>
     </main>
   );
 }

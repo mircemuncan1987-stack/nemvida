@@ -17,6 +17,9 @@ export default function Header() {
           <Link href="/vrednost" className="hover:text-blue-600 dark:hover:text-blue-400">
             Procena vrednosti
           </Link>
+          <Link href="/lista" className="hover:text-blue-600 dark:hover:text-blue-400">
+            Skener indeksa
+          </Link>
         </nav>
       </div>
     </header>
