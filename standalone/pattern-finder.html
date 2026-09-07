@@ -1,0 +1,790 @@
+<!doctype html>
+<html lang="sr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nemvida Finance — Pattern Finder (kvantitativna analiza akcija)</title>
+<style>
+  :root {
+    --bg-grad: radial-gradient(ellipse 80% 50% at 15% -10%, rgba(37,99,235,0.10), transparent),
+               radial-gradient(ellipse 60% 40% at 100% 0%, rgba(16,185,129,0.08), transparent),
+               linear-gradient(180deg, #f7f9fc 0%, #eef1f7 100%);
+    --card-bg: rgba(255,255,255,0.78);
+    --border: #e4e4e7;
+    --text: #171717;
+    --muted: #6b7280;
+    --accent: #2563eb;
+    --up: #059669;
+    --down: #dc2626;
+    --warn-bg: #fffbeb;
+    --warn-border: #fcd34d;
+    --warn-text: #92400e;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg-grad: radial-gradient(ellipse 80% 50% at 15% -10%, rgba(37,99,235,0.16), transparent),
+                 radial-gradient(ellipse 60% 40% at 100% 0%, rgba(16,185,129,0.10), transparent),
+                 linear-gradient(180deg, #0a0a0a 0%, #030712 100%);
+      --card-bg: rgba(24,24,27,0.65);
+      --border: #27272a;
+      --text: #ededed;
+      --muted: #9ca3af;
+      --accent: #60a5fa;
+      --up: #34d399;
+      --down: #f87171;
+      --warn-bg: rgba(120,90,10,0.15);
+      --warn-border: #92651a;
+      --warn-text: #fbbf24;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: var(--bg-grad);
+    background-attachment: fixed;
+    color: var(--text);
+    font-family: Arial, Helvetica, sans-serif;
+  }
+  header {
+    border-bottom: 1px solid var(--border);
+    padding: 16px 20px;
+    position: sticky;
+    top: 0;
+    backdrop-filter: blur(8px);
+    background: var(--card-bg);
+    z-index: 10;
+  }
+  header h1 { margin: 0; font-size: 1.25rem; }
+  header h1 span { color: var(--accent); }
+  header p { margin: 4px 0 0; color: var(--muted); font-size: 0.85rem; }
+  main { max-width: 920px; margin: 0 auto; padding: 24px 16px 60px; }
+
+  .disclaimer {
+    background: var(--warn-bg);
+    border: 1px solid var(--warn-border);
+    color: var(--warn-text);
+    border-radius: 10px;
+    padding: 12px 16px;
+    font-size: 0.82rem;
+    margin-bottom: 20px;
+    line-height: 1.5;
+  }
+
+  .card {
+    border: 1px solid var(--border);
+    background: var(--card-bg);
+    backdrop-filter: blur(6px);
+    border-radius: 12px;
+    padding: 18px 20px;
+    margin-bottom: 18px;
+  }
+
+  form.controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+  }
+  form.controls input[type="text"] {
+    flex: 1 1 160px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text);
+    font-size: 1rem;
+    text-transform: uppercase;
+  }
+  form.controls select {
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text);
+    font-size: 0.9rem;
+  }
+  form.controls button {
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 8px;
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  form.controls button:disabled { opacity: 0.6; cursor: default; }
+  .tickers-hint { font-size: 0.78rem; color: var(--muted); margin-top: 8px; }
+
+  .status { font-size: 0.85rem; color: var(--muted); margin-top: 10px; display: flex; align-items: center; gap: 8px; }
+  .spinner {
+    width: 14px; height: 14px; border-radius: 50%;
+    border: 2px solid var(--border); border-top-color: var(--accent);
+    animation: spin 0.7s linear infinite; display: inline-block;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .error { color: var(--down); font-size: 0.85rem; margin-top: 10px; }
+
+  #memo { display: none; }
+  #memo.visible { display: block; }
+
+  .memo-header { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 8px; }
+  .memo-header h2 { margin: 0; font-size: 1.4rem; }
+  .memo-header .price { font-size: 1.1rem; font-weight: 700; }
+  .memo-header .sub { color: var(--muted); font-size: 0.8rem; width: 100%; }
+
+  h3.section-title {
+    font-size: 1rem;
+    margin: 0 0 10px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .badge {
+    font-size: 0.68rem;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-weight: 600;
+    margin-left: auto;
+  }
+  .badge.ok { background: rgba(5,150,105,0.15); color: var(--up); }
+  .badge.na { background: rgba(107,114,128,0.15); color: var(--muted); }
+
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+  table th, table td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+  table th { color: var(--muted); font-weight: 600; font-size: 0.75rem; text-transform: uppercase; }
+  .num { text-align: right; font-variant-numeric: tabular-nums; }
+  .up { color: var(--up); }
+  .down { color: var(--down); }
+  .na-text { color: var(--muted); font-style: italic; font-size: 0.85rem; }
+
+  ul.bullets { margin: 0; padding-left: 20px; font-size: 0.88rem; line-height: 1.6; }
+  ul.bullets li { margin-bottom: 4px; }
+
+  .table-wrap { overflow-x: auto; }
+
+  .actions { display: flex; gap: 8px; margin-top: 10px; }
+  .actions button {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 6px 14px;
+    border-radius: 8px;
+    font-size: 0.8rem;
+    cursor: pointer;
+  }
+
+  footer {
+    border-top: 1px solid var(--border);
+    padding: 20px 16px;
+    color: var(--muted);
+    font-size: 0.78rem;
+    max-width: 920px;
+    margin: 0 auto;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Nemvida <span>Pattern Finder</span></h1>
+  <p>Kvantitativna istorijska analiza obrazaca za bilo koji tiker — sezonalnost, dani u nedelji, Fed sastanci, insajderi, institucije, short interest i sektor.</p>
+</header>
+
+<main>
+  <div class="disclaimer">
+    <b>⚠ Ovo NIJE finansijski savet.</b> Alat prikazuje isključivo opisnu (deskriptivnu) statistiku istorijskih cena
+    i javno dostupnih podataka — istorijski obrasci ne garantuju buduće rezultate i ne predstavljaju "sigurnu
+    prednost" na tržištu. Podaci dolaze iz besplatnih javnih izvora (Yahoo Finance, preko javnog CORS proxy-ja) i
+    mogu kasniti, biti nepotpuni ili privremeno nedostupni — posebno insajdersko trgovanje, institucionalno
+    vlasništvo, short interest i opcije, jer ti moduli često zahtevaju plaćeni pristup podacima. Uvek proveri
+    podatke iz više izvora i donesi sopstvenu odluku, ili se posavetuj sa licenciranim finansijskim savetnikom.
+  </div>
+
+  <div class="card">
+    <form class="controls" id="form">
+      <input type="text" id="ticker" placeholder="Unesi ticker, npr. AAPL, NVDA, TSLA..." autocomplete="off" required>
+      <select id="range">
+        <option value="2y">2 godine</option>
+        <option value="5y" selected>5 godina</option>
+        <option value="10y">10 godina</option>
+        <option value="max">Maksimalno</option>
+      </select>
+      <button type="submit" id="submitBtn">Analiziraj</button>
+    </form>
+    <div class="tickers-hint">Radi sa svim tikerima dostupnim na Yahoo Finance (akcije, ETF-ovi, na svim berzama — npr. AAPL, SAP.DE, VOD.L).</div>
+    <div class="status" id="status" hidden></div>
+    <div class="error" id="error" hidden></div>
+  </div>
+
+  <div id="memo"></div>
+</main>
+
+<footer>
+  Nemvida Finance — Pattern Finder je edukativni alat otvorenog koda. Ne čuva niti šalje tvoje podatke bilo kom
+  serveru osim javnih API-ja potrebnih za preuzimanje tržišnih podataka. Nije povezan sa Renaissance Technologies
+  niti bilo kojom investicionom firmom.
+</footer>
+
+<script>
+(function () {
+  "use strict";
+
+  // ---------- CORS proxy fetch chain (isti princip kao u ostatku sajta) ----------
+  const PROXIES = [
+    (url) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+    (url) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
+    (url) => `https://corsproxy.io/?url=${encodeURIComponent(url)}`,
+  ];
+
+  async function fetchJSON(url, timeoutMs = 15000) {
+    let lastErr;
+    for (const proxyFn of PROXIES) {
+      try {
+        const res = await fetch(proxyFn(url), { signal: AbortSignal.timeout(timeoutMs) });
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        const text = await res.text();
+        return JSON.parse(text);
+      } catch (e) {
+        lastErr = e;
+      }
+    }
+    throw lastErr || new Error("Svi proxy izvori nisu uspeli");
+  }
+
+  // ---------- Poznati datumi FOMC (Fed) odluka o kamatnoj stopi ----------
+  // Zvanični kalendar Federalnih rezervi (objavljen unapred). Dani objave odluke (2. dan sastanka).
+  const FOMC_DATES = [
+    "2019-01-30","2019-03-20","2019-05-01","2019-06-19","2019-07-31","2019-09-18","2019-10-30","2019-12-11",
+    "2020-01-29","2020-03-03","2020-03-15","2020-04-29","2020-06-10","2020-07-29","2020-09-16","2020-11-05","2020-12-16",
+    "2021-01-27","2021-03-17","2021-04-28","2021-06-16","2021-07-28","2021-09-22","2021-11-03","2021-12-15",
+    "2022-01-26","2022-03-16","2022-05-04","2022-06-15","2022-07-27","2022-09-21","2022-11-02","2022-12-14",
+    "2023-02-01","2023-03-22","2023-05-03","2023-06-14","2023-07-26","2023-09-20","2023-11-01","2023-12-13",
+    "2024-01-31","2024-03-20","2024-05-01","2024-06-12","2024-07-31","2024-09-18","2024-11-07","2024-12-18",
+    "2025-01-29","2025-03-19","2025-05-07","2025-06-18","2025-07-30","2025-09-17","2025-10-29","2025-12-10",
+    "2026-01-28","2026-03-18","2026-04-29","2026-06-17","2026-07-29","2026-09-16","2026-10-28","2026-12-09",
+  ];
+
+  const SECTOR_ETF = {
+    "Technology": "XLK",
+    "Financial Services": "XLF",
+    "Financial": "XLF",
+    "Healthcare": "XLV",
+    "Consumer Cyclical": "XLY",
+    "Consumer Defensive": "XLP",
+    "Energy": "XLE",
+    "Industrials": "XLI",
+    "Basic Materials": "XLB",
+    "Utilities": "XLU",
+    "Real Estate": "XLRE",
+    "Communication Services": "XLC",
+  };
+
+  const MONTH_NAMES = ["Januar","Februar","Mart","April","Maj","Jun","Jul","Avgust","Septembar","Oktobar","Novembar","Decembar"];
+  const DAY_NAMES = ["Ponedeljak","Utorak","Sreda","Četvrtak","Petak"];
+
+  const fmtPct = (x, digits = 2) => (x === null || x === undefined || Number.isNaN(x)) ? "—" : `${x >= 0 ? "+" : ""}${(x * 100).toFixed(digits)}%`;
+  const pctClass = (x) => (x === null || x === undefined || Number.isNaN(x)) ? "" : (x >= 0 ? "up" : "down");
+  const fmtNum = (x) => (x === null || x === undefined || Number.isNaN(x)) ? "—" : Number(x).toLocaleString("en-US");
+
+  // ---------- Preuzimanje istorije cena (Yahoo chart API) ----------
+  async function fetchChart(symbol, range) {
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=${range}&interval=1d&events=div,splits`;
+    const data = await fetchJSON(url);
+    const result = data?.chart?.result?.[0];
+    if (!result || !result.timestamp) throw new Error("Nema podataka o ceni za ovaj tiker.");
+    const ts = result.timestamp;
+    const q = result.indicators.quote[0];
+    const adj = result.indicators.adjclose ? result.indicators.adjclose[0].adjclose : q.close;
+    const rows = [];
+    for (let i = 0; i < ts.length; i++) {
+      if (q.close[i] == null || q.open[i] == null) continue;
+      rows.push({
+        date: new Date(ts[i] * 1000),
+        open: q.open[i],
+        close: q.close[i],
+        adjclose: adj[i] != null ? adj[i] : q.close[i],
+        volume: q.volume[i],
+      });
+    }
+    return { rows, meta: result.meta };
+  }
+
+  async function fetchQuoteSummary(symbol) {
+    const modules = "assetProfile,defaultKeyStatistics,summaryDetail,institutionOwnership,insiderTransactions,majorHoldersBreakdown";
+    const url = `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(symbol)}?modules=${modules}`;
+    const data = await fetchJSON(url);
+    const result = data?.quoteSummary?.result?.[0];
+    if (!result) throw new Error("quoteSummary nedostupan");
+    return result;
+  }
+
+  async function fetchOptions(symbol) {
+    const url = `https://query1.finance.yahoo.com/v7/finance/options/${encodeURIComponent(symbol)}`;
+    const data = await fetchJSON(url);
+    const result = data?.optionChain?.result?.[0];
+    if (!result || !result.options || !result.options.length) throw new Error("Opcije nedostupne");
+    return result;
+  }
+
+  // ---------- Statistika ----------
+  function dailyReturns(rows) {
+    const out = [];
+    for (let i = 1; i < rows.length; i++) {
+      const prev = rows[i - 1].adjclose, cur = rows[i].adjclose;
+      out.push({ date: rows[i].date, ret: prev ? (cur / prev - 1) : null, idx: i });
+    }
+    return out.filter((r) => r.ret !== null && Number.isFinite(r.ret));
+  }
+
+  function seasonality(rows) {
+    // Grupiši dnevne prinose po (godina, mesec), sastavi mesečni prinos, pa prosek po kalendarskom mesecu.
+    const byYearMonth = new Map();
+    for (let i = 1; i < rows.length; i++) {
+      const d = rows[i].date;
+      const key = `${d.getUTCFullYear()}-${d.getUTCMonth()}`;
+      if (!byYearMonth.has(key)) byYearMonth.set(key, { month: d.getUTCMonth(), startClose: rows[i - 1].adjclose, endClose: rows[i].adjclose });
+      else byYearMonth.get(key).endClose = rows[i].adjclose;
+    }
+    const perMonth = Array.from({ length: 12 }, () => []);
+    byYearMonth.forEach((v) => {
+      const ret = v.startClose ? (v.endClose / v.startClose - 1) : null;
+      if (ret !== null && Number.isFinite(ret)) perMonth[v.month].push(ret);
+    });
+    return perMonth.map((arr, m) => {
+      if (!arr.length) return { month: m, avg: null, winRate: null, n: 0 };
+      const avg = arr.reduce((a, b) => a + b, 0) / arr.length;
+      const winRate = arr.filter((r) => r > 0).length / arr.length;
+      return { month: m, avg, winRate, n: arr.length };
+    });
+  }
+
+  function dayOfWeek(rets) {
+    const perDay = Array.from({ length: 5 }, () => []);
+    rets.forEach((r) => {
+      const dow = r.date.getUTCDay(); // 1..5 = Mon..Fri
+      if (dow >= 1 && dow <= 5) perDay[dow - 1].push(r.ret);
+    });
+    return perDay.map((arr, i) => {
+      if (!arr.length) return { day: i, avg: null, winRate: null, n: 0 };
+      const avg = arr.reduce((a, b) => a + b, 0) / arr.length;
+      const winRate = arr.filter((r) => r > 0).length / arr.length;
+      return { day: i, avg, winRate, n: arr.length };
+    });
+  }
+
+  function fomcCorrelation(rets) {
+    const baseline = rets.reduce((a, b) => a + b.ret, 0) / rets.length;
+    const byDate = new Map(rets.map((r) => [r.date.toISOString().slice(0, 10), r.ret]));
+    const matched = [];
+    FOMC_DATES.forEach((d) => {
+      if (byDate.has(d)) matched.push(byDate.get(d));
+    });
+    if (!matched.length) return { n: 0, avg: null, baseline };
+    const avg = matched.reduce((a, b) => a + b, 0) / matched.length;
+    const winRate = matched.filter((r) => r > 0).length / matched.length;
+    return { n: matched.length, avg, winRate, baseline };
+  }
+
+  function volatilityGapEvents(rows) {
+    // Detektuje statistički neuobičajene "gap" dane (verovatno zarade/vesti) na osnovu overnight gap-a.
+    const gaps = [];
+    for (let i = 1; i < rows.length; i++) {
+      const prevClose = rows[i - 1].close;
+      if (!prevClose) continue;
+      gaps.push({ i, gap: rows[i].open / prevClose - 1 });
+    }
+    if (gaps.length < 30) return { n: 0 };
+    const mean = gaps.reduce((a, b) => a + Math.abs(b.gap), 0) / gaps.length;
+    const variance = gaps.reduce((a, b) => a + Math.pow(Math.abs(b.gap) - mean, 2), 0) / gaps.length;
+    const std = Math.sqrt(variance);
+    const threshold = mean + 2 * std;
+    const events = gaps.filter((g) => Math.abs(g.gap) > threshold && Math.abs(g.gap) > 0.02);
+
+    const pre = [], post1 = [], post5 = [];
+    events.forEach((e) => {
+      const i = e.i;
+      if (i >= 5) pre.push(rows[i - 1].close / rows[i - 5].close - 1);
+      post1.push(e.gap);
+      if (i + 4 < rows.length) post5.push(rows[i + 4].close / rows[i].close - 1);
+    });
+    const avg = (arr) => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null;
+    return {
+      n: events.length,
+      avgAbsGap: mean,
+      avgPre5d: avg(pre),
+      avgPostGap: avg(post1),
+      avgPost5d: avg(post5),
+    };
+  }
+
+  function totalReturn(rows) {
+    if (rows.length < 2) return null;
+    const first = rows[0].adjclose, last = rows[rows.length - 1].adjclose;
+    return first ? (last / first - 1) : null;
+  }
+
+  // ---------- Render ----------
+  function renderSeasonality(data) {
+    const rowsHtml = data.map((m) => `
+      <tr>
+        <td>${MONTH_NAMES[m.month]}</td>
+        <td class="num ${pctClass(m.avg)}">${fmtPct(m.avg)}</td>
+        <td class="num">${m.winRate === null ? "—" : (m.winRate * 100).toFixed(0) + "%"}</td>
+        <td class="num">${m.n}</td>
+      </tr>`).join("");
+    const best = [...data].filter(m => m.avg !== null).sort((a, b) => b.avg - a.avg)[0];
+    const worst = [...data].filter(m => m.avg !== null).sort((a, b) => a.avg - b.avg)[0];
+    return { html: `
+      <div class="table-wrap"><table>
+        <thead><tr><th>Mesec</th><th class="num">Prosečan prinos</th><th class="num">% pozitivnih godina</th><th class="num">N (godina)</th></tr></thead>
+        <tbody>${rowsHtml}</tbody>
+      </table></div>`,
+      best, worst };
+  }
+
+  function renderDayOfWeek(data) {
+    const rowsHtml = data.map((d) => `
+      <tr>
+        <td>${DAY_NAMES[d.day]}</td>
+        <td class="num ${pctClass(d.avg)}">${fmtPct(d.avg, 3)}</td>
+        <td class="num">${d.winRate === null ? "—" : (d.winRate * 100).toFixed(0) + "%"}</td>
+        <td class="num">${d.n}</td>
+      </tr>`).join("");
+    const best = [...data].filter(d => d.avg !== null).sort((a, b) => b.avg - a.avg)[0];
+    const worst = [...data].filter(d => d.avg !== null).sort((a, b) => a.avg - b.avg)[0];
+    return { html: `
+      <div class="table-wrap"><table>
+        <thead><tr><th>Dan</th><th class="num">Prosečan prinos</th><th class="num">% pozitivnih dana</th><th class="num">N (dana)</th></tr></thead>
+        <tbody>${rowsHtml}</tbody>
+      </table></div>`,
+      best, worst };
+  }
+
+  function renderFomc(f) {
+    if (!f.n) return `<p class="na-text">Nema dovoljno podudaranja sa datumima FOMC sastanaka u izabranom periodu.</p>`;
+    const diff = f.avg - f.baseline;
+    return `
+      <table>
+        <tr><th>Prosečan dnevni prinos na dan FOMC odluke</th><td class="num ${pctClass(f.avg)}">${fmtPct(f.avg, 3)}</td></tr>
+        <tr><th>Prosečan dnevni prinos (svi dani, baseline)</th><td class="num ${pctClass(f.baseline)}">${fmtPct(f.baseline, 3)}</td></tr>
+        <tr><th>Razlika u odnosu na baseline</th><td class="num ${pctClass(diff)}">${fmtPct(diff, 3)}</td></tr>
+        <tr><th>% pozitivnih FOMC dana</th><td class="num">${(f.winRate * 100).toFixed(0)}%</td></tr>
+        <tr><th>Broj analiziranih FOMC datuma</th><td class="num">${f.n}</td></tr>
+      </table>
+      <p class="na-text" style="margin-top:8px;">Napomena: CPI (inflacioni) izveštaji nisu uključeni jer BLS ne objavljuje fiksne datume unapred za ceo istorijski period — za preciznu CPI korelaciju potreban je poseban ekonomski kalendar.</p>`;
+  }
+
+  function renderGapEvents(g) {
+    if (!g.n) return `<p class="na-text">Nije detektovan dovoljan broj statistički neuobičajenih "gap" dana (mogući signal zarada/vesti) u izabranom periodu.</p>`;
+    return `
+      <table>
+        <tr><th>Broj detektovanih neuobičajenih gap dana</th><td class="num">${g.n}</td></tr>
+        <tr><th>Prosečan prinos 5 dana PRE gap-a</th><td class="num ${pctClass(g.avgPre5d)}">${fmtPct(g.avgPre5d)}</td></tr>
+        <tr><th>Prosečan sam gap (dan 0)</th><td class="num ${pctClass(g.avgPostGap)}">${fmtPct(g.avgPostGap)}</td></tr>
+        <tr><th>Prosečan prinos 5 dana POSLE gap-a</th><td class="num ${pctClass(g.avgPost5d)}">${fmtPct(g.avgPost5d)}</td></tr>
+      </table>
+      <p class="na-text" style="margin-top:8px;">Metodologija: dani sa overnight gap-om (open naspram prethodnog close-a) statistički znatno većim od proseka verovatno su povezani sa zaradama ili važnim vestima — ovo NIJE potvrđena lista datuma objave zarada, već statistička detekcija na osnovu same cene.</p>`;
+  }
+
+  function renderInsiders(qs) {
+    const tx = qs?.insiderTransactions?.transactions;
+    if (!tx || !tx.length) return { html: `<p class="na-text">Podaci o insajderskom trgovanju trenutno nisu dostupni preko javnog API-ja za ovaj tiker.</p>`, ok: false };
+    const rowsHtml = tx.slice(0, 12).map((t) => `
+      <tr>
+        <td>${t.startDate?.fmt || "—"}</td>
+        <td>${t.filerName || "—"}</td>
+        <td>${t.filerRelation || "—"}</td>
+        <td>${t.transactionText || "—"}</td>
+        <td class="num">${fmtNum(t.shares?.raw)}</td>
+      </tr>`).join("");
+    let netShares = 0;
+    tx.forEach((t) => {
+      const txt = (t.transactionText || "").toLowerCase();
+      const sh = t.shares?.raw || 0;
+      if (txt.includes("sale")) netShares -= sh;
+      else if (txt.includes("purchase") || txt.includes("buy")) netShares += sh;
+    });
+    return { html: `
+      <div class="table-wrap"><table>
+        <thead><tr><th>Datum</th><th>Insajder</th><th>Pozicija</th><th>Transakcija</th><th class="num">Akcije</th></tr></thead>
+        <tbody>${rowsHtml}</tbody>
+      </table></div>
+      <p style="margin-top:8px; font-size:0.85rem;">Neto insajderski saldo (prikazane transakcije): <b class="${netShares >= 0 ? 'up' : 'down'}">${netShares >= 0 ? "+" : ""}${fmtNum(netShares)} akcija</b> (${netShares >= 0 ? "neto kupovina" : "neto prodaja"})</p>`,
+      ok: true };
+  }
+
+  function renderInstitutions(qs) {
+    const own = qs?.institutionOwnership?.ownershipList;
+    const major = qs?.majorHoldersBreakdown;
+    if ((!own || !own.length) && !major) return { html: `<p class="na-text">Podaci o institucionalnom vlasništvu trenutno nisu dostupni preko javnog API-ja za ovaj tiker.</p>`, ok: false };
+    let summary = "";
+    if (major) {
+      summary = `
+        <table>
+          <tr><th>% u vlasništvu institucija</th><td class="num">${major.institutionsPercentHeld ? (major.institutionsPercentHeld.raw * 100).toFixed(2) + "%" : "—"}</td></tr>
+          <tr><th>% u vlasništvu insajdera</th><td class="num">${major.insidersPercentHeld ? (major.insidersPercentHeld.raw * 100).toFixed(2) + "%" : "—"}</td></tr>
+          <tr><th>Broj institucionalnih vlasnika</th><td class="num">${fmtNum(major.institutionsCount?.raw)}</td></tr>
+        </table>`;
+    }
+    let listHtml = "";
+    if (own && own.length) {
+      listHtml = `<div class="table-wrap" style="margin-top:10px;"><table>
+        <thead><tr><th>Institucija</th><th>Datum izveštaja</th><th class="num">% udela</th><th class="num">Akcije</th></tr></thead>
+        <tbody>${own.slice(0, 8).map((o) => `
+          <tr>
+            <td>${o.organization || "—"}</td>
+            <td>${o.reportDate?.fmt || "—"}</td>
+            <td class="num">${o.pctHeld ? (o.pctHeld.raw * 100).toFixed(2) + "%" : "—"}</td>
+            <td class="num">${fmtNum(o.position?.raw)}</td>
+          </tr>`).join("")}</tbody>
+      </table></div>`;
+    }
+    return { html: summary + listHtml, ok: true };
+  }
+
+  function renderShortInterest(qs) {
+    const ks = qs?.defaultKeyStatistics;
+    const sd = qs?.summaryDetail;
+    if (!ks) return { html: `<p class="na-text">Podaci o short interest-u trenutno nisu dostupni preko javnog API-ja za ovaj tiker.</p>`, ok: false };
+    const shortPctFloat = ks.shortPercentOfFloat?.raw;
+    const shortRatio = ks.shortRatio?.raw;
+    const sharesShort = ks.sharesShort?.raw;
+    const sharesShortPrior = ks.sharesShortPriorMonth?.raw;
+    const trend = (sharesShort != null && sharesShortPrior != null)
+      ? (sharesShort > sharesShortPrior ? "raste" : sharesShort < sharesShortPrior ? "opada" : "bez promene")
+      : null;
+    const squeezeFlag = (shortPctFloat != null && shortRatio != null && shortPctFloat > 0.15 && shortRatio > 4);
+    return { html: `
+      <table>
+        <tr><th>Short % of Float</th><td class="num">${shortPctFloat != null ? (shortPctFloat * 100).toFixed(2) + "%" : "—"}</td></tr>
+        <tr><th>Short Ratio (dana za pokrivanje)</th><td class="num">${shortRatio != null ? shortRatio.toFixed(2) : "—"}</td></tr>
+        <tr><th>Akcija u short poziciji</th><td class="num">${fmtNum(sharesShort)}</td></tr>
+        <tr><th>Prethodni mesec</th><td class="num">${fmtNum(sharesShortPrior)}</td></tr>
+        <tr><th>Trend short interesa</th><td class="num">${trend || "—"}</td></tr>
+      </table>
+      ${squeezeFlag ? `<p style="margin-top:8px; color:var(--warn-text); font-size:0.85rem;">⚠ Povišen short interest i broj dana za pokrivanje — teoretski povećan potencijal za short squeeze, ali ovo NIJE predikcija niti signal za trgovanje.</p>` : ""}`,
+      ok: true };
+  }
+
+  function renderOptions(opt) {
+    if (!opt) return { html: `<p class="na-text">Podaci o opcijama trenutno nisu dostupni preko javnog API-ja za ovaj tiker (Yahoo često zahteva autentifikaciju za ovaj modul).</p>`, ok: false };
+    const o = opt.options[0];
+    const calls = o.calls || [], puts = o.puts || [];
+    const sum = (arr, key) => arr.reduce((a, b) => a + (b[key] || 0), 0);
+    const callVol = sum(calls, "volume"), putVol = sum(puts, "volume");
+    const callOI = sum(calls, "openInterest"), putOI = sum(puts, "openInterest");
+    const pcRatioVol = callVol ? putVol / callVol : null;
+    const pcRatioOI = callOI ? putOI / callOI : null;
+    const expDate = new Date(o.expirationDate * 1000).toISOString().slice(0, 10);
+    const topByOI = [...calls, ...puts].sort((a, b) => (b.openInterest || 0) - (a.openInterest || 0)).slice(0, 5);
+    return { html: `
+      <table>
+        <tr><th>Najbliži datum isteka opcija</th><td class="num">${expDate}</td></tr>
+        <tr><th>Put/Call odnos (volumen)</th><td class="num">${pcRatioVol != null ? pcRatioVol.toFixed(2) : "—"}</td></tr>
+        <tr><th>Put/Call odnos (open interest)</th><td class="num">${pcRatioOI != null ? pcRatioOI.toFixed(2) : "—"}</td></tr>
+        <tr><th>Ukupan volumen (call)</th><td class="num">${fmtNum(callVol)}</td></tr>
+        <tr><th>Ukupan volumen (put)</th><td class="num">${fmtNum(putVol)}</td></tr>
+      </table>
+      <div class="table-wrap" style="margin-top:10px;"><table>
+        <thead><tr><th>Strike</th><th>Tip</th><th class="num">Open interest</th><th class="num">Volumen</th></tr></thead>
+        <tbody>${topByOI.map((c) => `
+          <tr>
+            <td class="num">${c.strike}</td>
+            <td>${calls.includes(c) ? "Call" : "Put"}</td>
+            <td class="num">${fmtNum(c.openInterest)}</td>
+            <td class="num">${fmtNum(c.volume)}</td>
+          </tr>`).join("")}</tbody>
+      </table></div>
+      <p class="na-text" style="margin-top:8px;">Najveći open interest po strike ceni ukazuje gde učesnici na tržištu očekuju kretanje/otpor, ali to nije garancija budućeg kretanja cene.</p>`,
+      ok: true };
+  }
+
+  async function renderSector(sector, rows, range) {
+    if (!sector || !SECTOR_ETF[sector]) return { html: `<p class="na-text">Sektor nije dostupan za ovaj tiker.</p>`, ok: false };
+    const etf = SECTOR_ETF[sector];
+    try {
+      const [etfData, spyData] = await Promise.all([
+        fetchChart(etf, range),
+        fetchChart("SPY", range),
+      ]);
+      const stockRet = totalReturn(rows);
+      const etfRet = totalReturn(etfData.rows);
+      const spyRet = totalReturn(spyData.rows);
+      const vsSector = stockRet - etfRet;
+      const vsMarket = stockRet - spyRet;
+      const verdict = vsSector > 0 && vsMarket > 0 ? "Akcija je NADMAŠILA i sektor i šire tržište (relativna snaga)."
+        : vsSector < 0 && vsMarket < 0 ? "Akcija je ZAOSTALA i za sektorom i za širim tržištem (relativna slabost)."
+        : "Mešoviti signal — akcija se ponaša drugačije od sopstvenog sektora u odnosu na šire tržište.";
+      return { html: `
+        <table>
+          <tr><th>Sektor (GICS)</th><td>${sector}</td></tr>
+          <tr><th>Sektorski ETF korišćen za poređenje</th><td>${etf}</td></tr>
+          <tr><th>Ukupan prinos akcije (period)</th><td class="num ${pctClass(stockRet)}">${fmtPct(stockRet)}</td></tr>
+          <tr><th>Ukupan prinos sektorskog ETF-a</th><td class="num ${pctClass(etfRet)}">${fmtPct(etfRet)}</td></tr>
+          <tr><th>Ukupan prinos S&P 500 (SPY)</th><td class="num ${pctClass(spyRet)}">${fmtPct(spyRet)}</td></tr>
+          <tr><th>Razlika naspram sektora</th><td class="num ${pctClass(vsSector)}">${fmtPct(vsSector)}</td></tr>
+          <tr><th>Razlika naspram tržišta</th><td class="num ${pctClass(vsMarket)}">${fmtPct(vsMarket)}</td></tr>
+        </table>
+        <p style="margin-top:8px; font-size:0.85rem;">${verdict}</p>`,
+        ok: true };
+    } catch (e) {
+      return { html: `<p class="na-text">Poređenje sa sektorom trenutno nije uspelo (podaci o sektorskom ETF-u nisu dostupni).</p>`, ok: false };
+    }
+  }
+
+  function buildEdgeSummary(parts) {
+    const bullets = [];
+    if (parts.season?.best?.avg > 0) bullets.push(`Istorijski najjači mesec: <b>${MONTH_NAMES[parts.season.best.month]}</b> (prosečno ${fmtPct(parts.season.best.avg)}, ${parts.season.best.n} godina uzorka).`);
+    if (parts.season?.worst?.avg < 0) bullets.push(`Istorijski najslabiji mesec: <b>${MONTH_NAMES[parts.season.worst.month]}</b> (prosečno ${fmtPct(parts.season.worst.avg)}, ${parts.season.worst.n} godina uzorka).`);
+    if (parts.dow?.best) bullets.push(`Najbolji dan u nedelji: <b>${DAY_NAMES[parts.dow.best.day]}</b> (prosečno ${fmtPct(parts.dow.best.avg, 3)}).`);
+    if (parts.dow?.worst) bullets.push(`Najslabiji dan u nedelji: <b>${DAY_NAMES[parts.dow.worst.day]}</b> (prosečno ${fmtPct(parts.dow.worst.avg, 3)}).`);
+    if (parts.fomc?.n) {
+      const diff = parts.fomc.avg - parts.fomc.baseline;
+      bullets.push(`Na dane FOMC odluka akcija se u proseku kreće ${diff >= 0 ? "jače" : "slabije"} nego u proseku (razlika ${fmtPct(diff, 3)}), na osnovu ${parts.fomc.n} sastanaka.`);
+    }
+    if (parts.gaps?.n) bullets.push(`Detektovano ${parts.gaps.n} statistički neuobičajenih "gap" dana (verovatno zarade/vesti), sa prosečnim gap-om od ${fmtPct(parts.gaps.avgPostGap)}.`);
+    if (parts.shortFlag) bullets.push(`Short interest je povišen — teoretski povećan short-squeeze potencijal (samo statistička opservacija, ne signal).`);
+    if (parts.sectorVerdict) bullets.push(parts.sectorVerdict);
+    if (!bullets.length) bullets.push("Nema dovoljno statistički izraženih obrazaca u dostupnim podacima za ovaj period.");
+    bullets.push("Sve gore navedeno je deskriptivna statistika prošlosti — ne predstavlja garantovanu niti statistički značajnu prednost za buduće trgovanje.");
+    return bullets;
+  }
+
+  function sectionWrap(title, badgeOk, bodyHtml) {
+    return `
+      <div class="card">
+        <h3 class="section-title">${title}<span class="badge ${badgeOk ? 'ok' : 'na'}">${badgeOk ? "PODACI UČITANI" : "OGRANIČENO/NEDOSTUPNO"}</span></h3>
+        ${bodyHtml}
+      </div>`;
+  }
+
+  // ---------- Glavni tok ----------
+  const form = document.getElementById("form");
+  const tickerInput = document.getElementById("ticker");
+  const rangeSelect = document.getElementById("range");
+  const submitBtn = document.getElementById("submitBtn");
+  const statusEl = document.getElementById("status");
+  const errorEl = document.getElementById("error");
+  const memoEl = document.getElementById("memo");
+
+  function setStatus(msg) {
+    if (!msg) { statusEl.hidden = true; return; }
+    statusEl.hidden = false;
+    statusEl.innerHTML = `<span class="spinner"></span>${msg}`;
+  }
+  function setError(msg) {
+    errorEl.hidden = !msg;
+    errorEl.textContent = msg || "";
+  }
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const ticker = tickerInput.value.trim().toUpperCase();
+    const range = rangeSelect.value;
+    if (!ticker) return;
+
+    submitBtn.disabled = true;
+    setError("");
+    memoEl.classList.remove("visible");
+    memoEl.innerHTML = "";
+
+    try {
+      setStatus(`Preuzimam istoriju cena za ${ticker}...`);
+      const { rows, meta } = await fetchChart(ticker, range);
+      if (rows.length < 20) throw new Error("Nedovoljno istorijskih podataka za analizu ovog tikera.");
+      const rets = dailyReturns(rows);
+
+      const season = seasonality(rows);
+      const seasonR = renderSeasonality(season);
+      const dow = dayOfWeek(rets);
+      const dowR = renderDayOfWeek(dow);
+      const fomc = fomcCorrelation(rets);
+      const gaps = volatilityGapEvents(rows);
+
+      setStatus(`Preuzimam podatke o insajderima, institucijama i short interest-u...`);
+      let qs = null, qsOk = true;
+      try { qs = await fetchQuoteSummary(ticker); } catch (e) { qsOk = false; }
+
+      setStatus(`Preuzimam podatke o opcijama...`);
+      let opt = null;
+      try { opt = await fetchOptions(ticker); } catch (e) { opt = null; }
+
+      setStatus(`Poredim sa sektorom i tržištem...`);
+      const sector = qs?.assetProfile?.sector || null;
+      const sectorR = await renderSector(sector, rows, range);
+
+      const insidersR = qs ? renderInsiders(qs) : { html: `<p class="na-text">Podaci o insajderima trenutno nisu dostupni.</p>`, ok: false };
+      const institR = qs ? renderInstitutions(qs) : { html: `<p class="na-text">Podaci o institucionalnom vlasništvu trenutno nisu dostupni.</p>`, ok: false };
+      const shortR = qs ? renderShortInterest(qs) : { html: `<p class="na-text">Podaci o short interest-u trenutno nisu dostupni.</p>`, ok: false };
+      const optR = renderOptions(opt);
+
+      const lastRow = rows[rows.length - 1];
+      const firstDate = rows[0].date.toISOString().slice(0, 10);
+      const lastDate = lastRow.date.toISOString().slice(0, 10);
+      const currency = meta?.currency || "";
+      const companyName = meta?.longName || meta?.shortName || ticker;
+
+      const shortPctFloat = qs?.defaultKeyStatistics?.shortPercentOfFloat?.raw;
+      const shortRatio = qs?.defaultKeyStatistics?.shortRatio?.raw;
+      const shortFlag = (shortPctFloat != null && shortRatio != null && shortPctFloat > 0.15 && shortRatio > 4);
+
+      const edgeBullets = buildEdgeSummary({
+        season: seasonR, dow: dowR, fomc, gaps, shortFlag,
+        sectorVerdict: sectorR.ok ? null : null,
+      });
+
+      memoEl.innerHTML = `
+        <div class="card">
+          <div class="memo-header">
+            <h2>${companyName} (${ticker})</h2>
+            <div class="price">${fmtNum(lastRow.close)} ${currency}</div>
+            <div class="sub">Kvantitativni istraživački memorandum • Period: ${firstDate} — ${lastDate} • Generisano: ${new Date().toLocaleString("sr-RS")}</div>
+          </div>
+        </div>
+
+        ${sectionWrap("1–3. Sezonski obrasci (najbolji/najgori meseci)", true, seasonR.html)}
+        ${sectionWrap("4. Obrasci po danima u nedelji", true, dowR.html)}
+        ${sectionWrap("5. Korelacija sa FOMC (Fed) sastancima", fomc.n > 0, renderFomc(fomc))}
+        ${sectionWrap("6. Insajdersko kupovanje/prodaja (poslednje prijave)", insidersR.ok, insidersR.html)}
+        ${sectionWrap("7. Trend institucionalnog vlasništva", institR.ok, institR.html)}
+        ${sectionWrap("8. Short interest i squeeze potencijal", shortR.ok, shortR.html)}
+        ${sectionWrap("9. Neuobičajena aktivnost opcija", optR.ok, optR.html)}
+        ${sectionWrap("10. Ponašanje cene oko statistički detektovanih šokova (verovatno zarade/vesti)", gaps.n > 0, renderGapEvents(gaps))}
+        ${sectionWrap("11. Signal rotacije sektora", sectorR.ok, sectorR.html)}
+        ${sectionWrap("12. Statistički rezime", true, `<ul class="bullets">${edgeBullets.map((b) => `<li>${b}</li>`).join("")}</ul>`)}
+
+        <div class="card actions">
+          <button type="button" id="copyBtn">📋 Kopiraj memorandum kao tekst</button>
+          <button type="button" id="printBtn">🖨 Štampaj / sačuvaj kao PDF</button>
+        </div>
+      `;
+      memoEl.classList.add("visible");
+      setStatus("");
+
+      document.getElementById("printBtn").addEventListener("click", () => window.print());
+      document.getElementById("copyBtn").addEventListener("click", () => {
+        const text = memoEl.innerText;
+        navigator.clipboard.writeText(text).then(() => {
+          const btn = document.getElementById("copyBtn");
+          const orig = btn.textContent;
+          btn.textContent = "✓ Kopirano!";
+          setTimeout(() => { btn.textContent = orig; }, 1500);
+        });
+      });
+    } catch (err) {
+      console.error(err);
+      setError(`Greška: ${err.message || "Nije moguće preuzeti podatke. Proveri da li je ticker ispravan i pokušaj ponovo."}`);
+      setStatus("");
+    } finally {
+      submitBtn.disabled = false;
+    }
+  });
+})();
+</script>
+</body>
+</html>
