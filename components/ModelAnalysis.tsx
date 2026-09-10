@@ -76,7 +76,7 @@ export default function ModelAnalysis() {
   let content: React.ReactNode = null;
 
   if (result) {
-    const { data, breakdown, growthFilter, valuationFilter, moat, growthPotential, risks, management, bullBear, finalVerdict, shortTermUpside, longTermUpside } = result;
+    const { data, breakdown, growthFilter, valuationFilter, moat, growthPotential, risks, management, bullBear, finalVerdict, shortTermUpside, longTermUpside, avgIntrinsicValue, grahamNumber } = result;
 
     content = (
       <div className="mt-6 space-y-4">
@@ -187,6 +187,12 @@ export default function ModelAnalysis() {
             <span>Dugoročno (5+ god.): <b>{finalVerdict.longTermLabel}</b> ({fmtPct(longTermUpside)})</span>
           </div>
           <p className="text-sm leading-relaxed">{finalVerdict.detail}</p>
+          <p className="mt-3 text-xs text-zinc-500 dark:text-zinc-400">
+            Dugoročna procena je prosek DCF, Dividend Discount i relativne (P/E) procene: {fmtMoney(avgIntrinsicValue, data.currency)}.
+            {grahamNumber != null && (
+              <> Graham Number ({fmtMoney(grahamNumber, data.currency)}) je namerno isključen iz ovog proseka — ta formula je kalibrisana za klasične &quot;value&quot; akcije sa visokom knjigovodstvenom vrednošću i sistematski potcenjuje kvalitetne, kapitalno-lake kompanije sa otkupom akcija (npr. Visa, Coca-Cola, Nvidia); niska Graham vrednost tu nije signal precenjenosti, već ograničenje same formule.</>
+            )}
+          </p>
         </div>
 
         <div className="text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed border border-zinc-200 dark:border-zinc-800 rounded-xl p-4">
