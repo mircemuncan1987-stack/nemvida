@@ -67,7 +67,7 @@ export async function GET(request: NextRequest) {
   try {
     if (type === "valuation") {
       const modules =
-        "price,summaryDetail,defaultKeyStatistics,financialData,cashflowStatementHistory,incomeStatementHistory,balanceSheetHistory,recommendationTrend,assetProfile";
+        "price,summaryDetail,defaultKeyStatistics,financialData,cashflowStatementHistory,incomeStatementHistory,balanceSheetHistory,recommendationTrend,assetProfile,earningsTrend,netSharePurchaseActivity";
       const data = await fetchUpstream(
         (crumb) =>
           `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(
