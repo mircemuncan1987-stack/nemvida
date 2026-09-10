@@ -49,7 +49,7 @@ async function fetchAndScore(ticker: string): Promise<Row> {
     currentPrice: modelData.currentPrice,
     currency: modelData.currency,
     fairValue: computed.avgIntrinsicValue,
-    upside: computed.longTermUpside,
+    upside: computed.valuationUpside,
     verdictLabel: computed.finalVerdict.verdict,
   };
 }

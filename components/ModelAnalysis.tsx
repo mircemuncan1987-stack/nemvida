@@ -76,7 +76,7 @@ export default function ModelAnalysis() {
   let content: React.ReactNode = null;
 
   if (result) {
-    const { data, breakdown, growthFilter, valuationFilter, moat, growthPotential, risks, management, bullBear, finalVerdict, shortTermUpside, longTermUpside, avgIntrinsicValue, lynchValue } = result;
+    const { data, breakdown, growthFilter, valuationFilter, moat, growthPotential, risks, management, bullBear, finalVerdict, shortTermUpside, valuationUpside, avgIntrinsicValue, lynchValue } = result;
 
     content = (
       <div className="mt-6 space-y-4">
@@ -183,12 +183,14 @@ export default function ModelAnalysis() {
           <div className="text-xs uppercase tracking-wide text-zinc-500 dark:text-zinc-400 mb-1">9. Finalna sinteza — da li kupiti ovu akciju?</div>
           <div className="text-lg font-bold mb-1">{finalVerdict.verdict}</div>
           <div className="text-sm mb-2 flex gap-4 flex-wrap">
-            <span>Kratkoročno (1 god.): <b>{finalVerdict.shortTermLabel}</b> ({fmtPct(shortTermUpside)})</span>
-            <span>Dugoročno (5+ god.): <b>{finalVerdict.longTermLabel}</b> ({fmtPct(longTermUpside)})</span>
+            <span>Kratkoročno (1 god., konsenzus analitičara): <b>{finalVerdict.shortTermLabel}</b> ({fmtPct(shortTermUpside)})</span>
+            <span>Dugoročni izgled rasta (5+ god.): <b>{finalVerdict.growthLabel}</b></span>
+            <span>Komfor valuacije: <b>{finalVerdict.valuationComfortLabel}</b> ({fmtPct(valuationUpside)})</span>
           </div>
           <p className="text-sm leading-relaxed">{finalVerdict.detail}</p>
           <p className="mt-3 text-xs text-zinc-500 dark:text-zinc-400">
-            Dugoročna procena je prosek DCF, Dividend Discount, relativne (P/E) i Lynch (fer P/E = stopa rasta + dividendni prinos) procene: {fmtMoney(avgIntrinsicValue, data.currency)}.
+            Dugoročni izgled rasta se procenjuje iz istorijskog rasta i konsenzusa analitičara o rastu (vidi sekciju 3) — namerno NIJE izveden iz modela procene vrednosti, jer svaki takav model nosi svoja ograničenja (pretpostavke o stopi rasta, diskontnoj stopi i sl.) koja mogu iskriviti sud čak i za kvalitetne kompanije.
+            {" "}Komfor valuacije je odvojen signal: prosek DCF, Dividend Discount, relativne (P/E) i Lynch (fer P/E = stopa rasta + dividendni prinos) procene: {fmtMoney(avgIntrinsicValue, data.currency)}.
             {lynchValue != null && <> Lynch procena samostalno: {fmtMoney(lynchValue, data.currency)}.</>}
           </p>
         </div>

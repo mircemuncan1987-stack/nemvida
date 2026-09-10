@@ -195,7 +195,7 @@ export interface ComputedModel {
   avgIntrinsicValue: number | null;
   lynchValue: number | null;
   shortTermUpside: number | null;
-  longTermUpside: number | null;
+  valuationUpside: number | null;
   breakdown: ReturnType<typeof buildFinancialBreakdown>;
   growthFilter: ReturnType<typeof runGrowthFilter>;
   valuationFilter: ReturnType<typeof runValuationFilter>;
@@ -218,7 +218,7 @@ export function computeModel(data: ModelData, assumptions: Assumptions = DEFAULT
   const lynchValue = computeLynchValuation(f, valuationAssumptions.growthRateY1to5 * 100, (data.dividendYield ?? 0) * 100);
   const modelValues = [dcf.intrinsicValuePerShare, ddm, relative, lynchValue].filter((v): v is number => v != null);
   const avgIntrinsicValue = modelValues.length ? modelValues.reduce((a, b) => a + b, 0) / modelValues.length : null;
-  const longTermUpside = summarizeUpside(f.currentPrice, avgIntrinsicValue);
+  const valuationUpside = summarizeUpside(f.currentPrice, avgIntrinsicValue);
   const shortTermUpside = summarizeUpside(f.currentPrice, data.targetMeanPrice);
 
   const breakdown = buildFinancialBreakdown(data.yearlyRows);
@@ -281,11 +281,13 @@ export function computeModel(data: ModelData, assumptions: Assumptions = DEFAULT
 
   const finalVerdict = buildFinalVerdict({
     shortTermUpside,
-    longTermUpside,
+    growthLabel: growthPotential.label,
+    growthDetail: growthPotential.detail,
+    valuationUpside,
     catalysts: [`${growthPotential.label} (${growthPotential.estimateRange})`],
     risks: risks.slice(0, 2).map((r) => r.label),
     pricedForPerfection: valuationFilter.pricedForPerfection,
   });
 
-  return { data, wacc, avgIntrinsicValue, lynchValue, shortTermUpside, longTermUpside, breakdown, growthFilter, valuationFilter, moat, growthPotential, risks, management, bullBear, finalVerdict };
+  return { data, wacc, avgIntrinsicValue, lynchValue, shortTermUpside, valuationUpside, breakdown, growthFilter, valuationFilter, moat, growthPotential, risks, management, bullBear, finalVerdict };
 }

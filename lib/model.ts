@@ -482,7 +482,9 @@ export function buildBullBear(signals: DimensionSignal[]): BullBearResult {
 
 export interface FinalVerdictInputs {
   shortTermUpside: number | null; // implicira prosečna ciljna cena analitičara (1 god.)
-  longTermUpside: number | null; // implicira prosek modela procene vrednosti (DCF i sl.)
+  growthLabel: string; // iz Growth Potential Analysis — stvarna procena rasta poslovanja, ne procena vrednosti
+  growthDetail: string;
+  valuationUpside: number | null; // implicira prosek modela procene vrednosti (DCF, DDM, relativna, Lynch) — "komfor valuacije", odvojeno od procene rasta
   catalysts: string[];
   risks: string[];
   pricedForPerfection: boolean;
@@ -490,7 +492,8 @@ export interface FinalVerdictInputs {
 
 export interface FinalVerdict {
   shortTermLabel: string;
-  longTermLabel: string;
+  growthLabel: string;
+  valuationComfortLabel: string;
   verdict: "Kupovina" | "Držanje" | "Izbegavanje" | "Nedovoljno podataka";
   detail: string;
 }
@@ -502,25 +505,50 @@ function outlookLabel(upside: number | null): string {
   return "Negativan";
 }
 
+// Rastu se pridaje brojčana vrednost da bi se moglo porediti/kombinovati sa
+// komforom valuacije — ne meri se u procentima jer growth potential rezultat
+// nosi već zaokruženu kvalitativnu ocenu (visok/umeren/nizak/upitan rast).
+function growthScore(label: string): number | null {
+  if (label === "Visok potencijal rasta") return 2;
+  if (label === "Umeren potencijal rasta") return 1;
+  if (label === "Nizak potencijal rasta") return 0;
+  if (label === "Rast pod znakom pitanja") return -1;
+  return null; // "Nedovoljno podataka"
+}
+
 export function buildFinalVerdict(inputs: FinalVerdictInputs): FinalVerdict {
   const shortTermLabel = outlookLabel(inputs.shortTermUpside);
-  const longTermLabel = outlookLabel(inputs.longTermUpside);
+  const valuationComfortLabel = outlookLabel(inputs.valuationUpside);
+  const gScore = growthScore(inputs.growthLabel);
 
-  const values = [inputs.shortTermUpside, inputs.longTermUpside].filter((v): v is number => v != null);
-  if (values.length === 0) {
-    return { shortTermLabel, longTermLabel, verdict: "Nedovoljno podataka", detail: "Nema dovoljno podataka (ni konsenzusa analitičara ni modela procene vrednosti) za konačan sud." };
+  if (gScore == null && inputs.valuationUpside == null) {
+    return {
+      shortTermLabel,
+      growthLabel: inputs.growthLabel,
+      valuationComfortLabel,
+      verdict: "Nedovoljno podataka",
+      detail: "Nema dovoljno podataka (ni o rastu ni o valuaciji) za konačan sud.",
+    };
   }
 
-  const avg = values.reduce((a, b) => a + b, 0) / values.length;
   let verdict: FinalVerdict["verdict"];
-  if (inputs.pricedForPerfection && avg < 0.1) verdict = "Izbegavanje";
-  else if (avg > 0.1) verdict = "Kupovina";
-  else if (avg > -0.1) verdict = "Držanje";
-  else verdict = "Izbegavanje";
+  if (gScore != null && gScore <= 0) {
+    // Slab ili upitan rast poslovanja — nijedna valuacija to ne kompenzuje.
+    verdict = "Izbegavanje";
+  } else if (inputs.pricedForPerfection || (inputs.valuationUpside != null && inputs.valuationUpside < -0.15)) {
+    // Rast je u redu, ali se plaća previše za njega — sačekaj bolju cenu.
+    verdict = "Držanje";
+  } else if (gScore == null) {
+    // Rast se ne može proceniti iz dostupnih podataka — oprez umesto nagađanja.
+    verdict = "Držanje";
+  } else {
+    verdict = "Kupovina";
+  }
 
   const detail = [
     `Kratkoročno (1 god., prema konsenzusu analitičara): ${shortTermLabel}.`,
-    `Dugoročno (5+ god., prema modelima procene vrednosti): ${longTermLabel}.`,
+    `Dugoročni izgled rasta (5+ god., iz istorijskog rasta i konsenzusa analitičara o rastu — NE iz modela procene vrednosti): ${inputs.growthLabel}. ${inputs.growthDetail}`,
+    `Komfor valuacije (koliko trenutna cena odstupa od proseka modela procene vrednosti): ${valuationComfortLabel}.`,
     inputs.catalysts.length ? `Ključni katalizatori: ${inputs.catalysts.join("; ")}.` : "",
     inputs.risks.length ? `Najveći rizici: ${inputs.risks.join("; ")}.` : "",
     inputs.pricedForPerfection ? "Upozorenje: akcija je 'ucenjena za savršenstvo' — mala greška u izvršenju bi mogla oštro pogoditi cenu." : "",
@@ -529,5 +557,5 @@ export function buildFinalVerdict(inputs: FinalVerdictInputs): FinalVerdict {
     .filter(Boolean)
     .join(" ");
 
-  return { shortTermLabel, longTermLabel, verdict, detail };
+  return { shortTermLabel, growthLabel: inputs.growthLabel, valuationComfortLabel, verdict, detail };
 }
