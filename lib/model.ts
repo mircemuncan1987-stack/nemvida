@@ -544,17 +544,23 @@ export function buildFinalVerdict(inputs: FinalVerdictInputs): FinalVerdict {
   }
 
   let verdict: FinalVerdict["verdict"];
+  let reasoning: string;
   if (gScore <= 0) {
-    // Slab ili upitan rast poslovanja.
     verdict = "Izbegavanje";
+    reasoning =
+      "Zašto izbegavanje: poslovanje samo po sebi ne raste dovoljno (ili je rast upitan) — a kad osnovni biznis ne raste, nijedna cena to dugoročno ne kompenzuje, pa se dalja analiza valuacije ne isplati.";
   } else if (inputs.pricedForPerfection) {
-    // Rast je u redu, ali cena već pretpostavlja savršeno izvršenje.
     verdict = "Držanje";
+    reasoning =
+      "Zašto držanje: poslovanje ima dovoljno dobar rast da opravda dalje praćenje, ali trenutna cena već pretpostavlja gotovo savršeno izvršenje (visok PEG i/ili EV/EBITDA) — svaki propust bi je oštro pogodio, pa je razumnije sačekati bolju cenu za ulazak nego kupovati odmah.";
   } else {
     verdict = "Kupovina";
+    reasoning =
+      "Zašto kupovina: poslovanje pokazuje dovoljno dobar rast, a cena ne pretpostavlja ekstremno savršeno izvršenje (multiplikatori nisu u zoni upozorenja) — kombinacija rasta i razumne cene ovde je najjača.";
   }
 
   const detail = [
+    reasoning,
     `Kratkoročno (1 god., prema konsenzusu analitičara): ${shortTermLabel}.`,
     `Dugoročni izgled rasta (5+ god., iz istorijskog rasta i konsenzusa analitičara o rastu — ne iz modela procene vrednosti): ${inputs.growthLabel}. ${inputs.growthDetail}`,
     inputs.catalysts.length ? `Ključni katalizatori: ${inputs.catalysts.join("; ")}.` : "",

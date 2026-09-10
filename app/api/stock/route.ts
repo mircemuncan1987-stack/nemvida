@@ -77,6 +77,16 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(data);
     }
 
+    if (type === "search") {
+      const data = await fetchUpstream(
+        (crumb) =>
+          `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(
+            symbol
+          )}&quotesCount=10&newsCount=0&crumb=${encodeURIComponent(crumb)}`
+      );
+      return NextResponse.json(data);
+    }
+
     return NextResponse.json({ error: "Nepoznat 'type' parametar" }, { status: 400 });
   } catch (e) {
     const message = e instanceof Error ? e.message : "Nepoznata greška pri preuzimanju podataka";

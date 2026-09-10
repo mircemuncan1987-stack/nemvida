@@ -21,6 +21,24 @@ async function fetchModelResult(symbol: string): Promise<ComputedModel> {
   return computeModel(modelData);
 }
 
+interface SearchResult {
+  symbol: string;
+  name: string;
+  exchange: string;
+}
+
+async function searchSymbols(query: string): Promise<SearchResult[]> {
+  const res = await fetch(`/api/stock?symbol=${encodeURIComponent(query)}&type=search`, { cache: "no-store" });
+  if (!res.ok) return [];
+  const data = await res.json();
+  const quotes = data?.quotes || [];
+  return quotes
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .filter((q: any) => q.symbol && q.quoteType === "EQUITY")
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .map((q: any) => ({ symbol: q.symbol, name: q.shortname || q.longname || q.symbol, exchange: q.exchDisp || q.exchange || "" }));
+}
+
 function checkRow(c: FilterCheck) {
   const icon = c.pass == null ? "●" : c.pass ? "✓" : "✗";
   const color = c.pass == null ? "text-zinc-400" : c.pass ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400";
@@ -40,6 +58,8 @@ export default function ModelAnalysis() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState<ComputedModel | null>(null);
+  const [suggestions, setSuggestions] = useState<SearchResult[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
   const searchParams = useSearchParams();
 
   async function runAnalysis(sym: string) {
@@ -57,6 +77,13 @@ export default function ModelAnalysis() {
     }
   }
 
+  function pickSuggestion(s: SearchResult) {
+    setTicker(s.symbol);
+    setSuggestions([]);
+    setShowSuggestions(false);
+    runAnalysis(s.symbol);
+  }
+
   useEffect(() => {
     const fromUrl = searchParams.get("ticker");
     if (fromUrl) {
@@ -67,6 +94,27 @@ export default function ModelAnalysis() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    const query = ticker.trim();
+    if (query.length < 2) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- čisti prethodne predloge kad je unos prekratak za pretragu
+      setSuggestions([]);
+      return;
+    }
+    let cancelled = false;
+    const handle = setTimeout(async () => {
+      const found = await searchSymbols(query);
+      if (!cancelled) {
+        setSuggestions(found);
+        setShowSuggestions(true);
+      }
+    }, 300);
+    return () => {
+      cancelled = true;
+      clearTimeout(handle);
+    };
+  }, [ticker]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -220,16 +268,39 @@ export default function ModelAnalysis() {
       </div>
 
       <form onSubmit={handleSubmit} className="flex flex-wrap gap-2 items-end border border-zinc-200 dark:border-zinc-800 bg-white/70 dark:bg-zinc-900/50 rounded-xl p-4">
-        <div className="flex-1 min-w-[160px]">
-          <label className="block text-xs text-zinc-500 dark:text-zinc-400 mb-1">Ticker (US/EU)</label>
+        <div className="flex-1 min-w-[160px] relative">
+          <label className="block text-xs text-zinc-500 dark:text-zinc-400 mb-1">Ticker ili naziv kompanije (US/EU)</label>
           <input
             type="text"
             value={ticker}
             onChange={(e) => setTicker(e.target.value)}
-            placeholder="npr. AAPL, ASML.AS, SAP.DE..."
-            className="w-full uppercase px-3 py-2 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-transparent"
+            onFocus={() => suggestions.length > 0 && setShowSuggestions(true)}
+            onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
+            placeholder="npr. AAPL, ASML, SAP, Nestle..."
+            className="w-full px-3 py-2 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-transparent"
+            autoComplete="off"
             required
           />
+          {showSuggestions && suggestions.length > 0 && (
+            <ul className="absolute z-10 mt-1 w-full max-h-64 overflow-y-auto rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 shadow-lg">
+              {suggestions.map((s) => (
+                <li key={s.symbol}>
+                  <button
+                    type="button"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => pickSuggestion(s)}
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-zinc-100 dark:hover:bg-zinc-800 flex justify-between gap-2"
+                  >
+                    <span className="truncate">
+                      <span className="font-semibold">{s.symbol}</span>{" "}
+                      <span className="text-zinc-500 dark:text-zinc-400">{s.name}</span>
+                    </span>
+                    <span className="text-xs text-zinc-400 shrink-0">{s.exchange}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
         <button
           type="submit"
