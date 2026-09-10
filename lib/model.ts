@@ -503,7 +503,6 @@ export interface FinalVerdictInputs {
   growthTier: GrowthTier; // iz Growth Potential Analysis — stvarna procena rasta poslovanja, ne procena vrednosti
   growthLabel: string;
   growthDetail: string;
-  valuationUpside: number | null; // implicira prosek modela procene vrednosti (DCF, DDM, relativna, Lynch) — koristi se samo interno, za razlikovanje kupovine od čekanja na bolju cenu
   catalysts: string[];
   risks: string[];
   pricedForPerfection: boolean;
@@ -535,24 +534,21 @@ export function buildFinalVerdict(inputs: FinalVerdictInputs): FinalVerdict {
   const shortTermLabel = outlookLabel(inputs.shortTermUpside);
   const gScore = growthScore(inputs.growthTier);
 
-  if (gScore == null && inputs.valuationUpside == null) {
+  if (gScore == null) {
     return {
       shortTermLabel,
       growthLabel: inputs.growthLabel,
       verdict: "Nedovoljno podataka",
-      detail: "Nema dovoljno podataka (ni o rastu ni o valuaciji) za konačan sud.",
+      detail: "Nema dovoljno podataka o rastu za konačan sud.",
     };
   }
 
   let verdict: FinalVerdict["verdict"];
-  if (gScore != null && gScore <= 0) {
-    // Slab ili upitan rast poslovanja — nijedna cena to ne kompenzuje.
+  if (gScore <= 0) {
+    // Slab ili upitan rast poslovanja.
     verdict = "Izbegavanje";
-  } else if (inputs.pricedForPerfection || (inputs.valuationUpside != null && inputs.valuationUpside < -0.15)) {
-    // Rast je u redu, ali se za njega trenutno plaća previše — sačekaj bolju cenu.
-    verdict = "Držanje";
-  } else if (gScore == null) {
-    // Rast se ne može proceniti iz dostupnih podataka — oprez umesto nagađanja.
+  } else if (inputs.pricedForPerfection) {
+    // Rast je u redu, ali cena već pretpostavlja savršeno izvršenje.
     verdict = "Držanje";
   } else {
     verdict = "Kupovina";

@@ -200,7 +200,7 @@ export default function ModelAnalysis() {
           </div>
           <p className="text-sm leading-relaxed">{finalVerdict.detail}</p>
           <p className="mt-3 text-xs text-zinc-500 dark:text-zinc-400">
-            Dugoročni izgled rasta se procenjuje iz istorijskog rasta i konsenzusa analitičara o rastu (vidi sekciju 3), namerno bez oslanjanja na modele procene vrednosti — svaki takav model nosi svoja ograničenja (pretpostavke o stopi rasta, diskontnoj stopi i sl.) koja mogu iskriviti sud čak i za kvalitetne kompanije. Cena i dalje utiče na konačan sud (kupovina naspram čekanja na bolju cenu) preko filtera valuacije u sekciji 4, samo se ne prikazuje kao poseban broj u ovom zaključku.
+            Dugoročni izgled rasta se procenjuje iz istorijskog rasta i konsenzusa analitičara o rastu (vidi sekciju 3), namerno bez oslanjanja na modele procene vrednosti — svaki takav model nosi svoja ograničenja koja mogu iskriviti sud čak i za kvalitetne kompanije.
           </p>
         </div>
 

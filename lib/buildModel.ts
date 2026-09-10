@@ -273,7 +273,6 @@ export function computeModel(data: ModelData, assumptions: Assumptions = DEFAULT
     growthTier: growthPotential.tier,
     growthLabel: growthPotential.label,
     growthDetail: growthPotential.detail,
-    valuationUpside,
     catalysts: [`${growthPotential.label} (${growthPotential.estimateRange})`],
     risks: risks.slice(0, 2).map((r) => r.label),
     pricedForPerfection: valuationFilter.pricedForPerfection,
