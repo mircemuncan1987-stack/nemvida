@@ -332,17 +332,7 @@ export default function ModelAnalysis() {
           </div>
         </div>
 
-        <div className={`rounded-xl border-2 p-5 ${finalVerdict.verdict === "Kupovina" ? "border-emerald-400 dark:border-emerald-700" : finalVerdict.verdict === "Izbegavanje" ? "border-red-400 dark:border-red-700" : "border-zinc-300 dark:border-zinc-700"}`}>
-          <div className="text-xs uppercase tracking-wide text-zinc-500 dark:text-zinc-400 mb-1">Prompt 10 — Should I Buy This Stock? (finalna sinteza)</div>
-          <div className="text-lg font-bold mb-1">{finalVerdict.verdict}</div>
-          <div className="text-sm mb-2 flex gap-4 flex-wrap">
-            <span>Kratkoročno (1 god.): <b>{finalVerdict.shortTermLabel}</b> ({fmtPct(shortTermUpside)})</span>
-            <span>Dugoročno (5+ god.): <b>{finalVerdict.longTermLabel}</b> ({fmtPct(longTermUpside)})</span>
-          </div>
-          <p className="text-sm leading-relaxed">{finalVerdict.detail}</p>
-        </div>
-
-        <Section title="Prompt 2 — Deep Financial Breakdown (poslednjih do 5 god.)">
+        <Section title="1. Finansijski trend (poslednjih do 5 god.)">
           <div className="overflow-x-auto">
             <table className="w-full text-sm border-collapse">
               <thead>
@@ -370,27 +360,27 @@ export default function ModelAnalysis() {
           <p className="mt-3 text-sm">Zaključak: kompanija izgleda <b>{breakdown.verdict}</b>. {breakdown.detail}</p>
         </Section>
 
-        <Section title="Prompt 6 (post 1) — Growth Potential Analysis">
-          <p className="text-sm"><b>{growthPotential.label}</b> — procenjeni raspon rasta: {growthPotential.estimateRange}.</p>
-          <p className="text-sm text-zinc-600 dark:text-zinc-400 mt-1">{growthPotential.detail}</p>
-        </Section>
-
-        <Section title="Prompt 2 (post 2) — The Growth Filter">
+        <Section title="2. Filter rasta — kvantitativni skrining">
           <div>{growthFilter.checks.map(checkRow)}</div>
           <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">{growthFilter.passCount}/{growthFilter.totalApplicable} primenjivih kriterijuma zadovoljeno. Analiza samo — nije poziv na kupovinu ili prodaju.</p>
         </Section>
 
-        <Section title="Prompt 6 (post 2) — The Valuation Filter">
+        <Section title="3. Potencijal rasta (5-10 god.)">
+          <p className="text-sm"><b>{growthPotential.label}</b> — procenjeni raspon rasta: {growthPotential.estimateRange}.</p>
+          <p className="text-sm text-zinc-600 dark:text-zinc-400 mt-1">{growthPotential.detail}</p>
+        </Section>
+
+        <Section title="4. Filter valuacije">
           <div>{valuationFilter.checks.map(checkRow)}</div>
           <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">{valuationFilter.passCount}/{valuationFilter.totalApplicable} primenjivih kriterijuma zadovoljeno. Jeftino može značiti pokvareno, skupo može značiti kvalitet — ovo je samo disciplinski filter, ne presuda.</p>
         </Section>
 
-        <Section title="Prompt 3 — Competitive Moat Analysis (objektivni proxy)">
+        <Section title="5. Konkurentska prednost (objektivni proxy)">
           <p className="text-sm">Ocena: <b>{moat.score}/10</b></p>
           <p className="text-sm text-zinc-600 dark:text-zinc-400 mt-1">{moat.detail}</p>
         </Section>
 
-        <Section title="Prompt 5 — Risk Analysis (rangirano od najopasnijeg)">
+        <Section title="6. Analiza rizika (rangirano od najopasnijeg)">
           <div className="space-y-2">
             {risks.map((r) => (
               <div key={r.label} className="flex items-center gap-3">
@@ -407,7 +397,7 @@ export default function ModelAnalysis() {
           </div>
         </Section>
 
-        <Section title="Prompt 9 — Management Quality Analysis (objektivni proxy)">
+        <Section title="7. Kvalitet menadžmenta (objektivni proxy)">
           <p className="text-sm mb-2">Zaključak: <b>{management.verdict}</b></p>
           <ul className="list-disc pl-5 space-y-1 text-sm text-zinc-600 dark:text-zinc-400">
             {management.details.map((d, i) => (
@@ -416,7 +406,7 @@ export default function ModelAnalysis() {
           </ul>
         </Section>
 
-        <Section title="Prompt 8 — Bull vs Bear Debate">
+        <Section title="8. Bull vs Bear debata">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <h4 className="text-sm font-semibold text-emerald-600 dark:text-emerald-400 mb-2">Bikovski analitičar</h4>
@@ -433,6 +423,16 @@ export default function ModelAnalysis() {
           </div>
           <p className="mt-3 text-sm italic text-zinc-600 dark:text-zinc-400">{bullBear.conclusion}</p>
         </Section>
+
+        <div className={`rounded-xl border-2 p-5 ${finalVerdict.verdict === "Kupovina" ? "border-emerald-400 dark:border-emerald-700" : finalVerdict.verdict === "Izbegavanje" ? "border-red-400 dark:border-red-700" : "border-zinc-300 dark:border-zinc-700"}`}>
+          <div className="text-xs uppercase tracking-wide text-zinc-500 dark:text-zinc-400 mb-1">9. Finalna sinteza — da li kupiti ovu akciju?</div>
+          <div className="text-lg font-bold mb-1">{finalVerdict.verdict}</div>
+          <div className="text-sm mb-2 flex gap-4 flex-wrap">
+            <span>Kratkoročno (1 god.): <b>{finalVerdict.shortTermLabel}</b> ({fmtPct(shortTermUpside)})</span>
+            <span>Dugoročno (5+ god.): <b>{finalVerdict.longTermLabel}</b> ({fmtPct(longTermUpside)})</span>
+          </div>
+          <p className="text-sm leading-relaxed">{finalVerdict.detail}</p>
+        </div>
 
         <div className="text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed border border-zinc-200 dark:border-zinc-800 rounded-xl p-4">
           Model pokriva samo američka i evropska tržišta. Svi zaključci su automatski izvedeni iz javno dostupnih podataka (Yahoo Finance) prema fiksnim pravilima — nema slobodnog AI teksta niti procena koje se ne mogu proveriti. Ovo NIJE finansijski savet.
