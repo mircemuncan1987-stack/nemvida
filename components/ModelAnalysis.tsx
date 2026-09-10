@@ -306,12 +306,18 @@ export default function ModelAnalysis() {
     });
 
     const signals: DimensionSignal[] = [
-      { label: "Rast prihoda i dobiti", positive: breakdown.verdict === "jača", detail: breakdown.detail },
-      { label: "Kvantitativni skrining rasta", positive: growthFilter.totalApplicable > 0 && growthFilter.passCount >= growthFilter.totalApplicable / 2, detail: `${growthFilter.passCount}/${growthFilter.totalApplicable} kriterijuma zadovoljeno` },
-      { label: "Valuacija", positive: valuationFilter.totalApplicable > 0 && valuationFilter.passCount >= valuationFilter.totalApplicable / 2 && !valuationFilter.pricedForPerfection, detail: `${valuationFilter.passCount}/${valuationFilter.totalApplicable} kriterijuma zadovoljeno` },
-      { label: "Konkurentska prednost (proxy)", positive: moat.score >= 6, detail: `Ocena ${moat.score}/10` },
-      { label: "Kvalitet menadžmenta (proxy)", positive: management.verdict === "izgleda pouzdano", detail: management.verdict },
-      { label: "Najveći identifikovani rizik", positive: (risks[0]?.severity ?? 0) <= 2, detail: risks[0] ? `${risks[0].label} (${risks[0].detail})` : "Nema identifikovanih rizika." },
+      { label: "Finansijski trend", positive: breakdown.verdict === "jača", detail: breakdown.detail },
+      ...growthFilter.checks
+        .filter((c) => c.pass != null)
+        .map((c): DimensionSignal => ({ label: `Filter rasta — ${c.label}`, positive: c.pass as boolean, detail: c.detail })),
+      ...valuationFilter.checks
+        .filter((c) => c.pass != null)
+        .map((c): DimensionSignal => ({ label: `Filter valuacije — ${c.label}`, positive: c.pass as boolean, detail: c.detail })),
+      { label: "Konkurentska prednost (proxy)", positive: moat.score >= 6, detail: `Ocena ${moat.score}/10 — ${moat.detail}` },
+      { label: "Kvalitet menadžmenta (proxy)", positive: management.verdict === "izgleda pouzdano", detail: management.details.filter((d) => !d.startsWith("Napomena")).join(" ") },
+      ...risks
+        .slice(0, 3)
+        .map((r): DimensionSignal => ({ label: `Rizik — ${r.label}`, positive: r.severity <= 2, detail: r.detail })),
     ];
     const bullBear = buildBullBear(signals);
 
