@@ -37,7 +37,7 @@ export interface FinancialBreakdownResult {
   rows: YearlyFinancials[];
   revenueCagr: number | null;
   patCagr: number | null;
-  verdict: "jača" | "slabi" | "mešovito" | "nedovoljno podataka";
+  verdict: "jača" | "slabija" | "mešovita" | "nedovoljno podataka";
   detail: string;
 }
 
@@ -63,11 +63,11 @@ export function buildFinancialBreakdown(rows: YearlyFinancials[]): FinancialBrea
   let points = 0;
   const parts: string[] = [];
   if (revenueCagr != null) {
-    parts.push(`Prihod CAGR ${(revenueCagr * 100).toFixed(1)}%`);
+    parts.push(`CAGR prihoda ${(revenueCagr * 100).toFixed(1)}%`);
     points += revenueCagr > 0 ? 1 : -1;
   }
   if (patCagr != null) {
-    parts.push(`Neto dobit (PAT) CAGR ${(patCagr * 100).toFixed(1)}%`);
+    parts.push(`CAGR neto dobiti (PAT) ${(patCagr * 100).toFixed(1)}%`);
     points += patCagr > 0 ? 1 : -1;
   }
   if (debts.length >= 2) {
@@ -87,14 +87,14 @@ export function buildFinancialBreakdown(rows: YearlyFinancials[]): FinancialBrea
     }
   }
 
-  const verdict: FinancialBreakdownResult["verdict"] = points > 0 ? "jača" : points < 0 ? "slabi" : "mešovito";
+  const verdict: FinancialBreakdownResult["verdict"] = points > 0 ? "jača" : points < 0 ? "slabija" : "mešovita";
   return { rows, revenueCagr, patCagr, verdict, detail: parts.join(", ") || "Nedovoljno podataka za sve pokazatelje." };
 }
 
 // ---------- Prompt: Competitive Moat Analysis (objektivni proxy) ----------
 
 export interface MoatInputs {
-  grossMarginHistory: number[]; // hronološki
+  grossMargin: number | null; // trenutna (TTM) vrednost — Yahoo ne pruža pouzdanu godišnju istoriju ovog pokazatelja
   operatingMargins: number | null;
   returnOnInvestedCapitalProxy: number | null; // ROE korišćen kao proxy za ROIC kad ROIC nije dostupan
   wacc: number | null;
@@ -110,17 +110,13 @@ export function scoreMoat(inputs: MoatInputs): MoatResult {
   let score = 5;
   const parts: string[] = [];
 
-  const margins = inputs.grossMarginHistory.filter((v) => Number.isFinite(v));
-  if (margins.length >= 2) {
-    const avg = margins.reduce((a, b) => a + b, 0) / margins.length;
-    const spread = Math.max(...margins) - Math.min(...margins);
-    parts.push(`Prosečna bruto marža ${(avg * 100).toFixed(1)}%, varijacija ${(spread * 100).toFixed(1)}p.p.`);
-    if (avg > 0.4) score += 1;
-    if (avg > 0.6) score += 1;
-    if (spread < 0.05) score += 1; // stabilna marža = signal cenovne moći
-    else if (spread > 0.15) score -= 1;
+  if (inputs.grossMargin != null && Number.isFinite(inputs.grossMargin)) {
+    parts.push(`Bruto marža ${(inputs.grossMargin * 100).toFixed(1)}%`);
+    if (inputs.grossMargin > 0.4) score += 1;
+    if (inputs.grossMargin > 0.6) score += 1;
+    if (inputs.grossMargin < 0.2) score -= 1;
   } else {
-    parts.push("Istorija bruto marže nije dostupna.");
+    parts.push("Bruto marža nije dostupna za ovaj tiker.");
   }
 
   if (inputs.operatingMargins != null) {
@@ -197,7 +193,7 @@ export function runGrowthFilter(inputs: GrowthFilterInputs): GrowthFilterResult 
     checks.push({
       label: "Rast nije rezultat jedne izuzetne godine (bez naglog skoka)",
       pass: !oneTimeSpike,
-      detail: oneTimeSpike ? "Poslednja godina znatno odudara od proseka prethodnih — proveriti da li je jednokratna." : "Rast izgleda postepen.",
+      detail: oneTimeSpike ? "Poslednja godina znatno odudara od proseka prethodnih godina — proveriti da li je taj skok jednokratan." : "Rast izgleda postepen.",
     });
   } else {
     checks.push({ label: "Rast nije rezultat jedne izuzetne godine", pass: null, detail: "Nedovoljno godina za proveru." });
@@ -206,9 +202,9 @@ export function runGrowthFilter(inputs: GrowthFilterInputs): GrowthFilterResult 
   if (revCagr != null && niCagr != null) {
     const profitGrewSalesFlat = niCagr > 0.05 && revCagr < 0.02;
     checks.push({
-      label: "Upozorenje: dobit raste dok su prihodi stagnirali",
+      label: "Upozorenje: dobit raste dok prihodi stagniraju",
       pass: !profitGrewSalesFlat,
-      detail: profitGrewSalesFlat ? "Dobit raste uglavnom kroz uštede/marže, ne kroz prihod — proveriti održivost." : "Nije detektovano.",
+      detail: profitGrewSalesFlat ? "Dobit raste uglavnom kroz uštede i marže, a ne kroz rast prihoda — proveriti održivost." : "Nije detektovano.",
     });
   }
 
@@ -247,7 +243,7 @@ export function runValuationFilter(inputs: ValuationFilterInputs): GrowthFilterR
       ? inputs.priceToBook < 1.5 || inputs.returnOnEquity > 0.15
       : null;
   checks.push({
-    label: "P/B opravdan visinom ROE (nisko P/B ILI visok ROE)",
+    label: "P/B opravdan visinom ROE (nisko P/B ili visok ROE)",
     pass: pbOk,
     detail:
       inputs.priceToBook != null && inputs.returnOnEquity != null
@@ -256,16 +252,16 @@ export function runValuationFilter(inputs: ValuationFilterInputs): GrowthFilterR
   });
 
   checks.push({
-    label: "Dividendni prinos kao sanity-check (ako postoji, >1%)",
+    label: "Dividendni prinos kao kontrolna provera (ako postoji, >1%)",
     pass: inputs.dividendYield == null ? null : inputs.dividendYield > 0.01,
     detail: inputs.dividendYield != null ? `${(inputs.dividendYield * 100).toFixed(2)}%` : "Akcija ne isplaćuje dividendu — nije nužno loše.",
   });
 
   const pricedForPerfection = (inputs.pegRatio != null && inputs.pegRatio > 2.5) || (inputs.evToEbitda != null && inputs.evToEbitda > 25);
   checks.push({
-    label: "Nije 'ucenjena za savršenstvo' (svaki promašaj bi bolno udario)",
+    label: "Cena ne pretpostavlja savršeno izvršenje",
     pass: !pricedForPerfection,
-    detail: pricedForPerfection ? "Multiplikator implicira vrlo visoka očekivanja — mala greška u izvršenju bi mogla oštro srušiti cenu." : "Multiplikatori ne ukazuju na ekstremna očekivanja.",
+    detail: pricedForPerfection ? "Multiplikator implicira vrlo visoka očekivanja — svaki propust u izvršenju mogao bi oštro srušiti cenu." : "Multiplikatori ne ukazuju na ekstremna očekivanja.",
   });
 
   const applicable = checks.filter((c) => c.pass != null);
@@ -280,7 +276,20 @@ export interface GrowthPotentialInputs {
   revenueGrowthTtm: number | null;
 }
 
+// Diskretna ocena rasta, odvojena od teksta prikazanog korisniku — na nju se
+// oslanja finalna presuda (buildFinalVerdict), umesto na fragilno poređenje
+// prikazanog teksta.
+export type GrowthTier = "visok" | "umeren" | "nizak" | "upitan" | "nepoznat";
+
+// Pragovi (godišnja stopa rasta):
+//   visok  → preko 15%
+//   umeren → između 5% i 15%
+//   nizak  → između 0% i 5%
+//   upitan → 0% ili manje (procena je negativna ili stagnira)
+const GROWTH_TIER_THRESHOLDS = { visok: 0.15, umeren: 0.05, nizak: 0 } as const;
+
 export interface GrowthPotentialResult {
+  tier: GrowthTier;
   label: string;
   estimateRange: string;
   detail: string;
@@ -291,20 +300,40 @@ export function scoreGrowthPotential(inputs: GrowthPotentialInputs): GrowthPoten
     (v): v is number => v != null
   );
   if (values.length === 0) {
-    return { label: "Nedovoljno podataka", estimateRange: "—", detail: "Nema ni istorijskih ni konsenzus procena rasta za ovaj tiker." };
+    return {
+      tier: "nepoznat",
+      label: "Nedovoljno podataka o rastu",
+      estimateRange: "—",
+      detail: "Nema ni istorijskih podataka ni konsenzus procene analitičara o rastu za ovaj tiker.",
+    };
   }
   const avg = values.reduce((a, b) => a + b, 0) / values.length;
-  const label = avg > 0.15 ? "Visok potencijal rasta" : avg > 0.05 ? "Umeren potencijal rasta" : avg > 0 ? "Nizak potencijal rasta" : "Rast pod znakom pitanja";
+  let tier: GrowthTier;
+  let label: string;
+  if (avg > GROWTH_TIER_THRESHOLDS.visok) {
+    tier = "visok";
+    label = "Visok potencijal rasta (procena preko 15% godišnje)";
+  } else if (avg > GROWTH_TIER_THRESHOLDS.umeren) {
+    tier = "umeren";
+    label = "Umeren potencijal rasta (procena između 5% i 15% godišnje)";
+  } else if (avg > GROWTH_TIER_THRESHOLDS.nizak) {
+    tier = "nizak";
+    label = "Nizak potencijal rasta (procena između 0% i 5% godišnje)";
+  } else {
+    tier = "upitan";
+    label = "Rast pod znakom pitanja (procena je 0% ili negativna)";
+  }
   const low = Math.max(-0.1, avg - 0.05);
   const high = avg + 0.05;
   const parts: string[] = [];
-  if (inputs.historicalRevenueCagr != null) parts.push(`Istorijski CAGR prihoda ${(inputs.historicalRevenueCagr * 100).toFixed(1)}%`);
-  if (inputs.analystLongTermGrowth != null) parts.push(`Konsenzus analitičara (dugoročni rast) ${(inputs.analystLongTermGrowth * 100).toFixed(1)}%`);
-  if (inputs.revenueGrowthTtm != null) parts.push(`Rast prihoda (poslednjih 12m) ${(inputs.revenueGrowthTtm * 100).toFixed(1)}%`);
+  if (inputs.historicalRevenueCagr != null) parts.push(`istorijski CAGR prihoda ${(inputs.historicalRevenueCagr * 100).toFixed(1)}%`);
+  if (inputs.analystLongTermGrowth != null) parts.push(`konsenzus analitičara o dugoročnom rastu ${(inputs.analystLongTermGrowth * 100).toFixed(1)}%`);
+  if (inputs.revenueGrowthTtm != null) parts.push(`rast prihoda u poslednjih 12 meseci ${(inputs.revenueGrowthTtm * 100).toFixed(1)}%`);
   return {
+    tier,
     label,
     estimateRange: `${(low * 100).toFixed(0)}%–${(high * 100).toFixed(0)}% godišnje`,
-    detail: parts.join(", ") + ". Analiza samo — nije poziv na kupovinu ili prodaju.",
+    detail: `Procena je prosek dostupnih pokazatelja (${parts.join(", ")}). Ovo je samo analiza — nije poziv na kupovinu ili prodaju.`,
   };
 }
 
@@ -317,7 +346,6 @@ export interface RiskInputs {
   peRatio: number | null;
   sectorPeMedian: number | null; // ako nije dostupno, koristi se generički prag
   analystDispersion: { high: number; low: number; mean: number } | null;
-  grossMarginTrend: number[]; // hronološki
 }
 
 export interface RiskItem {
@@ -360,7 +388,7 @@ export function rankRisks(inputs: RiskInputs): RiskItem[] {
     risks.push({
       label: "Rizik precenjenosti",
       severity: ratio > 1.8 ? 5 : ratio > 1.3 ? 3 : ratio > 1 ? 2 : 1,
-      detail: `P/E ${inputs.peRatio.toFixed(1)} naspram referentnih ${threshold.toFixed(0)}`,
+      detail: `P/E ${inputs.peRatio.toFixed(1)} u odnosu na referentnu vrednost od ${threshold.toFixed(0)}`,
     });
   }
 
@@ -374,16 +402,6 @@ export function rankRisks(inputs: RiskInputs): RiskItem[] {
         detail: `Raspon ciljnih cena ${(spread * 100).toFixed(0)}% oko proseka`,
       });
     }
-  }
-
-  const margins = inputs.grossMarginTrend.filter((v) => Number.isFinite(v));
-  if (margins.length >= 2) {
-    const declining = margins[margins.length - 1] < margins[0];
-    risks.push({
-      label: "Erozija marže / konkurentski pritisak",
-      severity: declining ? 3 : 1,
-      detail: declining ? "Bruto marža opada u poslednjim izveštajima." : "Bruto marža stabilna ili raste.",
-    });
   }
 
   return risks.sort((a, b) => b.severity - a.severity);
@@ -411,7 +429,7 @@ export function scoreManagementQuality(inputs: ManagementInputs): ManagementQual
 
   if (inputs.heldPercentInsiders != null) {
     signals++;
-    details.push(`Udeo akcija u vlasništvu insajdera/osnivača: ${(inputs.heldPercentInsiders * 100).toFixed(1)}%`);
+    details.push(`Udeo akcija u vlasništvu insajdera i osnivača: ${(inputs.heldPercentInsiders * 100).toFixed(1)}%`);
     if (inputs.heldPercentInsiders > 0.05) points += 1; // "skin in the game"
     if (inputs.heldPercentInsiders > 0.5) points -= 1; // koncentracija kontrole = rizik korporativnog upravljanja
   }
@@ -419,7 +437,7 @@ export function scoreManagementQuality(inputs: ManagementInputs): ManagementQual
   if (inputs.insiderNetPercentShares != null) {
     signals++;
     const buying = inputs.insiderNetPercentShares > 0;
-    details.push(`Neto insajderske transakcije (skorije): ${buying ? "kupovina" : "prodaja"} (${(inputs.insiderNetPercentShares * 100).toFixed(2)}%)`);
+    details.push(`Neto insajderske transakcije u poslednjem periodu: ${buying ? "kupovina" : "prodaja"} (${(inputs.insiderNetPercentShares * 100).toFixed(2)}%)`);
     points += buying ? 1 : -1;
   }
 
@@ -446,7 +464,7 @@ export function scoreManagementQuality(inputs: ManagementInputs): ManagementQual
   }
 
   const verdict: ManagementQualityResult["verdict"] = points > 0 ? "izgleda pouzdano" : points < 0 ? "izgleda rizično" : "mešovito";
-  details.push("Napomena: 'kvalitet menadžmenta' se ovde meri isključivo kroz proverljive podatke (vlasništvo, insajderske transakcije, disciplina dividende) — ne kroz reputaciju ili medijski utisak.");
+  details.push("Napomena: 'kvalitet menadžmenta' se ovde meri isključivo kroz proverljive podatke (vlasnička struktura, insajderske transakcije, disciplina isplate dividende) — ne kroz reputaciju ili medijski utisak.");
   return { verdict, details };
 }
 
@@ -471,7 +489,7 @@ export function buildBullBear(signals: DimensionSignal[]): BullBearResult {
   if (bull.length > bear.length * 1.5) {
     conclusion = "Bikovski argumenti brojčano preovlađuju, ali svaki pojedinačni pokazatelj treba proveriti — brojčana prevaga ne znači automatski da je akcija dobra kupovina.";
   } else if (bear.length > bull.length * 1.5) {
-    conclusion = "Medvedi argumenti brojčano preovlađuju — vredi razumeti da li su to strukturni problemi ili privremene poteškoće.";
+    conclusion = "Medveđi argumenti brojčano preovlađuju — vredi razumeti da li su to strukturni problemi ili privremene poteškoće.";
   } else {
     conclusion = "Argumenti su podeljeni otprilike podjednako — ovo je znak da odluka zavisi od ličnog horizonta i tolerancije na rizik, ne od jasnog konsenzusa podataka.";
   }
@@ -482,9 +500,10 @@ export function buildBullBear(signals: DimensionSignal[]): BullBearResult {
 
 export interface FinalVerdictInputs {
   shortTermUpside: number | null; // implicira prosečna ciljna cena analitičara (1 god.)
-  growthLabel: string; // iz Growth Potential Analysis — stvarna procena rasta poslovanja, ne procena vrednosti
+  growthTier: GrowthTier; // iz Growth Potential Analysis — stvarna procena rasta poslovanja, ne procena vrednosti
+  growthLabel: string;
   growthDetail: string;
-  valuationUpside: number | null; // implicira prosek modela procene vrednosti (DCF, DDM, relativna, Lynch) — "komfor valuacije", odvojeno od procene rasta
+  valuationUpside: number | null; // implicira prosek modela procene vrednosti (DCF, DDM, relativna, Lynch) — koristi se samo interno, za razlikovanje kupovine od čekanja na bolju cenu
   catalysts: string[];
   risks: string[];
   pricedForPerfection: boolean;
@@ -493,7 +512,6 @@ export interface FinalVerdictInputs {
 export interface FinalVerdict {
   shortTermLabel: string;
   growthLabel: string;
-  valuationComfortLabel: string;
   verdict: "Kupovina" | "Držanje" | "Izbegavanje" | "Nedovoljno podataka";
   detail: string;
 }
@@ -505,27 +523,22 @@ function outlookLabel(upside: number | null): string {
   return "Negativan";
 }
 
-// Rastu se pridaje brojčana vrednost da bi se moglo porediti/kombinovati sa
-// komforom valuacije — ne meri se u procentima jer growth potential rezultat
-// nosi već zaokruženu kvalitativnu ocenu (visok/umeren/nizak/upitan rast).
-function growthScore(label: string): number | null {
-  if (label === "Visok potencijal rasta") return 2;
-  if (label === "Umeren potencijal rasta") return 1;
-  if (label === "Nizak potencijal rasta") return 0;
-  if (label === "Rast pod znakom pitanja") return -1;
-  return null; // "Nedovoljno podataka"
+function growthScore(tier: GrowthTier): number | null {
+  if (tier === "visok") return 2;
+  if (tier === "umeren") return 1;
+  if (tier === "nizak") return 0;
+  if (tier === "upitan") return -1;
+  return null; // "nepoznat"
 }
 
 export function buildFinalVerdict(inputs: FinalVerdictInputs): FinalVerdict {
   const shortTermLabel = outlookLabel(inputs.shortTermUpside);
-  const valuationComfortLabel = outlookLabel(inputs.valuationUpside);
-  const gScore = growthScore(inputs.growthLabel);
+  const gScore = growthScore(inputs.growthTier);
 
   if (gScore == null && inputs.valuationUpside == null) {
     return {
       shortTermLabel,
       growthLabel: inputs.growthLabel,
-      valuationComfortLabel,
       verdict: "Nedovoljno podataka",
       detail: "Nema dovoljno podataka (ni o rastu ni o valuaciji) za konačan sud.",
     };
@@ -533,10 +546,10 @@ export function buildFinalVerdict(inputs: FinalVerdictInputs): FinalVerdict {
 
   let verdict: FinalVerdict["verdict"];
   if (gScore != null && gScore <= 0) {
-    // Slab ili upitan rast poslovanja — nijedna valuacija to ne kompenzuje.
+    // Slab ili upitan rast poslovanja — nijedna cena to ne kompenzuje.
     verdict = "Izbegavanje";
   } else if (inputs.pricedForPerfection || (inputs.valuationUpside != null && inputs.valuationUpside < -0.15)) {
-    // Rast je u redu, ali se plaća previše za njega — sačekaj bolju cenu.
+    // Rast je u redu, ali se za njega trenutno plaća previše — sačekaj bolju cenu.
     verdict = "Držanje";
   } else if (gScore == null) {
     // Rast se ne može proceniti iz dostupnih podataka — oprez umesto nagađanja.
@@ -547,15 +560,14 @@ export function buildFinalVerdict(inputs: FinalVerdictInputs): FinalVerdict {
 
   const detail = [
     `Kratkoročno (1 god., prema konsenzusu analitičara): ${shortTermLabel}.`,
-    `Dugoročni izgled rasta (5+ god., iz istorijskog rasta i konsenzusa analitičara o rastu — NE iz modela procene vrednosti): ${inputs.growthLabel}. ${inputs.growthDetail}`,
-    `Komfor valuacije (koliko trenutna cena odstupa od proseka modela procene vrednosti): ${valuationComfortLabel}.`,
+    `Dugoročni izgled rasta (5+ god., iz istorijskog rasta i konsenzusa analitičara o rastu — ne iz modela procene vrednosti): ${inputs.growthLabel}. ${inputs.growthDetail}`,
     inputs.catalysts.length ? `Ključni katalizatori: ${inputs.catalysts.join("; ")}.` : "",
     inputs.risks.length ? `Najveći rizici: ${inputs.risks.join("; ")}.` : "",
-    inputs.pricedForPerfection ? "Upozorenje: akcija je 'ucenjena za savršenstvo' — mala greška u izvršenju bi mogla oštro pogoditi cenu." : "",
+    inputs.pricedForPerfection ? "Upozorenje: cena akcije pretpostavlja gotovo savršeno izvršenje — i najmanji propust mogao bi je oštro pogoditi." : "",
     "Ovo NIJE finansijski savet — sud je automatski izveden iz pretpostavki koje si uneo/la u modelu.",
   ]
     .filter(Boolean)
     .join(" ");
 
-  return { shortTermLabel, growthLabel: inputs.growthLabel, valuationComfortLabel, verdict, detail };
+  return { shortTermLabel, growthLabel: inputs.growthLabel, verdict, detail };
 }

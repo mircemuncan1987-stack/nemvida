@@ -76,7 +76,7 @@ export default function ModelAnalysis() {
   let content: React.ReactNode = null;
 
   if (result) {
-    const { data, breakdown, growthFilter, valuationFilter, moat, growthPotential, risks, management, bullBear, finalVerdict, shortTermUpside, valuationUpside, avgIntrinsicValue, lynchValue } = result;
+    const { data, breakdown, growthFilter, valuationFilter, moat, growthPotential, risks, management, bullBear, finalVerdict, shortTermUpside } = result;
 
     content = (
       <div className="mt-6 space-y-4">
@@ -112,12 +112,18 @@ export default function ModelAnalysis() {
               </tbody>
             </table>
           </div>
-          <p className="mt-3 text-sm">Zaključak: kompanija izgleda <b>{breakdown.verdict}</b>. {breakdown.detail}</p>
+          <p className="mt-3 text-sm">
+            {breakdown.verdict === "nedovoljno podataka" ? (
+              <>Nema dovoljno podataka za zaključak. {breakdown.detail}</>
+            ) : (
+              <>Zaključak: finansijski položaj kompanije izgleda <b>{breakdown.verdict}</b>. {breakdown.detail}</>
+            )}
+          </p>
         </Section>
 
         <Section title="2. Filter rasta — kvantitativni skrining">
           <div>{growthFilter.checks.map(checkRow)}</div>
-          <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">{growthFilter.passCount}/{growthFilter.totalApplicable} primenjivih kriterijuma zadovoljeno. Analiza samo — nije poziv na kupovinu ili prodaju.</p>
+          <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">{growthFilter.passCount}/{growthFilter.totalApplicable} primenjivih kriterijuma zadovoljeno. Ovo je samo analiza — nije poziv na kupovinu ili prodaju.</p>
         </Section>
 
         <Section title="3. Potencijal rasta (5-10 god.)">
@@ -127,7 +133,7 @@ export default function ModelAnalysis() {
 
         <Section title="4. Filter valuacije">
           <div>{valuationFilter.checks.map(checkRow)}</div>
-          <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">{valuationFilter.passCount}/{valuationFilter.totalApplicable} primenjivih kriterijuma zadovoljeno. Jeftino može značiti pokvareno, skupo može značiti kvalitet — ovo je samo disciplinski filter, ne presuda.</p>
+          <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">{valuationFilter.passCount}/{valuationFilter.totalApplicable} primenjivih kriterijuma zadovoljeno. Jeftino ponekad znači pokvareno, a skupo ponekad znači kvalitet — ovo je samo disciplinski filter, ne presuda.</p>
         </Section>
 
         <Section title="5. Konkurentska prednost (objektivni proxy)">
@@ -153,7 +159,13 @@ export default function ModelAnalysis() {
         </Section>
 
         <Section title="7. Kvalitet menadžmenta (objektivni proxy)">
-          <p className="text-sm mb-2">Zaključak: <b>{management.verdict}</b></p>
+          <p className="text-sm mb-2">
+            {management.verdict === "nedovoljno podataka" ? (
+              <>Nema dovoljno podataka za zaključak o kvalitetu menadžmenta.</>
+            ) : (
+              <>Zaključak: menadžment <b>{management.verdict}</b>.</>
+            )}
+          </p>
           <ul className="list-disc pl-5 space-y-1 text-sm text-zinc-600 dark:text-zinc-400">
             {management.details.map((d, i) => (
               <li key={i}>{d}</li>
@@ -185,13 +197,10 @@ export default function ModelAnalysis() {
           <div className="text-sm mb-2 flex gap-4 flex-wrap">
             <span>Kratkoročno (1 god., konsenzus analitičara): <b>{finalVerdict.shortTermLabel}</b> ({fmtPct(shortTermUpside)})</span>
             <span>Dugoročni izgled rasta (5+ god.): <b>{finalVerdict.growthLabel}</b></span>
-            <span>Komfor valuacije: <b>{finalVerdict.valuationComfortLabel}</b> ({fmtPct(valuationUpside)})</span>
           </div>
           <p className="text-sm leading-relaxed">{finalVerdict.detail}</p>
           <p className="mt-3 text-xs text-zinc-500 dark:text-zinc-400">
-            Dugoročni izgled rasta se procenjuje iz istorijskog rasta i konsenzusa analitičara o rastu (vidi sekciju 3) — namerno NIJE izveden iz modela procene vrednosti, jer svaki takav model nosi svoja ograničenja (pretpostavke o stopi rasta, diskontnoj stopi i sl.) koja mogu iskriviti sud čak i za kvalitetne kompanije.
-            {" "}Komfor valuacije je odvojen signal: prosek DCF, Dividend Discount, relativne (P/E) i Lynch (fer P/E = stopa rasta + dividendni prinos) procene: {fmtMoney(avgIntrinsicValue, data.currency)}.
-            {lynchValue != null && <> Lynch procena samostalno: {fmtMoney(lynchValue, data.currency)}.</>}
+            Dugoročni izgled rasta se procenjuje iz istorijskog rasta i konsenzusa analitičara o rastu (vidi sekciju 3), namerno bez oslanjanja na modele procene vrednosti — svaki takav model nosi svoja ograničenja (pretpostavke o stopi rasta, diskontnoj stopi i sl.) koja mogu iskriviti sud čak i za kvalitetne kompanije. Cena i dalje utiče na konačan sud (kupovina naspram čekanja na bolju cenu) preko filtera valuacije u sekciji 4, samo se ne prikazuje kao poseban broj u ovom zaključku.
           </p>
         </div>
 
@@ -206,8 +215,8 @@ export default function ModelAnalysis() {
     <div className="max-w-4xl mx-auto px-4 pb-16">
       <div className="mt-4 mb-5 text-sm leading-relaxed rounded-xl border border-amber-300/60 dark:border-amber-700/50 bg-amber-50 dark:bg-amber-900/15 text-amber-800 dark:text-amber-300 p-4">
         <b>⚠ Samo američke i evropske akcije.</b> Ovo NIJE finansijski savet — edukativni alat koji objedinjuje devet
-        analitičkih dimenzija (finansijski trend, rast, valuacija, konkurentska prednost, rizik, menadžment, bull/bear,
-        i finalna sinteza) isključivo iz merljivih podataka.
+        analitičkih dimenzija (finansijski trend, rast, valuacija, konkurentska prednost, rizik, menadžment, bikovska i
+        medveđa debata i finalna sinteza) isključivo iz merljivih podataka.
       </div>
 
       <form onSubmit={handleSubmit} className="flex flex-wrap gap-2 items-end border border-zinc-200 dark:border-zinc-800 bg-white/70 dark:bg-zinc-900/50 rounded-xl p-4">

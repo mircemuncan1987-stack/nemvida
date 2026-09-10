@@ -47,7 +47,7 @@ export interface ModelData {
   currentPrice: number;
   fundamentals: Fundamentals;
   yearlyRows: YearlyFinancials[];
-  grossMarginHistory: number[];
+  grossMargin: number | null;
   peRatio: number | null;
   pegRatio: number | null;
   evToEbitda: number | null;
@@ -144,16 +144,6 @@ export function extractModelData(result: any, symbol: string): ModelData {
     }
   );
 
-  const grossMarginHistory: number[] = incomeStatements
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    .map((s: any) => {
-      const gp = s.grossProfit?.raw;
-      const rev = s.totalRevenue?.raw;
-      if (gp == null || !rev) return null;
-      return gp / rev;
-    })
-    .filter((v: number | null): v is number => v != null);
-
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const longTermTrend = earningsTrend.find((t: any) => t.period === "+5y");
   const analystLongTermGrowth = longTermTrend?.growth?.raw ?? null;
@@ -164,7 +154,7 @@ export function extractModelData(result: any, symbol: string): ModelData {
     currentPrice,
     fundamentals,
     yearlyRows,
-    grossMarginHistory,
+    grossMargin: financialData.grossMargins?.raw ?? null,
     peRatio: summaryDetail.trailingPE?.raw ?? null,
     pegRatio: keyStats.pegRatio?.raw ?? null,
     evToEbitda: keyStats.enterpriseToEbitda?.raw ?? null,
@@ -234,7 +224,7 @@ export function computeModel(data: ModelData, assumptions: Assumptions = DEFAULT
     dividendYield: data.dividendYield,
   });
   const moat = scoreMoat({
-    grossMarginHistory: data.grossMarginHistory,
+    grossMargin: data.grossMargin,
     operatingMargins: data.operatingMargins,
     returnOnInvestedCapitalProxy: data.returnOnEquity,
     wacc,
@@ -255,7 +245,6 @@ export function computeModel(data: ModelData, assumptions: Assumptions = DEFAULT
       data.targetHighPrice != null && data.targetLowPrice != null && data.targetMeanPrice != null
         ? { high: data.targetHighPrice, low: data.targetLowPrice, mean: data.targetMeanPrice }
         : null,
-    grossMarginTrend: data.grossMarginHistory,
   });
   const management = scoreManagementQuality({
     heldPercentInsiders: data.heldPercentInsiders,
@@ -281,6 +270,7 @@ export function computeModel(data: ModelData, assumptions: Assumptions = DEFAULT
 
   const finalVerdict = buildFinalVerdict({
     shortTermUpside,
+    growthTier: growthPotential.tier,
     growthLabel: growthPotential.label,
     growthDetail: growthPotential.detail,
     valuationUpside,
