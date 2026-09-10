@@ -239,7 +239,7 @@ export default function ModelAnalysis() {
           <p className="mt-3 text-sm italic text-zinc-600 dark:text-zinc-400">{bullBear.conclusion}</p>
         </Section>
 
-        <div className={`rounded-xl border-2 p-5 ${finalVerdict.verdict === "Kupovina" ? "border-emerald-400 dark:border-emerald-700" : finalVerdict.verdict === "Izbegavanje" ? "border-red-400 dark:border-red-700" : "border-zinc-300 dark:border-zinc-700"}`}>
+        <div className={`rounded-xl border-2 p-5 ${finalVerdict.verdict === "Kupovina" ? "border-emerald-400 dark:border-emerald-700" : finalVerdict.verdict === "Izbegavanje" ? "border-red-400 dark:border-red-700" : finalVerdict.verdict === "Čekaj — preskupo" ? "border-amber-400 dark:border-amber-700" : "border-zinc-300 dark:border-zinc-700"}`}>
           <div className="text-xs uppercase tracking-wide text-zinc-500 dark:text-zinc-400 mb-1">9. Finalna sinteza — da li kupiti ovu akciju?</div>
           <div className="text-lg font-bold mb-1">{finalVerdict.verdict}</div>
           <div className="text-sm mb-2 flex gap-4 flex-wrap">

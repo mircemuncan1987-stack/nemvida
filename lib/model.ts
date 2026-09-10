@@ -503,15 +503,21 @@ export interface FinalVerdictInputs {
   growthTier: GrowthTier; // iz Growth Potential Analysis — stvarna procena rasta poslovanja, ne procena vrednosti
   growthLabel: string;
   growthDetail: string;
+  growthEstimateRange: string; // npr. "8%–13% godišnje" — konkretan broj za ovu kompaniju
+  pegRatio: number | null;
+  evToEbitda: number | null;
   catalysts: string[];
   risks: string[];
+  topRiskDetail: string | null; // label + detalj najvećeg pojedinačnog rizika, za konkretno obrazloženje
   pricedForPerfection: boolean;
 }
+
+export type Verdict4 = "Kupovina" | "Držanje" | "Čekaj — preskupo" | "Izbegavanje" | "Nedovoljno podataka";
 
 export interface FinalVerdict {
   shortTermLabel: string;
   growthLabel: string;
-  verdict: "Kupovina" | "Držanje" | "Izbegavanje" | "Nedovoljno podataka";
+  verdict: Verdict4;
   detail: string;
 }
 
@@ -543,20 +549,27 @@ export function buildFinalVerdict(inputs: FinalVerdictInputs): FinalVerdict {
     };
   }
 
-  let verdict: FinalVerdict["verdict"];
+  const pricingFacts: string[] = [];
+  if (inputs.pegRatio != null) pricingFacts.push(`PEG ${inputs.pegRatio.toFixed(2)}`);
+  if (inputs.evToEbitda != null) pricingFacts.push(`EV/EBITDA ${inputs.evToEbitda.toFixed(1)}×`);
+  const pricingText = pricingFacts.length ? pricingFacts.join(", ") : "multiplikatori nisu dostupni";
+
+  let verdict: Verdict4;
   let reasoning: string;
-  if (gScore <= 0) {
+  if (gScore === -1) {
     verdict = "Izbegavanje";
-    reasoning =
-      "Zašto izbegavanje: poslovanje samo po sebi ne raste dovoljno (ili je rast upitan) — a kad osnovni biznis ne raste, nijedna cena to dugoročno ne kompenzuje, pa se dalja analiza valuacije ne isplati.";
-  } else if (inputs.pricedForPerfection) {
+    reasoning = `Zašto izbegavanje: procena rasta za ovu kompaniju je ${inputs.growthEstimateRange} — ${inputs.growthLabel.toLowerCase()}. Kad osnovno poslovanje ne raste (ili je rast upitan), nijedna cena to dugoročno ne kompenzuje.${
+      inputs.topRiskDetail ? ` Dodatno opterećenje: ${inputs.topRiskDetail}.` : ""
+    }`;
+  } else if (gScore === 0) {
     verdict = "Držanje";
-    reasoning =
-      "Zašto držanje: poslovanje ima dovoljno dobar rast da opravda dalje praćenje, ali trenutna cena već pretpostavlja gotovo savršeno izvršenje (visok PEG i/ili EV/EBITDA) — svaki propust bi je oštro pogodio, pa je razumnije sačekati bolju cenu za ulazak nego kupovati odmah.";
+    reasoning = `Zašto držanje: procenjeni rast je ${inputs.growthEstimateRange} — spor, ali pozitivan. Ovo je pre profil za držanje postojeće pozicije (ili posmatranje) nego za novu, agresivnu kupovinu — poslovanje nije loše, samo ne raste dovoljno brzo da samo po sebi opravda kupovinu.`;
+  } else if (inputs.pricedForPerfection) {
+    verdict = "Čekaj — preskupo";
+    reasoning = `Zašto čekati: rast od ${inputs.growthEstimateRange} (${inputs.growthLabel.toLowerCase()}) je solidan, ali cena već uračunava gotovo savršeno izvršenje — ${pricingText}. Svaki propust u poslovanju bi ovde nesrazmerno oštro pogodio cenu, pa je razumnije sačekati povoljniji ulaz nego kupovati po trenutnoj ceni.`;
   } else {
     verdict = "Kupovina";
-    reasoning =
-      "Zašto kupovina: poslovanje pokazuje dovoljno dobar rast, a cena ne pretpostavlja ekstremno savršeno izvršenje (multiplikatori nisu u zoni upozorenja) — kombinacija rasta i razumne cene ovde je najjača.";
+    reasoning = `Zašto kupovina: rast od ${inputs.growthEstimateRange} (${inputs.growthLabel.toLowerCase()}) je solidan, a cena ne uračunava ekstremna očekivanja — ${pricingText}. Kombinacija rasta koji nije precenjen ovde je najjača.`;
   }
 
   const detail = [
@@ -565,7 +578,6 @@ export function buildFinalVerdict(inputs: FinalVerdictInputs): FinalVerdict {
     `Dugoročni izgled rasta (5+ god., iz istorijskog rasta i konsenzusa analitičara o rastu — ne iz modela procene vrednosti): ${inputs.growthLabel}. ${inputs.growthDetail}`,
     inputs.catalysts.length ? `Ključni katalizatori: ${inputs.catalysts.join("; ")}.` : "",
     inputs.risks.length ? `Najveći rizici: ${inputs.risks.join("; ")}.` : "",
-    inputs.pricedForPerfection ? "Upozorenje: cena akcije pretpostavlja gotovo savršeno izvršenje — i najmanji propust mogao bi je oštro pogoditi." : "",
     "Ovo NIJE finansijski savet — sud je automatski izveden iz pretpostavki koje si uneo/la u modelu.",
   ]
     .filter(Boolean)

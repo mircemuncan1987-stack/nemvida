@@ -273,8 +273,12 @@ export function computeModel(data: ModelData, assumptions: Assumptions = DEFAULT
     growthTier: growthPotential.tier,
     growthLabel: growthPotential.label,
     growthDetail: growthPotential.detail,
+    growthEstimateRange: growthPotential.estimateRange,
+    pegRatio: data.pegRatio,
+    evToEbitda: data.evToEbitda,
     catalysts: [`${growthPotential.label} (${growthPotential.estimateRange})`],
     risks: risks.slice(0, 2).map((r) => r.label),
+    topRiskDetail: risks[0] ? `${risks[0].label} — ${risks[0].detail}` : null,
     pricedForPerfection: valuationFilter.pricedForPerfection,
   });
 
