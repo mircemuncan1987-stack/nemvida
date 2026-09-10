@@ -263,7 +263,7 @@ export default function Sp500Screener() {
       <div className="mt-4 mb-5 text-sm leading-relaxed rounded-xl border border-amber-300/60 dark:border-amber-700/50 bg-amber-50 dark:bg-amber-900/15 text-amber-800 dark:text-amber-300 p-4">
         <b>⚠ Ovo NIJE finansijski savet.</b> Fer vrednost je prosek nekoliko modela sa podrazumevanim pretpostavkama
         (nisu ručno prilagođene po kompaniji) — za detaljniju analizu pojedinačne akcije koristi{" "}
-        <a href="/vrednost" className="underline">stranicu za procenu vrednosti</a>. Liste tikera po indeksima su
+        <a href="/model" className="underline">sveobuhvatni model</a>. Liste tikera po indeksima su
         snimci iz opšteg znanja i mogu odstupati od trenutnog zvaničnog sastava (kompozicije se povremeno menjaju).
         &quot;Osveženo&quot; znači vreme poslednjeg preuzimanja podataka (keširano lokalno do 12h), ne doslovno live
         tik-po-tik cena.
@@ -343,7 +343,7 @@ export default function Sp500Screener() {
                 {filteredRows.map((r) => (
                   <tr key={r.ticker}>
                     <td className="py-2 px-3 border-b border-zinc-200 dark:border-zinc-800 font-semibold">
-                      <a href={`/vrednost?ticker=${r.ticker}`} className="hover:underline">{r.ticker}</a>
+                      <a href={`/model?ticker=${r.ticker}`} className="hover:underline">{r.ticker}</a>
                     </td>
                     <td className="py-2 px-3 border-b border-zinc-200 dark:border-zinc-800 text-zinc-600 dark:text-zinc-400">{r.companyName}</td>
                     <td className="py-2 px-3 border-b border-zinc-200 dark:border-zinc-800 text-right tabular-nums">{fmtMoney(r.currentPrice, r.currency)}</td>
