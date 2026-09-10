@@ -156,11 +156,23 @@ export function computeReverseDcfGrowth(
   return (lo + hi) / 2;
 }
 
-export function computeGrahamNumber(fundamentals: Fundamentals): number | null {
-  const eps = fundamentals.trailingEps;
-  const bvps = fundamentals.bookValuePerShare;
-  if (!eps || eps <= 0 || !bvps || bvps <= 0) return null;
-  return Math.sqrt(22.5 * eps * bvps);
+// Peter Lynch-ova "fer P/E" heuristika (iz "One Up On Wall Street"): fer P/E
+// multiplikator treba da odgovara stopi rasta zarade (u procentnim
+// poenima), uvećanoj za dividendni prinos — kompanija koja raste 15%
+// godišnje sa 2% dividende "zaslužuje" P/E od otprilike 17. Za razliku od
+// Grahamovog broja (kalibrisanog za akcije sa visokom knjigovodstvenom
+// vrednošću), ovo eksplicitno uzima rast u obzir, pa ostaje relevantno i za
+// savremene, kapitalno-lake kompanije.
+export function computeLynchValuation(
+  fundamentals: Fundamentals,
+  growthRatePercent: number,
+  dividendYieldPercent: number
+): number | null {
+  const eps = fundamentals.forwardEps ?? fundamentals.trailingEps;
+  if (!eps || eps <= 0) return null;
+  const fairPE = growthRatePercent + dividendYieldPercent;
+  if (fairPE <= 0) return null;
+  return eps * fairPE;
 }
 
 export function computeDdm(fundamentals: Fundamentals, assumptions: Assumptions): number | null {

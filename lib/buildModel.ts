@@ -6,7 +6,7 @@
 import {
   computeDcf,
   computeDdm,
-  computeGrahamNumber,
+  computeLynchValuation,
   computeRelativeValuation,
   estimateFcfCagr,
   estimateWacc,
@@ -193,7 +193,7 @@ export interface ComputedModel {
   data: ModelData;
   wacc: number;
   avgIntrinsicValue: number | null;
-  grahamNumber: number | null;
+  lynchValue: number | null;
   shortTermUpside: number | null;
   longTermUpside: number | null;
   breakdown: ReturnType<typeof buildFinancialBreakdown>;
@@ -213,17 +213,10 @@ export function computeModel(data: ModelData, assumptions: Assumptions = DEFAULT
   const suggestedGrowth = estimateFcfCagr(f.fcfHistory) ?? (f.revenueGrowth != null ? Math.max(-0.1, Math.min(0.3, f.revenueGrowth)) : assumptions.growthRateY1to5);
   const valuationAssumptions = { ...assumptions, growthRateY1to5: suggestedGrowth, targetPE: f.trailingPE ?? assumptions.targetPE };
   const dcf = computeDcf(f, valuationAssumptions, wacc);
-  const grahamNumber = computeGrahamNumber(f);
   const ddm = computeDdm(f, valuationAssumptions);
   const relative = computeRelativeValuation(f, valuationAssumptions);
-  // Graham Number je namerno isključen iz proseka: formula (√(22.5 × EPS ×
-  // knjigovodstvena vrednost)) je kalibrisana za klasične "value" akcije sa
-  // visokom knjigovodstvenom vrednošću po akciji. Sistematski potcenjuje
-  // kvalitetne, kapitalno-lake kompanije sa otkupom akcija (npr. Visa,
-  // Coca-Cola, Nvidia) čija je knjigovodstvena vrednost namerno niska — to
-  // nije signal precenjenosti, već ograničenje same formule. Zadržava se
-  // samo kao informativan podatak.
-  const modelValues = [dcf.intrinsicValuePerShare, ddm, relative].filter((v): v is number => v != null);
+  const lynchValue = computeLynchValuation(f, valuationAssumptions.growthRateY1to5 * 100, (data.dividendYield ?? 0) * 100);
+  const modelValues = [dcf.intrinsicValuePerShare, ddm, relative, lynchValue].filter((v): v is number => v != null);
   const avgIntrinsicValue = modelValues.length ? modelValues.reduce((a, b) => a + b, 0) / modelValues.length : null;
   const longTermUpside = summarizeUpside(f.currentPrice, avgIntrinsicValue);
   const shortTermUpside = summarizeUpside(f.currentPrice, data.targetMeanPrice);
@@ -294,5 +287,5 @@ export function computeModel(data: ModelData, assumptions: Assumptions = DEFAULT
     pricedForPerfection: valuationFilter.pricedForPerfection,
   });
 
-  return { data, wacc, avgIntrinsicValue, grahamNumber, shortTermUpside, longTermUpside, breakdown, growthFilter, valuationFilter, moat, growthPotential, risks, management, bullBear, finalVerdict };
+  return { data, wacc, avgIntrinsicValue, lynchValue, shortTermUpside, longTermUpside, breakdown, growthFilter, valuationFilter, moat, growthPotential, risks, management, bullBear, finalVerdict };
 }
