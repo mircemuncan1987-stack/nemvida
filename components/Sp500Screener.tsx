@@ -4,29 +4,7 @@ import { useRef, useState } from "react";
 import { SP500_TICKERS } from "@/lib/sp500";
 import { DOW30_TICKERS } from "@/lib/dow30";
 import { NASDAQ100_TICKERS } from "@/lib/nasdaq100";
-import {
-  computeDcf,
-  computeDdm,
-  computeGrahamNumber,
-  computeRelativeValuation,
-  estimateFcfCagr,
-  estimateWacc,
-  summarizeUpside,
-  type Assumptions,
-  type Fundamentals,
-} from "@/lib/valuation";
-import { combineVerdict, summarizeQualitative, type QualitativeInputs } from "@/lib/qualitative";
-
-const DEFAULT_ASSUMPTIONS: Assumptions = {
-  growthRateY1to5: 0.08,
-  terminalGrowthRate: 0.025,
-  riskFreeRate: 0.045,
-  equityRiskPremium: 0.05,
-  costOfDebt: 0.06,
-  taxRate: 0.21,
-  dividendGrowthRate: 0.03,
-  targetPE: 18,
-};
+import { DEFAULT_ASSUMPTIONS, computeModel, extractModelData } from "@/lib/buildModel";
 
 const CONCURRENCY = 6;
 const CACHE_TTL_MS = 12 * 60 * 60 * 1000; // 12h — "realno vreme" u praksi znači osveženo par puta dnevno, ne svake sekunde
@@ -47,7 +25,6 @@ interface Row {
   fairValue: number | null;
   upside: number | null;
   verdictLabel: string;
-  qualitativeLabel: string;
   error?: string;
 }
 
@@ -56,105 +33,24 @@ const fmtPct = (x: number | null | undefined) =>
 
 const fmtMoney = (x: number, currency: string) => `${x.toLocaleString("en-US", { maximumFractionDigits: 2 })} ${currency}`;
 
-async function fetchAndScore(ticker: string, assumptions: Assumptions): Promise<Row> {
+async function fetchAndScore(ticker: string): Promise<Row> {
   const res = await fetch(`/api/stock?symbol=${encodeURIComponent(ticker)}&type=valuation`, { cache: "no-store" });
   const data = await res.json();
   if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
   const result = data?.quoteSummary?.result?.[0];
   if (!result) throw new Error("Nema podataka");
 
-  const price = result.price || {};
-  const summaryDetail = result.summaryDetail || {};
-  const keyStats = result.defaultKeyStatistics || {};
-  const financialData = result.financialData || {};
-  const cashflowStatements = result.cashflowStatementHistory?.cashflowStatements || [];
-  const incomeStatements = result.incomeStatementHistory?.incomeStatementHistory || [];
-  const recTrend = result.recommendationTrend?.trend?.[0] || null;
-
-  const fcfHistory: number[] = cashflowStatements
-    .slice()
-    .reverse()
-    .map((s: any) => { // eslint-disable-line @typescript-eslint/no-explicit-any
-      const ocf = s.totalCashFromOperatingActivities?.raw;
-      const capex = s.capitalExpenditures?.raw;
-      if (ocf == null || capex == null) return null;
-      return ocf + capex;
-    })
-    .filter((v: number | null): v is number => v != null);
-
-  const revenueHistory: number[] = incomeStatements
-    .slice()
-    .reverse()
-    .map((s: any) => s.totalRevenue?.raw) // eslint-disable-line @typescript-eslint/no-explicit-any
-    .filter((v: number | null | undefined): v is number => v != null);
-
-  const currentPrice = price.regularMarketPrice?.raw ?? financialData.currentPrice?.raw;
-  if (!currentPrice) throw new Error("Cena nedostupna");
-
-  const fundamentals: Fundamentals = {
-    companyName: price.longName || price.shortName || ticker,
-    currency: price.currency || "USD",
-    currentPrice,
-    sharesOutstanding: keyStats.sharesOutstanding?.raw ?? null,
-    trailingEps: keyStats.trailingEps?.raw ?? null,
-    forwardEps: keyStats.forwardEps?.raw ?? null,
-    bookValuePerShare: keyStats.bookValue?.raw ?? null,
-    trailingPE: summaryDetail.trailingPE?.raw ?? null,
-    forwardPE: summaryDetail.forwardPE?.raw ?? null,
-    dividendRate: summaryDetail.dividendRate?.raw ?? null,
-    beta: keyStats.beta?.raw ?? null,
-    totalDebt: financialData.totalDebt?.raw ?? null,
-    totalCash: financialData.totalCash?.raw ?? null,
-    freeCashflowTtm: financialData.freeCashflow?.raw ?? null,
-    fcfHistory,
-    revenueGrowth: financialData.revenueGrowth?.raw ?? null,
-  };
-
-  const localAssumptions: Assumptions = {
-    ...assumptions,
-    growthRateY1to5: estimateFcfCagr(fcfHistory) ?? (fundamentals.revenueGrowth != null ? Math.max(-0.1, Math.min(0.3, fundamentals.revenueGrowth)) : assumptions.growthRateY1to5),
-    targetPE: fundamentals.trailingPE ?? assumptions.targetPE,
-  };
-
-  const wacc = estimateWacc(fundamentals, localAssumptions);
-  const dcf = computeDcf(fundamentals, localAssumptions, wacc);
-  const graham = computeGrahamNumber(fundamentals);
-  const ddm = computeDdm(fundamentals, localAssumptions);
-  const relative = computeRelativeValuation(fundamentals, localAssumptions);
-  const values = [dcf.intrinsicValuePerShare, graham, ddm, relative].filter((v): v is number => v != null);
-  const fairValue = values.length ? values.reduce((a, b) => a + b, 0) / values.length : null;
-  const upside = fairValue != null ? summarizeUpside(currentPrice, fairValue) : null;
-
-  const qualitativeInputs: QualitativeInputs = {
-    currentRatio: financialData.currentRatio?.raw ?? null,
-    quickRatio: financialData.quickRatio?.raw ?? null,
-    debtToEquity: financialData.debtToEquity?.raw ?? null,
-    returnOnEquity: financialData.returnOnEquity?.raw ?? null,
-    returnOnAssets: financialData.returnOnAssets?.raw ?? null,
-    grossMargins: financialData.grossMargins?.raw ?? null,
-    operatingMargins: financialData.operatingMargins?.raw ?? null,
-    profitMargins: financialData.profitMargins?.raw ?? null,
-    revenueGrowth: financialData.revenueGrowth?.raw ?? null,
-    earningsGrowth: financialData.earningsGrowth?.raw ?? null,
-    revenueHistory,
-    targetMeanPrice: financialData.targetMeanPrice?.raw ?? null,
-    currentPrice,
-    recommendation: recTrend
-      ? { strongBuy: recTrend.strongBuy ?? 0, buy: recTrend.buy ?? 0, hold: recTrend.hold ?? 0, sell: recTrend.sell ?? 0, strongSell: recTrend.strongSell ?? 0 }
-      : null,
-  };
-  const qualitative = summarizeQualitative(qualitativeInputs);
-  const verdict = combineVerdict(upside, qualitative);
+  const modelData = extractModelData(result, ticker);
+  const computed = computeModel(modelData, DEFAULT_ASSUMPTIONS);
 
   return {
     ticker,
-    companyName: fundamentals.companyName,
-    currentPrice,
-    currency: fundamentals.currency,
-    fairValue,
-    upside,
-    verdictLabel: verdict.label,
-    qualitativeLabel: qualitative.overallLabel,
+    companyName: modelData.companyName,
+    currentPrice: modelData.currentPrice,
+    currency: modelData.currency,
+    fairValue: computed.avgIntrinsicValue,
+    upside: computed.longTermUpside,
+    verdictLabel: computed.finalVerdict.verdict,
   };
 }
 
@@ -217,7 +113,7 @@ export default function Sp500Screener() {
     for (let i = 0; i < tickers.length; i += CONCURRENCY) {
       if (stopRef.current) break;
       const batch = tickers.slice(i, i + CONCURRENCY);
-      const settled = await Promise.allSettled(batch.map((t) => fetchAndScore(t, DEFAULT_ASSUMPTIONS)));
+      const settled = await Promise.allSettled(batch.map((t) => fetchAndScore(t)));
       settled.forEach((s, idx) => {
         if (s.status === "fulfilled") {
           results.push(s.value);
@@ -230,7 +126,6 @@ export default function Sp500Screener() {
             fairValue: null,
             upside: null,
             verdictLabel: "—",
-            qualitativeLabel: "—",
             error: s.reason instanceof Error ? s.reason.message : "Greška",
           });
         }
