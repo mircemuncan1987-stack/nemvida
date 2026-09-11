@@ -74,7 +74,8 @@ export function buildFinancialBreakdown(rows: YearlyFinancials[]): FinancialBrea
     const debtTrend = countDirectional(debts);
     if (debtTrend.total > 0) {
       const growingDebt = debtTrend.up > debtTrend.down;
-      parts.push(`Dug ${growingDebt ? "raste" : "opada ili je stabilan"}`);
+      const debtCagr = cagr(debts[0], debts[debts.length - 1], debts.length - 1);
+      parts.push(`Dug ${growingDebt ? "raste" : "opada ili je stabilan"}${debtCagr != null ? ` (CAGR ${(debtCagr * 100).toFixed(1)}%)` : ""}`);
       points += growingDebt ? -1 : 1;
     }
   }
@@ -82,7 +83,8 @@ export function buildFinancialBreakdown(rows: YearlyFinancials[]): FinancialBrea
     const fcfTrend = countDirectional(fcfs);
     if (fcfTrend.total > 0) {
       const growingFcf = fcfTrend.up >= fcfTrend.down;
-      parts.push(`Slobodan novčani tok ${growingFcf ? "raste" : "opada"}`);
+      const fcfCagr = cagr(fcfs[0], fcfs[fcfs.length - 1], fcfs.length - 1);
+      parts.push(`Slobodan novčani tok ${growingFcf ? "raste" : "opada"}${fcfCagr != null ? ` (CAGR ${(fcfCagr * 100).toFixed(1)}%)` : ""}`);
       points += growingFcf ? 1 : -1;
     }
   }
