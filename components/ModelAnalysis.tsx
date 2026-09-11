@@ -180,6 +180,7 @@ export default function ModelAnalysis() {
         </Section>
 
         <Section title="4. Filter valuacije">
+          <p className="text-sm text-zinc-600 dark:text-zinc-400 mb-3">Proverava da li trenutna cena akcije ima smisla u odnosu na rast, zaradu i imovinu kompanije.</p>
           <div>{valuationFilter.checks.map(checkRow)}</div>
           <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">{valuationFilter.passCount}/{valuationFilter.totalApplicable} primenjivih kriterijuma zadovoljeno. Jeftino ponekad znači pokvareno, a skupo ponekad znači kvalitet — ovo je samo disciplinski filter, ne presuda.</p>
         </Section>

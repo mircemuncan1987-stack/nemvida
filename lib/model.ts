@@ -229,15 +229,21 @@ export function runValuationFilter(inputs: ValuationFilterInputs): GrowthFilterR
   const checks: FilterCheck[] = [];
 
   checks.push({
-    label: "PEG u razumnom rasponu za ponuđeni rast (0.5–2.0)",
+    label: "Cena prati rast (PEG)",
     pass: inputs.pegRatio == null ? null : inputs.pegRatio > 0.5 && inputs.pegRatio < 2.0,
-    detail: inputs.pegRatio != null ? inputs.pegRatio.toFixed(2) : "PEG nije dostupan.",
+    detail:
+      inputs.pegRatio != null
+        ? `PEG ${inputs.pegRatio.toFixed(2)} — poredi cenu akcije (P/E) sa stopom rasta zarade; poželjno je između 0,5 i 2,0.`
+        : "PEG nije dostupan.",
   });
 
   checks.push({
-    label: "EV/EBITDA razuman (<15×, zavisi od sektora)",
+    label: "Cena nije prenapumpana u odnosu na zaradu (EV/EBITDA)",
     pass: inputs.evToEbitda == null ? null : inputs.evToEbitda < 15,
-    detail: inputs.evToEbitda != null ? `${inputs.evToEbitda.toFixed(1)}×` : "Nije dostupno.",
+    detail:
+      inputs.evToEbitda != null
+        ? `EV/EBITDA ${inputs.evToEbitda.toFixed(1)}× — koliko se plaća za svaki dinar operativne zarade; poželjno ispod 15×, zavisno od sektora.`
+        : "Nije dostupno.",
   });
 
   const pbOk =
@@ -245,25 +251,25 @@ export function runValuationFilter(inputs: ValuationFilterInputs): GrowthFilterR
       ? inputs.priceToBook < 1.5 || inputs.returnOnEquity > 0.15
       : null;
   checks.push({
-    label: "P/B opravdan visinom ROE (nisko P/B ili visok ROE)",
+    label: "Cena u odnosu na imovinu ima smisla (P/B naspram ROE)",
     pass: pbOk,
     detail:
       inputs.priceToBook != null && inputs.returnOnEquity != null
-        ? `P/B ${inputs.priceToBook.toFixed(2)}, ROE ${(inputs.returnOnEquity * 100).toFixed(1)}%`
+        ? `P/B ${inputs.priceToBook.toFixed(2)} (cena u odnosu na knjigovodstvenu vrednost), ROE ${(inputs.returnOnEquity * 100).toFixed(1)}% — visok P/B je opravdan samo ako je i ROE visok.`
         : "Nedostaje P/B ili ROE.",
   });
 
   checks.push({
-    label: "Dividendni prinos kao kontrolna provera (ako postoji, >1%)",
+    label: "Dividenda kao dodatna provera (ako postoji)",
     pass: inputs.dividendYield == null ? null : inputs.dividendYield > 0.01,
-    detail: inputs.dividendYield != null ? `${(inputs.dividendYield * 100).toFixed(2)}%` : "Akcija ne isplaćuje dividendu — nije nužno loše.",
+    detail: inputs.dividendYield != null ? `Dividendni prinos ${(inputs.dividendYield * 100).toFixed(2)}%.` : "Akcija ne isplaćuje dividendu — nije nužno loše.",
   });
 
   const pricedForPerfection = (inputs.pegRatio != null && inputs.pegRatio > 2.5) || (inputs.evToEbitda != null && inputs.evToEbitda > 25);
   checks.push({
-    label: "Cena ne pretpostavlja savršeno izvršenje",
+    label: "Cena ne pretpostavlja savršeno poslovanje",
     pass: !pricedForPerfection,
-    detail: pricedForPerfection ? "Multiplikator implicira vrlo visoka očekivanja — svaki propust u izvršenju mogao bi oštro srušiti cenu." : "Multiplikatori ne ukazuju na ekstremna očekivanja.",
+    detail: pricedForPerfection ? "Cena je toliko visoka da bi i mala greška u poslovanju mogla oštro da je sruši." : "Cena ne uključuje ekstremno visoka očekivanja.",
   });
 
   const applicable = checks.filter((c) => c.pass != null);
