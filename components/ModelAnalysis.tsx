@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { analyzeHistoricalMultiples, computeDebtEquityHistory, computeHistoricalPE, computeHistoricalPEG, computeHistoricalPFcf, computeModel, extractModelData, type ComputedModel, type HistoricalMultipleRow, type HistoricalPricePoint } from "@/lib/buildModel";
+import { analyzeHistoricalMultiples, computeDebtEquityHistory, computeHistoricalPE, computeHistoricalPEG, computeHistoricalPFcf, computeModel, extractModelData, synthesizeValuationMultiples, type ComputedModel, type HistoricalMultipleRow, type HistoricalPricePoint } from "@/lib/buildModel";
 import type { FilterCheck } from "@/lib/model";
 
 const fmtPct = (x: number | null | undefined, digits = 1) =>
@@ -160,6 +160,8 @@ export default function ModelAnalysis() {
         ? fundamentals.currentPrice / (fundamentals.freeCashflowTtm / fundamentals.sharesOutstanding)
         : null;
     const multipleAnalysis = analyzeHistoricalMultiples(historicalPE ?? [], historicalPFcf ?? [], data.peRatio, currentPFcf);
+    const currentDebtToEquity = data.debtToEquity != null ? data.debtToEquity / 100 : null;
+    const valuationSynthesis = synthesizeValuationMultiples(data.pegRatio, data.peRatio, multipleAnalysis.peAvg, currentPFcf, multipleAnalysis.pFcfAvg, currentDebtToEquity);
 
     content = (
       <div className="mt-6 space-y-4">
@@ -235,7 +237,7 @@ export default function ModelAnalysis() {
           <p className="text-sm text-zinc-600 dark:text-zinc-400 mb-3">Proverava da li trenutna cena akcije ima smisla u odnosu na rast, zaradu i imovinu kompanije.</p>
           <div>{valuationFilter.checks.map(checkRow)}</div>
           <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">{valuationFilter.passCount}/{valuationFilter.totalApplicable} primenjivih kriterijuma zadovoljeno. Jeftino ponekad znači pokvareno, a skupo ponekad znači kvalitet — ovo je samo disciplinski filter, ne presuda.</p>
-          <p className="mt-3 text-sm">{multipleAnalysis.text}</p>
+          <p className="mt-3 text-sm font-medium">Sinteza multiplikatora: {valuationSynthesis}</p>
         </Section>
 
         <Section title="5. Konkurentska prednost (objektivni proxy)">

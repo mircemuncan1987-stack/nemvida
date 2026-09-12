@@ -341,9 +341,11 @@ export function computeDebtEquityHistory(yearlyRows: YearlyFinancials[]): DebtEq
 
 export interface MultipleTrendAnalysis {
   text: string;
+  peAvg: number | null;
+  pFcfAvg: number | null;
 }
 
-function describeMultipleTrend(label: string, values: number[], current: number | null, unit: "×" | ""): string | null {
+function describeMultipleTrend(label: string, values: number[], current: number | null, unit: "×" | ""): { text: string; avg: number } | null {
   if (values.length < 2) return null;
   const avg = values.reduce((a, b) => a + b, 0) / values.length;
   const first = values[0];
@@ -361,7 +363,7 @@ function describeMultipleTrend(label: string, values: number[], current: number 
           : "trenutna cena je u skladu sa sopstvenom istorijom";
     vsAvgText = ` Trenutni ${label} od ${current.toFixed(1)}${unit} je ${richness} sopstvenog proseka (${vsAvgPct >= 0 ? "+" : ""}${vsAvgPct.toFixed(0)}%) — ${meaning}.`;
   }
-  return `${label} je u posmatranom periodu ${trend} (sa ${first.toFixed(1)}${unit} na ${last.toFixed(1)}${unit}, prosek ${avg.toFixed(1)}${unit}).${vsAvgText}`;
+  return { text: `${label} je u posmatranom periodu ${trend} (sa ${first.toFixed(1)}${unit} na ${last.toFixed(1)}${unit}, prosek ${avg.toFixed(1)}${unit}).${vsAvgText}`, avg };
 }
 
 // Poredi trenutne multiplikatore (P/E, P/FCF) sa sopstvenom istorijom
@@ -378,15 +380,53 @@ export function analyzeHistoricalMultiples(
   const peValues = historicalPE.map((r) => r.multiple).filter((v): v is number => v != null);
   const pFcfValues = historicalPFcf.map((r) => r.multiple).filter((v): v is number => v != null);
 
-  const parts = [
-    describeMultipleTrend("P/E", peValues, currentPE, "×"),
-    describeMultipleTrend("P/FCF", pFcfValues, currentPFcf, "×"),
-  ].filter((p): p is string => p != null);
+  const pe = describeMultipleTrend("P/E", peValues, currentPE, "×");
+  const pFcf = describeMultipleTrend("P/FCF", pFcfValues, currentPFcf, "×");
+  const parts = [pe?.text, pFcf?.text].filter((p): p is string => p != null);
 
   if (parts.length === 0) {
-    return { text: "Nema dovoljno istorijskih podataka o P/E ili P/FCF da bi se trenutna cena uporedila sa sopstvenom istorijom kompanije." };
+    return { text: "Nema dovoljno istorijskih podataka o P/E ili P/FCF da bi se trenutna cena uporedila sa sopstvenom istorijom kompanije.", peAvg: null, pFcfAvg: null };
   }
-  return { text: parts.join(" ") };
+  return { text: parts.join(" "), peAvg: pe?.avg ?? null, pFcfAvg: pFcf?.avg ?? null };
+}
+
+// Objedinjena 1-2 rečenice: šta PEG, P/E (naspram sopstvenog proseka),
+// P/FCF (naspram sopstvenog proseka) i Dug/kapital zajedno govore o ceni
+// akcije — ne samo pojedinačni pokazatelji odvojeno.
+export function synthesizeValuationMultiples(
+  pegRatio: number | null,
+  currentPE: number | null,
+  peAvg: number | null,
+  currentPFcf: number | null,
+  pFcfAvg: number | null,
+  debtToEquity: number | null
+): string {
+  const readings: string[] = [];
+
+  if (pegRatio != null) {
+    const label = pegRatio < 0.5 ? "vrlo jeftina u odnosu na rast zarade" : pegRatio <= 2.0 ? "u skladu sa rastom zarade" : "skupa u odnosu na rast zarade";
+    readings.push(`PEG od ${pegRatio.toFixed(2)} ukazuje da je cena ${label}`);
+  }
+  if (currentPE != null && peAvg != null && peAvg !== 0) {
+    const diff = (currentPE / peAvg - 1) * 100;
+    const label = diff > 15 ? `iznad sopstvenog proseka za ${diff.toFixed(0)}%` : diff < -15 ? `ispod sopstvenog proseka za ${Math.abs(diff).toFixed(0)}%` : "blizu sopstvenog proseka";
+    readings.push(`P/E od ${currentPE.toFixed(1)}× je ${label}`);
+  }
+  if (currentPFcf != null && pFcfAvg != null && pFcfAvg !== 0) {
+    const diff = (currentPFcf / pFcfAvg - 1) * 100;
+    const label = diff > 15 ? `iznad proseka za ${diff.toFixed(0)}%` : diff < -15 ? `ispod proseka za ${Math.abs(diff).toFixed(0)}%` : "blizu proseka";
+    readings.push(`P/FCF od ${currentPFcf.toFixed(1)}× je ${label}`);
+  }
+
+  const sentence1 = readings.length ? `${readings.join(", ")}.` : "";
+
+  let sentence2 = "";
+  if (debtToEquity != null) {
+    const label = debtToEquity > 1.5 ? "relativno visoku zaduženost u odnosu na kapital" : debtToEquity > 0.6 ? "umerenu zaduženost" : "nisku zaduženost";
+    sentence2 = `Dug/kapital od ${debtToEquity.toFixed(2)} ukazuje na ${label}.`;
+  }
+
+  return [sentence1, sentence2].filter(Boolean).join(" ") || "Nema dovoljno podataka o multiplikatorima za objedinjenu sintezu.";
 }
 
 export function computeModel(data: ModelData, assumptions: Assumptions = DEFAULT_ASSUMPTIONS): ComputedModel {
