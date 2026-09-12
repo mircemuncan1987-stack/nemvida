@@ -69,6 +69,13 @@ export interface ModelData {
   insiderNetPercentShares: number | null;
   shortPercentOfFloat: number | null;
   marketCap: number | null;
+  businessSummary: string | null;
+  sector: string | null;
+  industry: string | null;
+  country: string | null;
+  city: string | null;
+  website: string | null;
+  employees: number | null;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -224,6 +231,13 @@ export function extractModelData(fullData: any, symbol: string): ModelData {
     insiderNetPercentShares: netSharePurchaseActivity.netPercentInsiderShares?.raw ?? null,
     shortPercentOfFloat: keyStats.shortPercentOfFloat?.raw ?? null,
     marketCap: price.marketCap?.raw ?? null,
+    businessSummary: assetProfile.longBusinessSummary ?? null,
+    sector: assetProfile.sector ?? null,
+    industry: assetProfile.industry ?? null,
+    country: assetProfile.country ?? null,
+    city: assetProfile.city ?? null,
+    website: assetProfile.website ?? null,
+    employees: assetProfile.fullTimeEmployees ?? null,
   };
 }
 

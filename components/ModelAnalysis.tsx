@@ -172,6 +172,40 @@ export default function ModelAnalysis() {
           </div>
         </div>
 
+        <Section title="O kompaniji">
+          {data.businessSummary ? (
+            <p className="text-sm leading-relaxed">{data.businessSummary}</p>
+          ) : (
+            <p className="text-sm italic text-zinc-500 dark:text-zinc-400">Opis poslovanja nije dostupan za ovaj tiker.</p>
+          )}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4 text-sm">
+            <div>
+              <div className="text-xs text-zinc-500 dark:text-zinc-400">Sektor</div>
+              <div>{data.sector || "—"}</div>
+            </div>
+            <div>
+              <div className="text-xs text-zinc-500 dark:text-zinc-400">Industrija</div>
+              <div>{data.industry || "—"}</div>
+            </div>
+            <div>
+              <div className="text-xs text-zinc-500 dark:text-zinc-400">Sedište</div>
+              <div>{[data.city, data.country].filter(Boolean).join(", ") || "—"}</div>
+            </div>
+            <div>
+              <div className="text-xs text-zinc-500 dark:text-zinc-400">Zaposleni</div>
+              <div>{data.employees != null ? data.employees.toLocaleString("en-US") : "—"}</div>
+            </div>
+          </div>
+          {data.website && (
+            <a href={data.website} target="_blank" rel="noopener noreferrer" className="inline-block mt-3 text-sm text-blue-600 dark:text-blue-400 hover:underline">
+              {data.website}
+            </a>
+          )}
+          <p className="mt-3 text-xs text-zinc-500 dark:text-zinc-400">
+            Opis, sektor, industrija i sedište su direktno iz Yahoo Finance profila kompanije — objektivni podaci o poslovanju, sedištu i portfoliju delatnosti. Konkurentska prednost (moat) se meri odvojeno, kvantitativno, u sekciji 5 — marže i ROE naspram WACC-a, ne pripovedanje o brendu.
+          </p>
+        </Section>
+
         <Section title="1. Finansijski trend (poslednjih do 5 god.)">
           <div className="overflow-x-auto">
             <table className="w-full text-sm border-collapse">
