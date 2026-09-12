@@ -222,27 +222,30 @@ export interface HistoricalPricePoint {
   close: number;
 }
 
-export interface HistoricalPeRow {
+export interface HistoricalMultipleRow {
   year: string;
-  pe: number | null;
+  multiple: number | null;
 }
 
-// Aproksimacija: EPS po godini se računa kao neto dobit te godine podeljena
-// TRENUTNIM brojem akcija u opticaju (istorijski broj akcija nije dostupan u
-// ovom izvoru), a cena se uzima sa najbližeg dostupnog meseca oko kraja
+// Aproksimacija: "po akciji" vrednost za svaku godinu se računa kao
+// odgovarajuća stavka te godine (neto dobit, FCF...) podeljena TRENUTNIM
+// brojem akcija u opticaju (istorijski broj akcija nije dostupan u ovom
+// izvoru), a cena se uzima sa najbližeg dostupnog meseca oko kraja
 // kalendarske godine (aproksimacija kraja fiskalne godine ako se ne
 // poklapaju). Rezultat je procena, ne tačna knjigovodstvena vrednost.
-export function computeHistoricalPE(
+function computeHistoricalMultiple(
   yearlyRows: YearlyFinancials[],
   priceHistory: HistoricalPricePoint[],
-  sharesOutstanding: number | null
-): HistoricalPeRow[] {
+  sharesOutstanding: number | null,
+  metric: (row: YearlyFinancials) => number | null
+): HistoricalMultipleRow[] {
   return yearlyRows.map((r) => {
     const yearNum = parseInt(r.label, 10);
-    if (!sharesOutstanding || priceHistory.length === 0 || r.netIncome == null || r.netIncome <= 0 || Number.isNaN(yearNum)) {
-      return { year: r.label, pe: null };
+    const value = metric(r);
+    if (!sharesOutstanding || priceHistory.length === 0 || value == null || value <= 0 || Number.isNaN(yearNum)) {
+      return { year: r.label, multiple: null };
     }
-    const eps = r.netIncome / sharesOutstanding;
+    const perShare = value / sharesOutstanding;
     const targetTime = Date.UTC(yearNum, 11, 31) / 1000;
     let closest: HistoricalPricePoint | null = null;
     let closestDiff = Infinity;
@@ -253,9 +256,37 @@ export function computeHistoricalPE(
         closest = p;
       }
     }
-    if (!closest) return { year: r.label, pe: null };
-    return { year: r.label, pe: closest.close / eps };
+    if (!closest) return { year: r.label, multiple: null };
+    return { year: r.label, multiple: closest.close / perShare };
   });
+}
+
+export function computeHistoricalPE(
+  yearlyRows: YearlyFinancials[],
+  priceHistory: HistoricalPricePoint[],
+  sharesOutstanding: number | null
+): HistoricalMultipleRow[] {
+  return computeHistoricalMultiple(yearlyRows, priceHistory, sharesOutstanding, (r) => r.netIncome);
+}
+
+export function computeHistoricalPFcf(
+  yearlyRows: YearlyFinancials[],
+  priceHistory: HistoricalPricePoint[],
+  sharesOutstanding: number | null
+): HistoricalMultipleRow[] {
+  return computeHistoricalMultiple(yearlyRows, priceHistory, sharesOutstanding, (r) => r.fcf);
+}
+
+export interface DebtEquityRow {
+  year: string;
+  ratio: number | null;
+}
+
+export function computeDebtEquityHistory(yearlyRows: YearlyFinancials[]): DebtEquityRow[] {
+  return yearlyRows.map((r) => ({
+    year: r.label,
+    ratio: r.totalDebt != null && r.totalEquity != null && r.totalEquity !== 0 ? r.totalDebt / r.totalEquity : null,
+  }));
 }
 
 export function computeModel(data: ModelData, assumptions: Assumptions = DEFAULT_ASSUMPTIONS): ComputedModel {

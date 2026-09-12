@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { computeHistoricalPE, computeModel, extractModelData, type ComputedModel, type HistoricalPeRow, type HistoricalPricePoint } from "@/lib/buildModel";
+import { computeDebtEquityHistory, computeHistoricalPE, computeHistoricalPFcf, computeModel, extractModelData, type ComputedModel, type HistoricalMultipleRow, type HistoricalPricePoint } from "@/lib/buildModel";
 import type { FilterCheck } from "@/lib/model";
 
 const fmtPct = (x: number | null | undefined, digits = 1) =>
@@ -77,7 +77,8 @@ export default function ModelAnalysis() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState<ComputedModel | null>(null);
-  const [historicalPE, setHistoricalPE] = useState<HistoricalPeRow[] | null>(null);
+  const [historicalPE, setHistoricalPE] = useState<HistoricalMultipleRow[] | null>(null);
+  const [historicalPFcf, setHistoricalPFcf] = useState<HistoricalMultipleRow[] | null>(null);
   const [suggestions, setSuggestions] = useState<SearchResult[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const searchParams = useSearchParams();
@@ -88,11 +89,14 @@ export default function ModelAnalysis() {
     setError("");
     setResult(null);
     setHistoricalPE(null);
+    setHistoricalPFcf(null);
     try {
       const r = await fetchModelResult(sym);
       setResult(r);
       const priceHistory = await fetchPriceHistory(sym);
-      setHistoricalPE(computeHistoricalPE(r.breakdown.rows, priceHistory, r.data.fundamentals.sharesOutstanding));
+      const shares = r.data.fundamentals.sharesOutstanding;
+      setHistoricalPE(computeHistoricalPE(r.breakdown.rows, priceHistory, shares));
+      setHistoricalPFcf(computeHistoricalPFcf(r.breakdown.rows, priceHistory, shares));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Greška pri preuzimanju podataka.");
     } finally {
@@ -148,6 +152,7 @@ export default function ModelAnalysis() {
 
   if (result) {
     const { data, breakdown, growthFilter, valuationFilter, moat, growthPotential, risks, management, bullBear, finalVerdict, shortTermUpside } = result;
+    const debtEquityHistory = computeDebtEquityHistory(breakdown.rows);
 
     content = (
       <div className="mt-6 space-y-4">
@@ -166,22 +171,24 @@ export default function ModelAnalysis() {
                   <th className="text-left text-xs uppercase text-zinc-500 py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800">Godina</th>
                   <th className="text-right text-xs uppercase text-zinc-500 py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800">Prihod</th>
                   <th className="text-right text-xs uppercase text-zinc-500 py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800">Neto dobit (PAT)</th>
-                  <th className="text-right text-xs uppercase text-zinc-500 py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800">FCF</th>
-                  <th className="text-right text-xs uppercase text-zinc-500 py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800">Dug</th>
                   <th className="text-right text-xs uppercase text-zinc-500 py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800">P/E (procena)</th>
+                  <th className="text-right text-xs uppercase text-zinc-500 py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800">P/FCF (procena)</th>
+                  <th className="text-right text-xs uppercase text-zinc-500 py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800">Dug/kapital</th>
                 </tr>
               </thead>
               <tbody>
                 {breakdown.rows.map((r, i) => {
-                  const pe = historicalPE?.[i]?.pe;
+                  const pe = historicalPE?.[i]?.multiple;
+                  const pFcf = historicalPFcf?.[i]?.multiple;
+                  const de = debtEquityHistory[i]?.ratio;
                   return (
                     <tr key={r.label}>
                       <td className="py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800">{r.label}</td>
                       <td className="py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800 text-right tabular-nums">{r.revenue != null ? fmtMoney(r.revenue, data.currency) : "—"}</td>
                       <td className="py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800 text-right tabular-nums">{r.netIncome != null ? fmtMoney(r.netIncome, data.currency) : "—"}</td>
-                      <td className="py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800 text-right tabular-nums">{r.fcf != null ? fmtMoney(r.fcf, data.currency) : "—"}</td>
-                      <td className="py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800 text-right tabular-nums">{r.totalDebt != null ? fmtMoney(r.totalDebt, data.currency) : "—"}</td>
                       <td className="py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800 text-right tabular-nums">{pe != null ? `${pe.toFixed(1)}×` : historicalPE ? "—" : "…"}</td>
+                      <td className="py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800 text-right tabular-nums">{pFcf != null ? `${pFcf.toFixed(1)}×` : historicalPFcf ? "—" : "…"}</td>
+                      <td className="py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800 text-right tabular-nums">{de != null ? de.toFixed(2) : "—"}</td>
                     </tr>
                   );
                 })}
@@ -196,7 +203,7 @@ export default function ModelAnalysis() {
             )}
           </p>
           <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">
-            P/E (procena) je istorijska cena akcije oko kraja svake godine podeljena sa procenjenim EPS-om te godine (neto dobit / trenutni broj akcija) — koristi trenutni broj akcija jer istorijski broj nije dostupan, pa je ovo procena, ne tačna knjigovodstvena vrednost.
+            P/E i P/FCF (procena) dele istorijsku cenu akcije oko kraja svake godine sa procenjenom dobiti/FCF-om po akciji te godine (koristeći trenutni broj akcija, jer istorijski broj nije dostupan) — procena, ne tačna knjigovodstvena vrednost. Dug/kapital je ukupan dug podeljen sopstvenim kapitalom te godine.
           </p>
         </Section>
 
