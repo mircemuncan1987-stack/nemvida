@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { computeDebtEquityHistory, computeHistoricalPE, computeHistoricalPFcf, computeModel, extractModelData, type ComputedModel, type HistoricalMultipleRow, type HistoricalPricePoint } from "@/lib/buildModel";
+import { computeDebtEquityHistory, computeHistoricalPE, computeHistoricalPEG, computeHistoricalPFcf, computeModel, extractModelData, type ComputedModel, type HistoricalMultipleRow, type HistoricalPricePoint } from "@/lib/buildModel";
 import type { FilterCheck } from "@/lib/model";
 
 const fmtPct = (x: number | null | undefined, digits = 1) =>
@@ -77,6 +77,7 @@ export default function ModelAnalysis() {
   const [result, setResult] = useState<ComputedModel | null>(null);
   const [historicalPE, setHistoricalPE] = useState<HistoricalMultipleRow[] | null>(null);
   const [historicalPFcf, setHistoricalPFcf] = useState<HistoricalMultipleRow[] | null>(null);
+  const [historicalPEG, setHistoricalPEG] = useState<HistoricalMultipleRow[] | null>(null);
   const [suggestions, setSuggestions] = useState<SearchResult[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const searchParams = useSearchParams();
@@ -88,6 +89,7 @@ export default function ModelAnalysis() {
     setResult(null);
     setHistoricalPE(null);
     setHistoricalPFcf(null);
+    setHistoricalPEG(null);
     try {
       const r = await fetchModelResult(sym);
       setResult(r);
@@ -95,6 +97,7 @@ export default function ModelAnalysis() {
       const shares = r.data.fundamentals.sharesOutstanding;
       setHistoricalPE(computeHistoricalPE(r.breakdown.rows, priceHistory, shares));
       setHistoricalPFcf(computeHistoricalPFcf(r.breakdown.rows, priceHistory, shares));
+      setHistoricalPEG(computeHistoricalPEG(r.breakdown.rows, priceHistory, shares));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Greška pri preuzimanju podataka.");
     } finally {
@@ -170,6 +173,7 @@ export default function ModelAnalysis() {
                   <th className="text-right text-xs uppercase text-zinc-500 py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800">Prihod</th>
                   <th className="text-right text-xs uppercase text-zinc-500 py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800">Neto dobit (PAT)</th>
                   <th className="text-right text-xs uppercase text-zinc-500 py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800">P/E (procena)</th>
+                  <th className="text-right text-xs uppercase text-zinc-500 py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800">PEG (procena)</th>
                   <th className="text-right text-xs uppercase text-zinc-500 py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800">P/FCF (procena)</th>
                   <th className="text-right text-xs uppercase text-zinc-500 py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800">Dug/kapital</th>
                 </tr>
@@ -177,6 +181,7 @@ export default function ModelAnalysis() {
               <tbody>
                 {breakdown.rows.map((r, i) => {
                   const pe = historicalPE?.[i]?.multiple;
+                  const peg = historicalPEG?.[i]?.multiple;
                   const pFcf = historicalPFcf?.[i]?.multiple;
                   const de = debtEquityHistory[i]?.ratio;
                   return (
@@ -185,6 +190,7 @@ export default function ModelAnalysis() {
                       <td className="py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800 text-right tabular-nums">{r.revenue != null ? fmtMoney(r.revenue, data.currency) : "—"}</td>
                       <td className="py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800 text-right tabular-nums">{r.netIncome != null ? fmtMoney(r.netIncome, data.currency) : "—"}</td>
                       <td className="py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800 text-right tabular-nums">{pe != null ? `${pe.toFixed(1)}×` : historicalPE ? "—" : "…"}</td>
+                      <td className="py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800 text-right tabular-nums">{peg != null ? peg.toFixed(2) : historicalPEG ? "—" : "…"}</td>
                       <td className="py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800 text-right tabular-nums">{pFcf != null ? `${pFcf.toFixed(1)}×` : historicalPFcf ? "—" : "…"}</td>
                       <td className="py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800 text-right tabular-nums">{de != null ? de.toFixed(2) : "—"}</td>
                     </tr>
@@ -201,7 +207,7 @@ export default function ModelAnalysis() {
             )}
           </p>
           <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">
-            P/E i P/FCF (procena) dele istorijsku cenu akcije oko kraja svake godine sa procenjenom dobiti/FCF-om po akciji te godine (koristeći trenutni broj akcija, jer istorijski broj nije dostupan) — procena, ne tačna knjigovodstvena vrednost. Dug/kapital je ukupan dug podeljen sopstvenim kapitalom te godine.
+            P/E i P/FCF (procena) dele istorijsku cenu akcije oko kraja svake godine sa procenjenom dobiti/FCF-om po akciji te godine (koristeći trenutni broj akcija, jer istorijski broj nije dostupan) — procena, ne tačna knjigovodstvena vrednost. PEG (procena) je taj P/E podeljen godišnjim rastom neto dobiti u odnosu na prethodnu godinu (prazno kad je rast te godine negativan ili nula, jer PEG tada nema smislenu vrednost). Dug/kapital je ukupan dug podeljen sopstvenim kapitalom te godine.
           </p>
         </Section>
 

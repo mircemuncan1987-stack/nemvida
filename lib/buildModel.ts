@@ -305,6 +305,28 @@ export function computeHistoricalPFcf(
   return computeHistoricalMultiple(yearlyRows, priceHistory, sharesOutstanding, (r) => r.fcf);
 }
 
+// PEG = P/E te godine podeljen godišnjim rastom neto dobiti (g/g, u
+// procentnim poenima) u odnosu na prethodnu godinu. Nedefinisan (null) kad
+// prethodna godina nedostaje ili je rast dobiti negativan/nula — PEG tada
+// nema smislenu interpretaciju.
+export function computeHistoricalPEG(
+  yearlyRows: YearlyFinancials[],
+  priceHistory: HistoricalPricePoint[],
+  sharesOutstanding: number | null
+): HistoricalMultipleRow[] {
+  const peRows = computeHistoricalPE(yearlyRows, priceHistory, sharesOutstanding);
+  return yearlyRows.map((r, i) => {
+    const pe = peRows[i]?.multiple;
+    const prev = yearlyRows[i - 1];
+    if (pe == null || !prev || prev.netIncome == null || prev.netIncome <= 0 || r.netIncome == null || r.netIncome <= 0) {
+      return { year: r.label, multiple: null };
+    }
+    const growthPercent = ((r.netIncome - prev.netIncome) / prev.netIncome) * 100;
+    if (growthPercent <= 0) return { year: r.label, multiple: null };
+    return { year: r.label, multiple: pe / growthPercent };
+  });
+}
+
 export interface DebtEquityRow {
   year: string;
   ratio: number | null;
