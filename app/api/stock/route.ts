@@ -77,6 +77,16 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(data);
     }
 
+    if (type === "history") {
+      const data = await fetchUpstream(
+        (crumb) =>
+          `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(
+            symbol
+          )}?range=6y&interval=1mo&crumb=${encodeURIComponent(crumb)}`
+      );
+      return NextResponse.json(data);
+    }
+
     if (type === "search") {
       const data = await fetchUpstream(
         (crumb) =>

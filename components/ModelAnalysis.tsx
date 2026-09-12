@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { computeModel, extractModelData, type ComputedModel } from "@/lib/buildModel";
+import { computeHistoricalPE, computeModel, extractModelData, type ComputedModel, type HistoricalPeRow, type HistoricalPricePoint } from "@/lib/buildModel";
 import type { FilterCheck } from "@/lib/model";
 
 const fmtPct = (x: number | null | undefined, digits = 1) =>
@@ -19,6 +19,25 @@ async function fetchModelResult(symbol: string): Promise<ComputedModel> {
   if (!result) throw new Error("Podaci nisu dostupni za ovaj tiker.");
   const modelData = extractModelData(result, symbol);
   return computeModel(modelData);
+}
+
+async function fetchPriceHistory(symbol: string): Promise<HistoricalPricePoint[]> {
+  try {
+    const res = await fetch(`/api/stock?symbol=${encodeURIComponent(symbol)}&type=history`, { cache: "no-store" });
+    if (!res.ok) return [];
+    const data = await res.json();
+    const chartResult = data?.chart?.result?.[0];
+    const timestamps: number[] = chartResult?.timestamp || [];
+    const closes: (number | null)[] = chartResult?.indicators?.quote?.[0]?.close || [];
+    const points: HistoricalPricePoint[] = [];
+    for (let i = 0; i < timestamps.length; i++) {
+      const c = closes[i];
+      if (c != null) points.push({ timestamp: timestamps[i], close: c });
+    }
+    return points;
+  } catch {
+    return [];
+  }
 }
 
 interface SearchResult {
@@ -58,6 +77,7 @@ export default function ModelAnalysis() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState<ComputedModel | null>(null);
+  const [historicalPE, setHistoricalPE] = useState<HistoricalPeRow[] | null>(null);
   const [suggestions, setSuggestions] = useState<SearchResult[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const searchParams = useSearchParams();
@@ -67,9 +87,12 @@ export default function ModelAnalysis() {
     setLoading(true);
     setError("");
     setResult(null);
+    setHistoricalPE(null);
     try {
       const r = await fetchModelResult(sym);
       setResult(r);
+      const priceHistory = await fetchPriceHistory(sym);
+      setHistoricalPE(computeHistoricalPE(r.breakdown.rows, priceHistory, r.data.fundamentals.sharesOutstanding));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Greška pri preuzimanju podataka.");
     } finally {
@@ -135,6 +158,8 @@ export default function ModelAnalysis() {
           </div>
         </div>
 
+        <ShortSummary growthPotential={growthPotential} valuationFilter={valuationFilter} />
+
         <Section title="1. Finansijski trend (poslednjih do 5 god.)">
           <div className="overflow-x-auto">
             <table className="w-full text-sm border-collapse">
@@ -145,18 +170,23 @@ export default function ModelAnalysis() {
                   <th className="text-right text-xs uppercase text-zinc-500 py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800">Neto dobit (PAT)</th>
                   <th className="text-right text-xs uppercase text-zinc-500 py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800">FCF</th>
                   <th className="text-right text-xs uppercase text-zinc-500 py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800">Dug</th>
+                  <th className="text-right text-xs uppercase text-zinc-500 py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800">P/E (procena)</th>
                 </tr>
               </thead>
               <tbody>
-                {breakdown.rows.map((r) => (
-                  <tr key={r.label}>
-                    <td className="py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800">{r.label}</td>
-                    <td className="py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800 text-right tabular-nums">{r.revenue != null ? fmtMoney(r.revenue, data.currency) : "—"}</td>
-                    <td className="py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800 text-right tabular-nums">{r.netIncome != null ? fmtMoney(r.netIncome, data.currency) : "—"}</td>
-                    <td className="py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800 text-right tabular-nums">{r.fcf != null ? fmtMoney(r.fcf, data.currency) : "—"}</td>
-                    <td className="py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800 text-right tabular-nums">{r.totalDebt != null ? fmtMoney(r.totalDebt, data.currency) : "—"}</td>
-                  </tr>
-                ))}
+                {breakdown.rows.map((r, i) => {
+                  const pe = historicalPE?.[i]?.pe;
+                  return (
+                    <tr key={r.label}>
+                      <td className="py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800">{r.label}</td>
+                      <td className="py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800 text-right tabular-nums">{r.revenue != null ? fmtMoney(r.revenue, data.currency) : "—"}</td>
+                      <td className="py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800 text-right tabular-nums">{r.netIncome != null ? fmtMoney(r.netIncome, data.currency) : "—"}</td>
+                      <td className="py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800 text-right tabular-nums">{r.fcf != null ? fmtMoney(r.fcf, data.currency) : "—"}</td>
+                      <td className="py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800 text-right tabular-nums">{r.totalDebt != null ? fmtMoney(r.totalDebt, data.currency) : "—"}</td>
+                      <td className="py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800 text-right tabular-nums">{pe != null ? `${pe.toFixed(1)}×` : historicalPE ? "—" : "…"}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -166,6 +196,9 @@ export default function ModelAnalysis() {
             ) : (
               <>Zaključak: finansijski položaj kompanije izgleda <b>{breakdown.verdict}</b>. {breakdown.detail}</>
             )}
+          </p>
+          <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">
+            P/E (procena) je istorijska cena akcije oko kraja svake godine podeljena sa procenjenim EPS-om te godine (neto dobit / trenutni broj akcija) — koristi trenutni broj akcija jer istorijski broj nije dostupan, pa je ovo procena, ne tačna knjigovodstvena vrednost.
           </p>
         </Section>
 
@@ -314,6 +347,33 @@ export default function ModelAnalysis() {
       {error && <div className="mt-3 text-sm text-red-600 dark:text-red-400">Greška: {error}</div>}
 
       {content}
+    </div>
+  );
+}
+
+function ShortSummary({
+  growthPotential,
+  valuationFilter,
+}: {
+  growthPotential: ComputedModel["growthPotential"];
+  valuationFilter: ComputedModel["valuationFilter"];
+}) {
+  const pricingCheck = valuationFilter.checks.find((c) => c.label === "Cena ne pretpostavlja savršeno poslovanje");
+  const buyText = `${growthPotential.label} — ${growthPotential.detail}`;
+  const expensiveText = valuationFilter.pricedForPerfection
+    ? pricingCheck?.detail ?? "Multiplikatori su u zoni visokih očekivanja."
+    : `Trenutno ne izgleda preskupo: ${pricingCheck?.detail ?? "multiplikatori ne ukazuju na ekstremna očekivanja."}`;
+
+  return (
+    <div className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white/70 dark:bg-zinc-900/50 p-5 space-y-2 text-sm">
+      <div>
+        <span className="font-semibold text-emerald-600 dark:text-emerald-400">Zašto bi mogla biti dobra kupovina: </span>
+        {buyText}
+      </div>
+      <div>
+        <span className="font-semibold text-amber-600 dark:text-amber-400">Zašto bi mogla biti preskupa: </span>
+        {expensiveText}
+      </div>
     </div>
   );
 }

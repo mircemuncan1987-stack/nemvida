@@ -125,20 +125,40 @@ export function extractModelData(result: any, symbol: string): ModelData {
     revenueGrowth: financialData.revenueGrowth?.raw ?? null,
   };
 
+  // Statementi za prihod, bilans stanja i novčani tok ne moraju imati isti
+  // broj perioda niti isti redosled — poravnavaju se po godini završetka
+  // fiskalne godine (endDate), a ne po poziciji u nizu, da se izbegne tiho
+  // pomeranje podataka između godina kad nizovi nisu iste dužine.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const byYear = (statements: any[]) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const map = new Map<string, any>();
+    for (const s of statements) {
+      const year = s.endDate?.fmt?.slice(0, 4);
+      if (year) map.set(year, s);
+    }
+    return map;
+  };
+  const balanceByYear = byYear(balanceSheets);
+  const cashflowByYear = byYear(reversedCashflows);
+
   const yearlyRows: YearlyFinancials[] = incomeStatements.map(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (s: any, i: number) => {
-      const bs = balanceSheets[i] || {};
-      const cf = reversedCashflows[i] || {};
+      const year = s.endDate?.fmt?.slice(0, 4) ?? null;
+      const bs = (year && balanceByYear.get(year)) || {};
+      const cf = (year && cashflowByYear.get(year)) || {};
       const ocf = cf.totalCashFromOperatingActivities?.raw;
       const capex = cf.capitalExpenditures?.raw;
+      const shortDebt = bs.shortLongTermDebt?.raw;
+      const longDebt = bs.longTermDebt?.raw;
       return {
-        label: s.endDate?.fmt ? s.endDate.fmt.slice(0, 4) : `Godina ${i + 1}`,
+        label: year || `Godina ${i + 1}`,
         revenue: s.totalRevenue?.raw ?? null,
         netIncome: s.netIncome?.raw ?? null,
         operatingIncome: s.operatingIncome?.raw ?? null,
         totalEquity: bs.totalStockholderEquity?.raw ?? null,
-        totalDebt: (bs.shortLongTermDebt?.raw ?? 0) + (bs.longTermDebt?.raw ?? 0) || null,
+        totalDebt: shortDebt != null || longDebt != null ? (shortDebt ?? 0) + (longDebt ?? 0) : null,
         fcf: ocf != null && capex != null ? ocf + capex : null,
       };
     }
@@ -195,6 +215,47 @@ export interface ComputedModel {
   management: ReturnType<typeof scoreManagementQuality>;
   bullBear: ReturnType<typeof buildBullBear>;
   finalVerdict: FinalVerdict;
+}
+
+export interface HistoricalPricePoint {
+  timestamp: number; // unix sekunde
+  close: number;
+}
+
+export interface HistoricalPeRow {
+  year: string;
+  pe: number | null;
+}
+
+// Aproksimacija: EPS po godini se računa kao neto dobit te godine podeljena
+// TRENUTNIM brojem akcija u opticaju (istorijski broj akcija nije dostupan u
+// ovom izvoru), a cena se uzima sa najbližeg dostupnog meseca oko kraja
+// kalendarske godine (aproksimacija kraja fiskalne godine ako se ne
+// poklapaju). Rezultat je procena, ne tačna knjigovodstvena vrednost.
+export function computeHistoricalPE(
+  yearlyRows: YearlyFinancials[],
+  priceHistory: HistoricalPricePoint[],
+  sharesOutstanding: number | null
+): HistoricalPeRow[] {
+  return yearlyRows.map((r) => {
+    const yearNum = parseInt(r.label, 10);
+    if (!sharesOutstanding || priceHistory.length === 0 || r.netIncome == null || r.netIncome <= 0 || Number.isNaN(yearNum)) {
+      return { year: r.label, pe: null };
+    }
+    const eps = r.netIncome / sharesOutstanding;
+    const targetTime = Date.UTC(yearNum, 11, 31) / 1000;
+    let closest: HistoricalPricePoint | null = null;
+    let closestDiff = Infinity;
+    for (const p of priceHistory) {
+      const diff = Math.abs(p.timestamp - targetTime);
+      if (diff < closestDiff) {
+        closestDiff = diff;
+        closest = p;
+      }
+    }
+    if (!closest) return { year: r.label, pe: null };
+    return { year: r.label, pe: closest.close / eps };
+  });
 }
 
 export function computeModel(data: ModelData, assumptions: Assumptions = DEFAULT_ASSUMPTIONS): ComputedModel {
