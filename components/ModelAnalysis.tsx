@@ -237,7 +237,6 @@ export default function ModelAnalysis() {
           <p className="text-sm text-zinc-600 dark:text-zinc-400 mb-3">Proverava da li trenutna cena akcije ima smisla u odnosu na rast, zaradu i imovinu kompanije.</p>
           <div>{valuationFilter.checks.map(checkRow)}</div>
           <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">{valuationFilter.passCount}/{valuationFilter.totalApplicable} primenjivih kriterijuma zadovoljeno. Jeftino ponekad znači pokvareno, a skupo ponekad znači kvalitet — ovo je samo disciplinski filter, ne presuda.</p>
-          <p className="mt-3 text-sm font-medium">Sinteza multiplikatora: {valuationSynthesis}</p>
         </Section>
 
         <Section title="5. Konkurentska prednost (objektivni proxy)">
@@ -303,6 +302,7 @@ export default function ModelAnalysis() {
             <span>Dugoročni izgled rasta (5+ god.): <b>{finalVerdict.growthLabel}</b></span>
           </div>
           <p className="text-sm leading-relaxed">{finalVerdict.detail}</p>
+          <p className="text-sm leading-relaxed mt-2">Multiplikatori: {valuationSynthesis}</p>
           <p className="mt-3 text-xs text-zinc-500 dark:text-zinc-400">
             Dugoročni izgled rasta se procenjuje iz istorijskog rasta i konsenzusa analitičara o rastu (vidi sekciju 3), namerno bez oslanjanja na modele procene vrednosti — svaki takav model nosi svoja ograničenja koja mogu iskriviti sud čak i za kvalitetne kompanije.
           </p>
