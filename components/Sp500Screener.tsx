@@ -8,12 +8,18 @@ import { DAX40_TICKERS } from "@/lib/dax40";
 import { CAC40_TICKERS } from "@/lib/cac40";
 import { IBEX35_TICKERS } from "@/lib/ibex35";
 import { FTSE100_TICKERS } from "@/lib/ftse100";
+import { AEX_TICKERS } from "@/lib/aex";
+import { OBX_TICKERS } from "@/lib/obx";
+import { OMXS30_TICKERS } from "@/lib/omxs30";
+import { FTSEMIB_TICKERS } from "@/lib/ftsemib";
+import { WIG20_TICKERS } from "@/lib/wig20";
+import { SMI_TICKERS } from "@/lib/smi";
 import { DEFAULT_ASSUMPTIONS, computeModel, extractModelData } from "@/lib/buildModel";
 
 const CONCURRENCY = 6;
 const CACHE_TTL_MS = 12 * 60 * 60 * 1000; // 12h — "realno vreme" u praksi znači osveženo par puta dnevno, ne svake sekunde
 
-type IndexKey = "sp500" | "dow30" | "nasdaq100" | "dax40" | "cac40" | "ibex35" | "ftse100";
+type IndexKey = "sp500" | "dow30" | "nasdaq100" | "dax40" | "cac40" | "ibex35" | "ftse100" | "aex" | "obx" | "omxs30" | "ftsemib" | "wig20" | "smi";
 
 const INDEXES: Record<IndexKey, { label: string; tickers: string[] }> = {
   sp500: { label: "S&P 500", tickers: SP500_TICKERS },
@@ -23,6 +29,12 @@ const INDEXES: Record<IndexKey, { label: string; tickers: string[] }> = {
   cac40: { label: "CAC 40 (Pariz)", tickers: CAC40_TICKERS },
   ibex35: { label: "IBEX 35 (Madrid)", tickers: IBEX35_TICKERS },
   ftse100: { label: "FTSE 100 (London)", tickers: FTSE100_TICKERS },
+  aex: { label: "AEX (Amsterdam)", tickers: AEX_TICKERS },
+  obx: { label: "OBX (Oslo)", tickers: OBX_TICKERS },
+  omxs30: { label: "OMXS30 (Stokholm)", tickers: OMXS30_TICKERS },
+  ftsemib: { label: "FTSE MIB (Rim/Milano)", tickers: FTSEMIB_TICKERS },
+  wig20: { label: "WIG20 (Varšava)", tickers: WIG20_TICKERS },
+  smi: { label: "SMI (Cirih)", tickers: SMI_TICKERS },
 };
 
 interface Row {
