@@ -30,14 +30,18 @@ interface Row {
   companyName: string;
   currentPrice: number;
   currency: string;
-  fairValue: number | null;
-  upside: number | null;
   verdictLabel: string;
   error?: string;
 }
 
-const fmtPct = (x: number | null | undefined) =>
-  x === null || x === undefined || Number.isNaN(x) ? "—" : `${x >= 0 ? "+" : ""}${(x * 100).toFixed(1)}%`;
+const VERDICT_ORDER: Record<string, number> = {
+  "Kupovina": 0,
+  "Čekaj — preskupo": 1,
+  "Držanje": 2,
+  "Izbegavanje": 3,
+  "Nedovoljno podataka": 4,
+  "—": 5,
+};
 
 const fmtMoney = (x: number, currency: string) => `${x.toLocaleString("en-US", { maximumFractionDigits: 2 })} ${currency}`;
 
@@ -54,8 +58,6 @@ async function fetchAndScore(ticker: string): Promise<Row> {
     companyName: modelData.companyName,
     currentPrice: modelData.currentPrice,
     currency: modelData.currency,
-    fairValue: computed.avgIntrinsicValue,
-    upside: computed.valuationUpside,
     verdictLabel: computed.finalVerdict.verdict,
   };
 }
@@ -66,7 +68,7 @@ export default function Sp500Screener() {
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState(0);
   const [search, setSearch] = useState("");
-  const [sortKey, setSortKey] = useState<"upside" | "ticker">("upside");
+  const [sortKey, setSortKey] = useState<"verdict" | "ticker">("verdict");
   const [lastUpdated, setLastUpdated] = useState<number | null>(null);
   const stopRef = useRef(false);
 
@@ -129,8 +131,6 @@ export default function Sp500Screener() {
             companyName: batch[idx],
             currentPrice: 0,
             currency: "",
-            fairValue: null,
-            upside: null,
             verdictLabel: "—",
             error: s.reason instanceof Error ? s.reason.message : "Greška",
           });
@@ -154,7 +154,7 @@ export default function Sp500Screener() {
     .filter((r) => !search || r.ticker.includes(search.toUpperCase()) || r.companyName.toUpperCase().includes(search.toUpperCase()))
     .sort((a, b) => {
       if (sortKey === "ticker") return a.ticker.localeCompare(b.ticker);
-      return (b.upside ?? -Infinity) - (a.upside ?? -Infinity);
+      return (VERDICT_ORDER[a.verdictLabel] ?? 5) - (VERDICT_ORDER[b.verdictLabel] ?? 5);
     });
 
   const failedCount = rows.filter((r) => r.error).length;
@@ -162,8 +162,9 @@ export default function Sp500Screener() {
   return (
     <div className="max-w-5xl mx-auto px-4 pb-16">
       <div className="mt-4 mb-5 text-sm leading-relaxed rounded-xl border border-amber-300/60 dark:border-amber-700/50 bg-amber-50 dark:bg-amber-900/15 text-amber-800 dark:text-amber-300 p-4">
-        <b>⚠ Ovo NIJE finansijski savet.</b> Fer vrednost je prosek nekoliko modela sa podrazumevanim pretpostavkama
-        (nisu ručno prilagođene po kompaniji) — za detaljniju analizu pojedinačne akcije koristi{" "}
+        <b>⚠ Ovo NIJE finansijski savet.</b> Sud je izveden iz istog sveobuhvatnog modela (rast poslovanja + disciplina
+        valuacije) sa podrazumevanim pretpostavkama (nisu ručno prilagođene po kompaniji) — za detaljniju analizu
+        pojedinačne akcije koristi{" "}
         <a href="/model" className="underline">sveobuhvatni model</a>. Liste tikera po indeksima su
         snimci iz opšteg znanja i mogu odstupati od trenutnog zvaničnog sastava (kompozicije se povremeno menjaju).
         &quot;Osveženo&quot; znači vreme poslednjeg preuzimanja podataka (keširano lokalno do 12h), ne doslovno live
@@ -203,10 +204,10 @@ export default function Sp500Screener() {
         />
         <select
           value={sortKey}
-          onChange={(e) => setSortKey(e.target.value as "upside" | "ticker")}
+          onChange={(e) => setSortKey(e.target.value as "verdict" | "ticker")}
           className="px-3 py-2 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-transparent text-sm"
         >
-          <option value="upside">Sortiraj: najviše potcenjene prvo</option>
+          <option value="verdict">Sortiraj: kupovina prvo</option>
           <option value="ticker">Sortiraj: abecedno</option>
         </select>
         {lastUpdated && (
@@ -235,8 +236,6 @@ export default function Sp500Screener() {
                   <th className="text-left text-xs uppercase text-zinc-500 dark:text-zinc-400 py-2 px-3 border-b border-zinc-200 dark:border-zinc-800">Ticker</th>
                   <th className="text-left text-xs uppercase text-zinc-500 dark:text-zinc-400 py-2 px-3 border-b border-zinc-200 dark:border-zinc-800">Kompanija</th>
                   <th className="text-right text-xs uppercase text-zinc-500 dark:text-zinc-400 py-2 px-3 border-b border-zinc-200 dark:border-zinc-800">Cena</th>
-                  <th className="text-right text-xs uppercase text-zinc-500 dark:text-zinc-400 py-2 px-3 border-b border-zinc-200 dark:border-zinc-800">Fer vrednost</th>
-                  <th className="text-right text-xs uppercase text-zinc-500 dark:text-zinc-400 py-2 px-3 border-b border-zinc-200 dark:border-zinc-800">Razlika</th>
                   <th className="text-left text-xs uppercase text-zinc-500 dark:text-zinc-400 py-2 px-3 border-b border-zinc-200 dark:border-zinc-800">Sud</th>
                 </tr>
               </thead>
@@ -248,11 +247,19 @@ export default function Sp500Screener() {
                     </td>
                     <td className="py-2 px-3 border-b border-zinc-200 dark:border-zinc-800 text-zinc-600 dark:text-zinc-400">{r.companyName}</td>
                     <td className="py-2 px-3 border-b border-zinc-200 dark:border-zinc-800 text-right tabular-nums">{fmtMoney(r.currentPrice, r.currency)}</td>
-                    <td className="py-2 px-3 border-b border-zinc-200 dark:border-zinc-800 text-right tabular-nums">{r.fairValue != null ? fmtMoney(r.fairValue, r.currency) : "—"}</td>
-                    <td className={`py-2 px-3 border-b border-zinc-200 dark:border-zinc-800 text-right tabular-nums ${r.upside != null ? (r.upside >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400") : ""}`}>
-                      {fmtPct(r.upside)}
+                    <td
+                      className={`py-2 px-3 border-b border-zinc-200 dark:border-zinc-800 text-xs font-medium ${
+                        r.verdictLabel === "Kupovina"
+                          ? "text-emerald-600 dark:text-emerald-400"
+                          : r.verdictLabel === "Izbegavanje"
+                            ? "text-red-600 dark:text-red-400"
+                            : r.verdictLabel === "Čekaj — preskupo"
+                              ? "text-amber-600 dark:text-amber-400"
+                              : "text-zinc-600 dark:text-zinc-400"
+                      }`}
+                    >
+                      {r.verdictLabel}
                     </td>
-                    <td className="py-2 px-3 border-b border-zinc-200 dark:border-zinc-800 text-xs">{r.verdictLabel}</td>
                   </tr>
                 ))}
               </tbody>
