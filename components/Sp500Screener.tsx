@@ -4,17 +4,25 @@ import { useRef, useState } from "react";
 import { SP500_TICKERS } from "@/lib/sp500";
 import { DOW30_TICKERS } from "@/lib/dow30";
 import { NASDAQ100_TICKERS } from "@/lib/nasdaq100";
+import { DAX40_TICKERS } from "@/lib/dax40";
+import { CAC40_TICKERS } from "@/lib/cac40";
+import { IBEX35_TICKERS } from "@/lib/ibex35";
+import { FTSE100_TICKERS } from "@/lib/ftse100";
 import { DEFAULT_ASSUMPTIONS, computeModel, extractModelData } from "@/lib/buildModel";
 
 const CONCURRENCY = 6;
 const CACHE_TTL_MS = 12 * 60 * 60 * 1000; // 12h — "realno vreme" u praksi znači osveženo par puta dnevno, ne svake sekunde
 
-type IndexKey = "sp500" | "dow30" | "nasdaq100";
+type IndexKey = "sp500" | "dow30" | "nasdaq100" | "dax40" | "cac40" | "ibex35" | "ftse100";
 
 const INDEXES: Record<IndexKey, { label: string; tickers: string[] }> = {
   sp500: { label: "S&P 500", tickers: SP500_TICKERS },
   dow30: { label: "Dow Jones (30)", tickers: DOW30_TICKERS },
   nasdaq100: { label: "Nasdaq-100", tickers: NASDAQ100_TICKERS },
+  dax40: { label: "DAX 40 (Frankfurt)", tickers: DAX40_TICKERS },
+  cac40: { label: "CAC 40 (Pariz)", tickers: CAC40_TICKERS },
+  ibex35: { label: "IBEX 35 (Madrid)", tickers: IBEX35_TICKERS },
+  ftse100: { label: "FTSE 100 (London)", tickers: FTSE100_TICKERS },
 };
 
 interface Row {
@@ -163,7 +171,7 @@ export default function Sp500Screener() {
       </div>
 
       <div className="border border-zinc-200 dark:border-zinc-800 bg-white/70 dark:bg-zinc-900/50 rounded-xl p-4 mb-4 flex flex-wrap gap-3 items-center">
-        <div className="flex gap-1 rounded-lg border border-zinc-300 dark:border-zinc-700 p-1">
+        <div className="flex flex-wrap gap-1 rounded-lg border border-zinc-300 dark:border-zinc-700 p-1">
           {(Object.keys(INDEXES) as IndexKey[]).map((k) => (
             <button
               key={k}

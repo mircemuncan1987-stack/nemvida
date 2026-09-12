@@ -11,9 +11,6 @@ export default function Header() {
           <Link href="/" className="hover:text-blue-600 dark:hover:text-blue-400">
             Vesti
           </Link>
-          <Link href="/clanci" className="hover:text-blue-600 dark:hover:text-blue-400">
-            Stručni članci
-          </Link>
           <Link href="/model" className="hover:text-blue-600 dark:hover:text-blue-400">
             Sveobuhvatni model
           </Link>
