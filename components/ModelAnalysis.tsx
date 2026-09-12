@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { computeDebtEquityHistory, computeHistoricalPE, computeHistoricalPEG, computeHistoricalPFcf, computeModel, extractModelData, type ComputedModel, type HistoricalMultipleRow, type HistoricalPricePoint } from "@/lib/buildModel";
+import { analyzeHistoricalMultiples, computeDebtEquityHistory, computeHistoricalPE, computeHistoricalPEG, computeHistoricalPFcf, computeModel, extractModelData, type ComputedModel, type HistoricalMultipleRow, type HistoricalPricePoint } from "@/lib/buildModel";
 import type { FilterCheck } from "@/lib/model";
 
 const fmtPct = (x: number | null | undefined, digits = 1) =>
@@ -154,6 +154,12 @@ export default function ModelAnalysis() {
   if (result) {
     const { data, breakdown, growthFilter, valuationFilter, moat, growthPotential, risks, management, bullBear, finalVerdict, shortTermUpside } = result;
     const debtEquityHistory = computeDebtEquityHistory(breakdown.rows);
+    const { fundamentals } = data;
+    const currentPFcf =
+      fundamentals.freeCashflowTtm != null && fundamentals.freeCashflowTtm > 0 && fundamentals.sharesOutstanding
+        ? fundamentals.currentPrice / (fundamentals.freeCashflowTtm / fundamentals.sharesOutstanding)
+        : null;
+    const multipleAnalysis = analyzeHistoricalMultiples(historicalPE ?? [], historicalPFcf ?? [], data.peRatio, currentPFcf);
 
     content = (
       <div className="mt-6 space-y-4">
@@ -209,6 +215,10 @@ export default function ModelAnalysis() {
           <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">
             P/E i P/FCF (procena) dele istorijsku cenu akcije oko kraja svake godine sa procenjenom dobiti/FCF-om po akciji te godine (koristeći trenutni broj akcija, jer istorijski broj nije dostupan) — procena, ne tačna knjigovodstvena vrednost. PEG (procena) je taj P/E podeljen godišnjim rastom neto dobiti u odnosu na prethodnu godinu (prazno kad je rast te godine negativan ili nula, jer PEG tada nema smislenu vrednost). Dug/kapital je ukupan dug podeljen sopstvenim kapitalom te godine.
           </p>
+          <div className="mt-4 pt-3 border-t border-zinc-200 dark:border-zinc-800">
+            <h4 className="text-xs font-semibold uppercase text-zinc-500 dark:text-zinc-400 mb-2">Analiza multiplikatora — skupa ili jeftina u odnosu na sopstvenu istoriju?</h4>
+            <p className="text-sm">{multipleAnalysis.text}</p>
+          </div>
         </Section>
 
         <Section title="2. Filter rasta — kvantitativni skrining">

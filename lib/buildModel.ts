@@ -339,6 +339,56 @@ export function computeDebtEquityHistory(yearlyRows: YearlyFinancials[]): DebtEq
   }));
 }
 
+export interface MultipleTrendAnalysis {
+  text: string;
+}
+
+function describeMultipleTrend(label: string, values: number[], current: number | null, unit: "×" | ""): string | null {
+  if (values.length < 2) return null;
+  const avg = values.reduce((a, b) => a + b, 0) / values.length;
+  const first = values[0];
+  const last = values[values.length - 1];
+  const trend = last > first * 1.1 ? "rastao" : last < first * 0.9 ? "opadao" : "bio stabilan";
+  let vsAvgText = "";
+  if (current != null && avg !== 0) {
+    const vsAvgPct = (current / avg - 1) * 100;
+    const richness = vsAvgPct > 15 ? "iznad" : vsAvgPct < -15 ? "ispod" : "blizu";
+    const meaning =
+      richness === "iznad"
+        ? "trenutno se trguje skuplje nego što je istorijski uobičajeno"
+        : richness === "ispod"
+          ? "trenutno se trguje jeftinije nego što je istorijski uobičajeno"
+          : "trenutna cena je u skladu sa sopstvenom istorijom";
+    vsAvgText = ` Trenutni ${label} od ${current.toFixed(1)}${unit} je ${richness} sopstvenog proseka (${vsAvgPct >= 0 ? "+" : ""}${vsAvgPct.toFixed(0)}%) — ${meaning}.`;
+  }
+  return `${label} je u posmatranom periodu ${trend} (sa ${first.toFixed(1)}${unit} na ${last.toFixed(1)}${unit}, prosek ${avg.toFixed(1)}${unit}).${vsAvgText}`;
+}
+
+// Poredi trenutne multiplikatore (P/E, P/FCF) sa sopstvenom istorijom
+// kompanije poslednjih godina — da li je akcija trenutno skuplja ili
+// jeftinija nego što je bila u odnosu na sopstvenu zaradu/novčani tok, a ne
+// samo u odnosu na generičke pragove. Odvojeno od finalne sinteze (Prompt
+// 10) — ovo je dodatna, samostalna analiza multiplikatora.
+export function analyzeHistoricalMultiples(
+  historicalPE: HistoricalMultipleRow[],
+  historicalPFcf: HistoricalMultipleRow[],
+  currentPE: number | null,
+  currentPFcf: number | null
+): MultipleTrendAnalysis {
+  const peValues = historicalPE.map((r) => r.multiple).filter((v): v is number => v != null);
+  const pFcfValues = historicalPFcf.map((r) => r.multiple).filter((v): v is number => v != null);
+
+  const parts = [
+    describeMultipleTrend("P/E", peValues, currentPE, "×"),
+    describeMultipleTrend("P/FCF", pFcfValues, currentPFcf, "×"),
+  ].filter((p): p is string => p != null);
+
+  if (parts.length === 0) {
+    return { text: "Nema dovoljno istorijskih podataka o P/E ili P/FCF da bi se trenutna cena uporedila sa sopstvenom istorijom kompanije." };
+  }
+  return { text: parts.join(" ") };
+}
+
 export function computeModel(data: ModelData, assumptions: Assumptions = DEFAULT_ASSUMPTIONS): ComputedModel {
   const f = data.fundamentals;
   const wacc = estimateWacc(f, assumptions);
