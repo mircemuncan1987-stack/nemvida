@@ -75,7 +75,11 @@ async function fetchTimeseries(symbol: string) {
       { headers: { "User-Agent": USER_AGENT, Cookie: auth.cookie, Accept: "application/json" }, next: { revalidate: 300 } }
     );
     if (!res.ok) return null;
-    return await res.json();
+    const json = await res.json();
+    // Yahoo-ov odgovor je već oblika { timeseries: { result: [...] } } —
+    // ovde se skida taj spoljašnji omotač da rezultat ne bi bio dvostruko
+    // ugnježden kad se doda kao "timeseries" polje u odgovor rute ispod.
+    return json?.timeseries ?? null;
   } catch {
     return null;
   }
@@ -127,40 +131,6 @@ export async function GET(request: NextRequest) {
           )}&quotesCount=10&newsCount=0&crumb=${encodeURIComponent(crumb)}`
       );
       return NextResponse.json(data);
-    }
-
-    if (type === "debug") {
-      const period2 = Math.floor(Date.now() / 1000);
-      const period1 = period2 - 6 * 365 * 24 * 60 * 60;
-      const types = ["annualFreeCashFlow", "annualTotalDebt", "annualStockholdersEquity"].join(",");
-      const timeseriesUrl = `https://query2.finance.yahoo.com/ws/fundamentals-timeseries/v1/finance/timeseries/${encodeURIComponent(
-        symbol
-      )}?symbol=${encodeURIComponent(symbol)}&type=${types}&period1=${period1}&period2=${period2}`;
-      let timeseriesStatus: number | string = "n/a";
-      let timeseriesBody = "";
-      try {
-        const auth = await fetchYahooAuth();
-        const res = await fetch(timeseriesUrl, { headers: { "User-Agent": USER_AGENT, Cookie: auth.cookie, Accept: "application/json" } });
-        timeseriesStatus = res.status;
-        timeseriesBody = (await res.text()).slice(0, 4000);
-      } catch (e) {
-        timeseriesBody = `FETCH ERROR: ${e instanceof Error ? e.message : String(e)}`;
-      }
-
-      let legacyBody = "";
-      try {
-        const legacyData = await fetchUpstream(
-          (crumb) =>
-            `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(
-              symbol
-            )}?modules=balanceSheetHistory,cashflowStatementHistory&crumb=${encodeURIComponent(crumb)}`
-        );
-        legacyBody = JSON.stringify(legacyData).slice(0, 4000);
-      } catch (e) {
-        legacyBody = `FETCH ERROR: ${e instanceof Error ? e.message : String(e)}`;
-      }
-
-      return NextResponse.json({ timeseriesUrl, timeseriesStatus, timeseriesBody, legacyBody });
     }
 
     return NextResponse.json({ error: "Nepoznat 'type' parametar" }, { status: 400 });
