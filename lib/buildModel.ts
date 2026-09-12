@@ -77,6 +77,17 @@ export interface ModelData {
   city: string | null;
   website: string | null;
   employees: number | null;
+  fiftyTwoWeekLow: number | null;
+  fiftyTwoWeekHigh: number | null;
+  payoutRatio: number | null;
+  nextEarningsDate: number | null; // unix sekunde
+  recommendation: {
+    strongBuy: number;
+    buy: number;
+    hold: number;
+    sell: number;
+    strongSell: number;
+  } | null;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -94,6 +105,8 @@ export function extractModelData(fullData: any, symbol: string): ModelData {
   const balanceSheets = (result.balanceSheetHistory?.balanceSheetStatements || []).slice().reverse();
   const earningsTrend = result.earningsTrend?.trend || [];
   const netSharePurchaseActivity = result.netSharePurchaseActivity || {};
+  const recTrend = result.recommendationTrend?.trend?.[0] || null;
+  const calendarEvents = result.calendarEvents || {};
 
   const country: string | null = assetProfile.country || null;
   const currency: string | null = price.currency || null;
@@ -239,6 +252,19 @@ export function extractModelData(fullData: any, symbol: string): ModelData {
     city: assetProfile.city ?? null,
     website: assetProfile.website ?? null,
     employees: assetProfile.fullTimeEmployees ?? null,
+    fiftyTwoWeekLow: summaryDetail.fiftyTwoWeekLow?.raw ?? null,
+    fiftyTwoWeekHigh: summaryDetail.fiftyTwoWeekHigh?.raw ?? null,
+    payoutRatio: summaryDetail.payoutRatio?.raw ?? null,
+    nextEarningsDate: calendarEvents.earnings?.earningsDate?.[0]?.raw ?? null,
+    recommendation: recTrend
+      ? {
+          strongBuy: recTrend.strongBuy ?? 0,
+          buy: recTrend.buy ?? 0,
+          hold: recTrend.hold ?? 0,
+          sell: recTrend.sell ?? 0,
+          strongSell: recTrend.strongSell ?? 0,
+        }
+      : null,
   };
 }
 

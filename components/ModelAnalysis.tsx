@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { analyzeHistoricalMultiples, computeDebtEquityHistory, computeHistoricalPE, computeHistoricalPEG, computeHistoricalPFcf, computeModel, extractModelData, synthesizeValuationMultiples, type ComputedModel, type HistoricalMultipleRow, type HistoricalPricePoint } from "@/lib/buildModel";
-import { getSectorPeMedian, type FilterCheck } from "@/lib/model";
+import { getSectorPeMedian, summarizeRecommendation, type FilterCheck } from "@/lib/model";
 
 const fmtPct = (x: number | null | undefined, digits = 1) =>
   x === null || x === undefined || Number.isNaN(x) ? "—" : `${x >= 0 ? "+" : ""}${(x * 100).toFixed(digits)}%`;
@@ -80,6 +80,7 @@ export default function ModelAnalysis() {
   const [historicalPEG, setHistoricalPEG] = useState<HistoricalMultipleRow[] | null>(null);
   const [suggestions, setSuggestions] = useState<SearchResult[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [now] = useState(() => Date.now());
   const searchParams = useSearchParams();
 
   async function runAnalysis(sym: string) {
@@ -163,6 +164,11 @@ export default function ModelAnalysis() {
     const currentDebtToEquity = data.debtToEquity != null ? data.debtToEquity / 100 : null;
     const sectorPeMedian = getSectorPeMedian(data.sector);
     const valuationSynthesis = synthesizeValuationMultiples(data.pegRatio, data.peRatio, multipleAnalysis.peAvg, currentPFcf, multipleAnalysis.pFcfAvg, currentDebtToEquity, sectorPeMedian, data.sector);
+    const rangePosition =
+      data.fiftyTwoWeekLow != null && data.fiftyTwoWeekHigh != null && data.fiftyTwoWeekHigh > data.fiftyTwoWeekLow
+        ? ((data.currentPrice - data.fiftyTwoWeekLow) / (data.fiftyTwoWeekHigh - data.fiftyTwoWeekLow)) * 100
+        : null;
+    const daysToEarnings = data.nextEarningsDate != null ? Math.round((data.nextEarningsDate * 1000 - now) / 86400000) : null;
 
     content = (
       <div className="mt-6 space-y-4">
@@ -205,6 +211,46 @@ export default function ModelAnalysis() {
           <p className="mt-3 text-xs text-zinc-500 dark:text-zinc-400">
             Opis, sektor, industrija i sedište su direktno iz Yahoo Finance profila kompanije — objektivni podaci o poslovanju, sedištu i portfoliju delatnosti. Konkurentska prednost (moat) se meri odvojeno, kvantitativno, u sekciji 5 — marže i ROE naspram WACC-a, ne pripovedanje o brendu.
           </p>
+        </Section>
+
+        <Section title="Cena i tržišni kontekst">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
+            <div>
+              <div className="text-xs text-zinc-500 dark:text-zinc-400 mb-1">Pozicija u 52-nedeljnom rasponu</div>
+              {rangePosition != null ? (
+                <>
+                  <div className="h-2 rounded-full bg-zinc-200 dark:bg-zinc-800 overflow-hidden relative">
+                    <div className="absolute top-0 h-2 w-1 bg-blue-600" style={{ left: `${Math.min(100, Math.max(0, rangePosition))}%` }} />
+                  </div>
+                  <div className="flex justify-between text-xs text-zinc-500 dark:text-zinc-400 mt-1">
+                    <span>{fmtMoney(data.fiftyTwoWeekLow, data.currency)}</span>
+                    <span>{fmtMoney(data.fiftyTwoWeekHigh, data.currency)}</span>
+                  </div>
+                  <div className="mt-1">Trenutno na {rangePosition.toFixed(0)}% raspona.</div>
+                </>
+              ) : (
+                <div className="text-zinc-500 dark:text-zinc-400">Nedostupno.</div>
+              )}
+            </div>
+            <div>
+              <div className="text-xs text-zinc-500 dark:text-zinc-400 mb-1">Sledeći izveštaj o zaradi</div>
+              {daysToEarnings != null ? (
+                <div>
+                  {new Date(data.nextEarningsDate! * 1000).toLocaleDateString("sr-RS")}
+                  {daysToEarnings >= 0 ? ` (za ${daysToEarnings} d.)` : " (prošao)"}
+                  {daysToEarnings >= 0 && daysToEarnings <= 14 && (
+                    <div className="text-amber-600 dark:text-amber-400 text-xs mt-1">Uskoro — očekuj povećanu volatilnost oko izveštaja.</div>
+                  )}
+                </div>
+              ) : (
+                <div className="text-zinc-500 dark:text-zinc-400">Nedostupno.</div>
+              )}
+            </div>
+            <div>
+              <div className="text-xs text-zinc-500 dark:text-zinc-400 mb-1">Konsenzus analitičara</div>
+              <div>{summarizeRecommendation(data.recommendation)}</div>
+            </div>
+          </div>
         </Section>
 
         <Section title="1. Finansijski trend (poslednjih do 5 god.)">
@@ -308,6 +354,12 @@ export default function ModelAnalysis() {
             {management.details.map((d, i) => (
               <li key={i}>{d}</li>
             ))}
+            {data.payoutRatio != null && (
+              <li>
+                Payout ratio (udeo dobiti isplaćen kao dividenda): {(data.payoutRatio * 100).toFixed(0)}%
+                {data.payoutRatio > 0.8 ? " — visok, dividenda je ranjivija na pad dobiti." : data.payoutRatio > 0.5 ? " — umeren." : " — nizak, ostavlja prostor za rast dividende."}
+              </li>
+            )}
           </ul>
         </Section>
 

@@ -100,7 +100,7 @@ export async function GET(request: NextRequest) {
   try {
     if (type === "valuation") {
       const modules =
-        "price,summaryDetail,defaultKeyStatistics,financialData,cashflowStatementHistory,incomeStatementHistory,balanceSheetHistory,recommendationTrend,assetProfile,earningsTrend,netSharePurchaseActivity";
+        "price,summaryDetail,defaultKeyStatistics,financialData,cashflowStatementHistory,incomeStatementHistory,balanceSheetHistory,recommendationTrend,assetProfile,earningsTrend,netSharePurchaseActivity,calendarEvents";
       const [data, timeseries] = await Promise.all([
         fetchUpstream(
           (crumb) =>

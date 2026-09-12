@@ -6,6 +6,25 @@
 // mogu proveriti iz podataka. Kad podatak nedostaje, to se jasno kaže umesto
 // da se nagađa.
 
+// ---------- Konsenzus preporuka analitičara (kontekst pre otvaranja pozicije) ----------
+
+export interface RecommendationCounts {
+  strongBuy: number;
+  buy: number;
+  hold: number;
+  sell: number;
+  strongSell: number;
+}
+
+export function summarizeRecommendation(rec: RecommendationCounts | null): string {
+  if (!rec) return "Nema podataka o preporukama analitičara.";
+  const total = rec.strongBuy + rec.buy + rec.hold + rec.sell + rec.strongSell;
+  if (total === 0) return "Nema podataka o preporukama analitičara.";
+  const score = (rec.strongBuy * 1 + rec.buy * 2 + rec.hold * 3 + rec.sell * 4 + rec.strongSell * 5) / total;
+  const label = score <= 1.8 ? "Snažna kupovina" : score <= 2.6 ? "Kupovina" : score <= 3.4 ? "Držanje" : score <= 4.2 ? "Prodaja" : "Snažna prodaja";
+  return `${label} (prosečna ocena ${score.toFixed(1)}/5 od ${total} analitičara: ${rec.strongBuy} snažna kupovina, ${rec.buy} kupovina, ${rec.hold} držanje, ${rec.sell} prodaja, ${rec.strongSell} snažna prodaja).`;
+}
+
 export interface YearlyFinancials {
   label: string; // npr. "2021", ili "Pre 3 god." ako godina nije dostupna
   revenue: number | null;
