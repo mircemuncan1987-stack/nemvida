@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { analyzeHistoricalMultiples, computeDebtEquityHistory, computeHistoricalPE, computeHistoricalPEG, computeHistoricalPFcf, computeModel, extractModelData, synthesizeValuationMultiples, type ComputedModel, type HistoricalMultipleRow, type HistoricalPricePoint } from "@/lib/buildModel";
-import type { FilterCheck } from "@/lib/model";
+import { getSectorPeMedian, type FilterCheck } from "@/lib/model";
 
 const fmtPct = (x: number | null | undefined, digits = 1) =>
   x === null || x === undefined || Number.isNaN(x) ? "—" : `${x >= 0 ? "+" : ""}${(x * 100).toFixed(digits)}%`;
@@ -161,7 +161,8 @@ export default function ModelAnalysis() {
         : null;
     const multipleAnalysis = analyzeHistoricalMultiples(historicalPE ?? [], historicalPFcf ?? [], data.peRatio, currentPFcf);
     const currentDebtToEquity = data.debtToEquity != null ? data.debtToEquity / 100 : null;
-    const valuationSynthesis = synthesizeValuationMultiples(data.pegRatio, data.peRatio, multipleAnalysis.peAvg, currentPFcf, multipleAnalysis.pFcfAvg, currentDebtToEquity);
+    const sectorPeMedian = getSectorPeMedian(data.sector);
+    const valuationSynthesis = synthesizeValuationMultiples(data.pegRatio, data.peRatio, multipleAnalysis.peAvg, currentPFcf, multipleAnalysis.pFcfAvg, currentDebtToEquity, sectorPeMedian, data.sector);
 
     content = (
       <div className="mt-6 space-y-4">

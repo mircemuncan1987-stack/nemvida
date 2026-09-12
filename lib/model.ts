@@ -345,6 +345,31 @@ export function scoreGrowthPotential(inputs: GrowthPotentialInputs): GrowthPoten
   };
 }
 
+// Orijentacione medijalne P/E vrednosti po sektoru (GICS klasifikacija koju
+// Yahoo Finance već vraća u profilu kompanije) — Yahoo ne pruža "sector P/E"
+// kao gotovo polje, pa se koristi ova fiksna tabela dugoročnih istorijskih
+// medijana umesto jednog generičkog praga za sve sektore. Grubo je i ne
+// prati tržišne cikluse u realnom vremenu, ali je precizniji orijentir od
+// istog broja za banku i za softversku kompaniju.
+const SECTOR_PE_MEDIANS: Record<string, number> = {
+  Technology: 28,
+  "Communication Services": 20,
+  "Consumer Cyclical": 22,
+  "Consumer Defensive": 20,
+  Healthcare: 22,
+  "Financial Services": 14,
+  Energy: 12,
+  Industrials: 20,
+  "Basic Materials": 15,
+  "Real Estate": 35,
+  Utilities: 18,
+};
+
+export function getSectorPeMedian(sector: string | null): number | null {
+  if (!sector) return null;
+  return SECTOR_PE_MEDIANS[sector] ?? null;
+}
+
 // ---------- Prompt: Risk Analysis ----------
 
 export interface RiskInputs {
@@ -393,10 +418,11 @@ export function rankRisks(inputs: RiskInputs): RiskItem[] {
   if (inputs.peRatio != null) {
     const threshold = inputs.sectorPeMedian ?? 25;
     const ratio = inputs.peRatio / threshold;
+    const refLabel = inputs.sectorPeMedian != null ? `medijane sektora (${threshold.toFixed(0)})` : `generičke referentne vrednosti (${threshold.toFixed(0)}, medijana sektora nije dostupna)`;
     risks.push({
       label: "Rizik precenjenosti",
       severity: ratio > 1.8 ? 5 : ratio > 1.3 ? 3 : ratio > 1 ? 2 : 1,
-      detail: `P/E ${inputs.peRatio.toFixed(1)} u odnosu na referentnu vrednost od ${threshold.toFixed(0)}`,
+      detail: `P/E ${inputs.peRatio.toFixed(1)} u odnosu na ${refLabel}`,
     });
   }
 

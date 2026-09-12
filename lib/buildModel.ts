@@ -19,6 +19,7 @@ import {
   buildBullBear,
   buildFinalVerdict,
   buildFinancialBreakdown,
+  getSectorPeMedian,
   rankRisks,
   runGrowthFilter,
   runValuationFilter,
@@ -413,7 +414,9 @@ export function synthesizeValuationMultiples(
   peAvg: number | null,
   currentPFcf: number | null,
   pFcfAvg: number | null,
-  debtToEquity: number | null
+  debtToEquity: number | null,
+  sectorPeMedian: number | null,
+  sector: string | null
 ): string {
   const readings: string[] = [];
 
@@ -440,7 +443,14 @@ export function synthesizeValuationMultiples(
     sentence2 = `Dug/kapital od ${debtToEquity.toFixed(2)} ukazuje na ${label}.`;
   }
 
-  return [sentence1, sentence2].filter(Boolean).join(" ") || "Nema dovoljno podataka o multiplikatorima za objedinjenu sintezu.";
+  let sentence3 = "";
+  if (currentPE != null && sectorPeMedian != null) {
+    const diff = (currentPE / sectorPeMedian - 1) * 100;
+    const label = diff > 15 ? `iznad medijane sektora za ${diff.toFixed(0)}%` : diff < -15 ? `ispod medijane sektora za ${Math.abs(diff).toFixed(0)}%` : "blizu medijane sektora";
+    sentence3 = `U odnosu na sektor${sector ? ` (${sector})` : ""}, P/E od ${currentPE.toFixed(1)}× je ${label} (medijana ${sectorPeMedian.toFixed(0)}×).`;
+  }
+
+  return [sentence1, sentence2, sentence3].filter(Boolean).join(" ") || "Nema dovoljno podataka o multiplikatorima za objedinjenu sintezu.";
 }
 
 export function computeModel(data: ModelData, assumptions: Assumptions = DEFAULT_ASSUMPTIONS): ComputedModel {
@@ -486,7 +496,7 @@ export function computeModel(data: ModelData, assumptions: Assumptions = DEFAULT
     currentRatio: data.currentRatio,
     beta: data.beta,
     peRatio: data.peRatio,
-    sectorPeMedian: null,
+    sectorPeMedian: getSectorPeMedian(data.sector),
     analystDispersion:
       data.targetHighPrice != null && data.targetLowPrice != null && data.targetMeanPrice != null
         ? { high: data.targetHighPrice, low: data.targetLowPrice, mean: data.targetMeanPrice }
