@@ -72,7 +72,10 @@ export interface ModelData {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function extractModelData(result: any, symbol: string): ModelData {
+export function extractModelData(fullData: any, symbol: string): ModelData {
+  const result = fullData?.quoteSummary?.result?.[0];
+  if (!result) throw new Error("Podaci nisu dostupni za ovaj tiker.");
+
   const price = result.price || {};
   const summaryDetail = result.summaryDetail || {};
   const keyStats = result.defaultKeyStatistics || {};
@@ -142,6 +145,29 @@ export function extractModelData(result: any, symbol: string): ModelData {
   const balanceByYear = byYear(balanceSheets);
   const cashflowByYear = byYear(reversedCashflows);
 
+  // Yahoo-ov noviji "fundamentals-timeseries" endpoint je pouzdaniji izvor za
+  // istorijski FCF/dug/kapital od starih balanceSheetHistory/
+  // cashflowStatementHistory modula (koji su kod mnogih tikera prazni) — ako
+  // je dostupan, koristi se kao primarni izvor, uz stare module kao rezervu.
+  const timeseriesByYear = (typeKey: string): Map<string, number> => {
+    const map = new Map<string, number>();
+    const entries = fullData?.timeseries?.result || [];
+    for (const entry of entries) {
+      if (entry?.meta?.type?.[0] !== typeKey) continue;
+      const series = entry[typeKey];
+      if (!Array.isArray(series)) continue;
+      for (const point of series) {
+        const year = point?.asOfDate?.slice(0, 4);
+        const value = point?.reportedValue?.raw;
+        if (year && value != null) map.set(year, value);
+      }
+    }
+    return map;
+  };
+  const fcfByYear = timeseriesByYear("annualFreeCashFlow");
+  const debtByYear = timeseriesByYear("annualTotalDebt");
+  const equityByYear = timeseriesByYear("annualStockholdersEquity");
+
   const yearlyRows: YearlyFinancials[] = incomeStatements.map(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (s: any, i: number) => {
@@ -152,14 +178,16 @@ export function extractModelData(result: any, symbol: string): ModelData {
       const capex = cf.capitalExpenditures?.raw;
       const shortDebt = bs.shortLongTermDebt?.raw;
       const longDebt = bs.longTermDebt?.raw;
+      const legacyDebt = shortDebt != null || longDebt != null ? (shortDebt ?? 0) + (longDebt ?? 0) : null;
+      const legacyFcf = ocf != null && capex != null ? ocf + capex : null;
       return {
         label: year || `Godina ${i + 1}`,
         revenue: s.totalRevenue?.raw ?? null,
         netIncome: s.netIncome?.raw ?? null,
         operatingIncome: s.operatingIncome?.raw ?? null,
-        totalEquity: bs.totalStockholderEquity?.raw ?? null,
-        totalDebt: shortDebt != null || longDebt != null ? (shortDebt ?? 0) + (longDebt ?? 0) : null,
-        fcf: ocf != null && capex != null ? ocf + capex : null,
+        totalEquity: (year && equityByYear.get(year)) ?? bs.totalStockholderEquity?.raw ?? null,
+        totalDebt: (year && debtByYear.get(year)) ?? legacyDebt,
+        fcf: (year && fcfByYear.get(year)) ?? legacyFcf,
       };
     }
   );

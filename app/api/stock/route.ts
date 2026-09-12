@@ -56,9 +56,38 @@ async function fetchUpstream(buildUrl: (crumb: string) => string, forceRefresh =
   return res.json();
 }
 
+// Legacy balanceSheetHistory/cashflowStatementHistory moduli u quoteSummary
+// API-ju su kod Yahoo-a sve češće prazni za godišnje periode (izgleda da ih
+// postepeno gase). "fundamentals-timeseries" je noviji endpoint koji sam
+// Yahoo Finance sajt danas koristi za istorijski FCF/dug/kapital, pa se
+// koristi kao primarni izvor za te podatke — ako ne uspe, ne ruši ceo
+// zahtev, samo se ti podaci neće prikazati.
+async function fetchTimeseries(symbol: string) {
+  try {
+    const period2 = Math.floor(Date.now() / 1000);
+    const period1 = period2 - 6 * 365 * 24 * 60 * 60;
+    const types = ["annualFreeCashFlow", "annualTotalDebt", "annualStockholdersEquity"].join(",");
+    const auth = await fetchYahooAuth();
+    const res = await fetch(
+      `https://query2.finance.yahoo.com/ws/fundamentals-timeseries/v1/finance/timeseries/${encodeURIComponent(
+        symbol
+      )}?symbol=${encodeURIComponent(symbol)}&type=${types}&period1=${period1}&period2=${period2}`,
+      { headers: { "User-Agent": USER_AGENT, Cookie: auth.cookie, Accept: "application/json" }, next: { revalidate: 300 } }
+    );
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
 export async function GET(request: NextRequest) {
   const symbol = request.nextUrl.searchParams.get("symbol");
   const type = request.nextUrl.searchParams.get("type") || "valuation";
+  // "full=1" povlači i fundamentals-timeseries (FCF/dug/kapital po godini) —
+  // preskače se za masovno skeniranje (skener indeksa) da se ne udvostruče
+  // mrežni pozivi za stotine tikera odjednom kad taj podatak nije potreban.
+  const full = request.nextUrl.searchParams.get("full") === "1";
 
   if (!symbol) {
     return NextResponse.json({ error: "Nedostaje parametar 'symbol'" }, { status: 400 });
@@ -68,13 +97,16 @@ export async function GET(request: NextRequest) {
     if (type === "valuation") {
       const modules =
         "price,summaryDetail,defaultKeyStatistics,financialData,cashflowStatementHistory,incomeStatementHistory,balanceSheetHistory,recommendationTrend,assetProfile,earningsTrend,netSharePurchaseActivity";
-      const data = await fetchUpstream(
-        (crumb) =>
-          `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(
-            symbol
-          )}?modules=${modules}&crumb=${encodeURIComponent(crumb)}`
-      );
-      return NextResponse.json(data);
+      const [data, timeseries] = await Promise.all([
+        fetchUpstream(
+          (crumb) =>
+            `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(
+              symbol
+            )}?modules=${modules}&crumb=${encodeURIComponent(crumb)}`
+        ),
+        full ? fetchTimeseries(symbol) : Promise.resolve(null),
+      ]);
+      return NextResponse.json({ ...data, timeseries });
     }
 
     if (type === "history") {

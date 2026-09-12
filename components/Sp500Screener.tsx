@@ -37,10 +37,8 @@ async function fetchAndScore(ticker: string): Promise<Row> {
   const res = await fetch(`/api/stock?symbol=${encodeURIComponent(ticker)}&type=valuation`, { cache: "no-store" });
   const data = await res.json();
   if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
-  const result = data?.quoteSummary?.result?.[0];
-  if (!result) throw new Error("Nema podataka");
 
-  const modelData = extractModelData(result, ticker);
+  const modelData = extractModelData(data, ticker);
   const computed = computeModel(modelData, DEFAULT_ASSUMPTIONS);
 
   return {

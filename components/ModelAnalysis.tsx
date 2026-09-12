@@ -12,12 +12,10 @@ const fmtMoney = (x: number | null | undefined, currency: string) =>
   x === null || x === undefined || Number.isNaN(x) ? "—" : `${x.toLocaleString("en-US", { maximumFractionDigits: 2 })} ${currency}`;
 
 async function fetchModelResult(symbol: string): Promise<ComputedModel> {
-  const res = await fetch(`/api/stock?symbol=${encodeURIComponent(symbol)}&type=valuation`, { cache: "no-store" });
+  const res = await fetch(`/api/stock?symbol=${encodeURIComponent(symbol)}&type=valuation&full=1`, { cache: "no-store" });
   const data = await res.json();
   if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
-  const result = data?.quoteSummary?.result?.[0];
-  if (!result) throw new Error("Podaci nisu dostupni za ovaj tiker.");
-  const modelData = extractModelData(result, symbol);
+  const modelData = extractModelData(data, symbol);
   return computeModel(modelData);
 }
 
