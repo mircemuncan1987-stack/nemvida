@@ -158,8 +158,6 @@ export default function ModelAnalysis() {
           </div>
         </div>
 
-        <ShortSummary growthPotential={growthPotential} valuationFilter={valuationFilter} />
-
         <Section title="1. Finansijski trend (poslednjih do 5 god.)">
           <div className="overflow-x-auto">
             <table className="w-full text-sm border-collapse">
@@ -347,33 +345,6 @@ export default function ModelAnalysis() {
       {error && <div className="mt-3 text-sm text-red-600 dark:text-red-400">Greška: {error}</div>}
 
       {content}
-    </div>
-  );
-}
-
-function ShortSummary({
-  growthPotential,
-  valuationFilter,
-}: {
-  growthPotential: ComputedModel["growthPotential"];
-  valuationFilter: ComputedModel["valuationFilter"];
-}) {
-  const pricingCheck = valuationFilter.checks.find((c) => c.label === "Cena ne pretpostavlja savršeno poslovanje");
-  const buyText = `${growthPotential.label} — ${growthPotential.detail}`;
-  const expensiveText = valuationFilter.pricedForPerfection
-    ? pricingCheck?.detail ?? "Multiplikatori su u zoni visokih očekivanja."
-    : `Trenutno ne izgleda preskupo: ${pricingCheck?.detail ?? "multiplikatori ne ukazuju na ekstremna očekivanja."}`;
-
-  return (
-    <div className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white/70 dark:bg-zinc-900/50 p-5 space-y-2 text-sm">
-      <div>
-        <span className="font-semibold text-emerald-600 dark:text-emerald-400">Zašto bi mogla biti dobra kupovina: </span>
-        {buyText}
-      </div>
-      <div>
-        <span className="font-semibold text-amber-600 dark:text-amber-400">Zašto bi mogla biti preskupa: </span>
-        {expensiveText}
-      </div>
     </div>
   );
 }

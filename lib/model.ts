@@ -510,12 +510,9 @@ export interface FinalVerdictInputs {
   shortTermUpside: number | null; // implicira prosečna ciljna cena analitičara (1 god.)
   growthTier: GrowthTier; // iz Growth Potential Analysis — stvarna procena rasta poslovanja, ne procena vrednosti
   growthLabel: string;
-  growthDetail: string;
   growthEstimateRange: string; // npr. "8%–13% godišnje" — konkretan broj za ovu kompaniju
   pegRatio: number | null;
   evToEbitda: number | null;
-  catalysts: string[];
-  risks: string[];
   topRiskDetail: string | null; // label + detalj najvećeg pojedinačnog rizika, za konkretno obrazloženje
   pricedForPerfection: boolean;
 }
@@ -566,30 +563,19 @@ export function buildFinalVerdict(inputs: FinalVerdictInputs): FinalVerdict {
   let reasoning: string;
   if (gScore === -1) {
     verdict = "Izbegavanje";
-    reasoning = `Zašto izbegavanje: procena rasta za ovu kompaniju je ${inputs.growthEstimateRange} — ${inputs.growthLabel.toLowerCase()}. Kad osnovno poslovanje ne raste (ili je rast upitan), nijedna cena to dugoročno ne kompenzuje.${
-      inputs.topRiskDetail ? ` Dodatno opterećenje: ${inputs.topRiskDetail}.` : ""
+    reasoning = `Rast je ${inputs.growthEstimateRange} (${inputs.growthLabel.toLowerCase()}) — nedovoljno da opravda ulaganje, bez obzira na cenu.${
+      inputs.topRiskDetail ? ` Najveći rizik: ${inputs.topRiskDetail}.` : ""
     }`;
   } else if (gScore === 0) {
     verdict = "Držanje";
-    reasoning = `Zašto držanje: procenjeni rast je ${inputs.growthEstimateRange} — spor, ali pozitivan. Ovo je pre profil za držanje postojeće pozicije (ili posmatranje) nego za novu, agresivnu kupovinu — poslovanje nije loše, samo ne raste dovoljno brzo da samo po sebi opravda kupovinu.`;
+    reasoning = `Rast je spor (${inputs.growthEstimateRange}) — pre za držanje postojeće pozicije nego za novu kupovinu.`;
   } else if (inputs.pricedForPerfection) {
     verdict = "Čekaj — preskupo";
-    reasoning = `Zašto čekati: rast od ${inputs.growthEstimateRange} (${inputs.growthLabel.toLowerCase()}) je solidan, ali cena već uračunava gotovo savršeno izvršenje — ${pricingText}. Svaki propust u poslovanju bi ovde nesrazmerno oštro pogodio cenu, pa je razumnije sačekati povoljniji ulaz nego kupovati po trenutnoj ceni.`;
+    reasoning = `Rast od ${inputs.growthEstimateRange} je solidan, ali cena već uračunava gotovo savršeno izvršenje (${pricingText}) — bolje sačekati povoljniji ulaz.`;
   } else {
     verdict = "Kupovina";
-    reasoning = `Zašto kupovina: rast od ${inputs.growthEstimateRange} (${inputs.growthLabel.toLowerCase()}) je solidan, a cena ne uračunava ekstremna očekivanja — ${pricingText}. Kombinacija rasta koji nije precenjen ovde je najjača.`;
+    reasoning = `Rast od ${inputs.growthEstimateRange} je solidan, a cena ne uračunava ekstremna očekivanja (${pricingText}).`;
   }
 
-  const detail = [
-    reasoning,
-    `Kratkoročno (1 god., prema konsenzusu analitičara): ${shortTermLabel}.`,
-    `Dugoročni izgled rasta (5+ god., iz istorijskog rasta i konsenzusa analitičara o rastu — ne iz modela procene vrednosti): ${inputs.growthLabel}. ${inputs.growthDetail}`,
-    inputs.catalysts.length ? `Ključni katalizatori: ${inputs.catalysts.join("; ")}.` : "",
-    inputs.risks.length ? `Najveći rizici: ${inputs.risks.join("; ")}.` : "",
-    "Ovo NIJE finansijski savet — sud je automatski izveden iz pretpostavki koje si uneo/la u modelu.",
-  ]
-    .filter(Boolean)
-    .join(" ");
-
-  return { shortTermLabel, growthLabel: inputs.growthLabel, verdict, detail };
+  return { shortTermLabel, growthLabel: inputs.growthLabel, verdict, detail: reasoning };
 }
