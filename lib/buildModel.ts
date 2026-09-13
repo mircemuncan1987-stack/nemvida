@@ -20,7 +20,9 @@ import {
   buildFinalVerdict,
   buildFinancialBreakdown,
   getSectorPeMedian,
+  identifyRedFlags,
   rankRisks,
+  rateFundamentals,
   runGrowthFilter,
   runValuationFilter,
   scoreGrowthPotential,
@@ -284,6 +286,8 @@ export interface ComputedModel {
   management: ReturnType<typeof scoreManagementQuality>;
   bullBear: ReturnType<typeof buildBullBear>;
   finalVerdict: FinalVerdict;
+  fundamentalsRating: ReturnType<typeof rateFundamentals>;
+  redFlags: string[];
 }
 
 export interface HistoricalPricePoint {
@@ -479,6 +483,61 @@ export function synthesizeValuationMultiples(
   return [sentence1, sentence2, sentence3].filter(Boolean).join(" ") || "Nema dovoljno podataka o multiplikatorima za objedinjenu sintezu.";
 }
 
+// ---------- Poređenje ukupnog prinosa sa SPY (S&P 500) na 3/5/10/20 godina ----------
+
+export interface BenchmarkComparisonRow {
+  years: number;
+  stockReturn: number | null;
+  benchmarkReturn: number | null;
+  outperformance: number | null; // stockReturn - benchmarkReturn
+  verdict: "Nadmašuje SPY" | "Ispod SPY" | "Nedovoljno podataka";
+}
+
+function findClosestPoint(points: HistoricalPricePoint[], targetTimestamp: number, toleranceDays: number): HistoricalPricePoint | null {
+  let closest: HistoricalPricePoint | null = null;
+  let closestDiff = Infinity;
+  for (const p of points) {
+    const diff = Math.abs(p.timestamp - targetTimestamp);
+    if (diff < closestDiff) {
+      closestDiff = diff;
+      closest = p;
+    }
+  }
+  if (!closest || closestDiff > toleranceDays * 86400) return null;
+  return closest;
+}
+
+// Ukupan prinos (uz pretpostavku da su cene iz istorije prilagođene
+// dividendama/podelama akcija — "adjusted close") za dati broj godina unazad
+// od trenutka "now". Vraća null kad istorija ne seže dovoljno unazad (npr.
+// kompanija je izašla na berzu pre manje od N godina) — bolje ne prikazati
+// broj nego prikazati pogrešnu procenu.
+export function computeTotalReturn(points: HistoricalPricePoint[], years: number, nowSeconds: number): number | null {
+  if (points.length < 2) return null;
+  const latest = points[points.length - 1];
+  const targetTs = nowSeconds - years * 365.25 * 86400;
+  const oldest = findClosestPoint(points, targetTs, 120);
+  if (!oldest || oldest.close <= 0) return null;
+  return latest.close / oldest.close - 1;
+}
+
+export function compareToBenchmark(
+  stockPoints: HistoricalPricePoint[],
+  benchmarkPoints: HistoricalPricePoint[],
+  nowSeconds: number,
+  horizons: number[] = [3, 5, 10, 20]
+): BenchmarkComparisonRow[] {
+  return horizons.map((years) => {
+    const stockReturn = computeTotalReturn(stockPoints, years, nowSeconds);
+    const benchmarkReturn = computeTotalReturn(benchmarkPoints, years, nowSeconds);
+    if (stockReturn == null || benchmarkReturn == null) {
+      return { years, stockReturn, benchmarkReturn, outperformance: null, verdict: "Nedovoljno podataka" };
+    }
+    const outperformance = stockReturn - benchmarkReturn;
+    return { years, stockReturn, benchmarkReturn, outperformance, verdict: outperformance > 0 ? "Nadmašuje SPY" : "Ispod SPY" };
+  });
+}
+
 export function computeModel(data: ModelData, assumptions: Assumptions = DEFAULT_ASSUMPTIONS): ComputedModel {
   const f = data.fundamentals;
   const wacc = estimateWacc(f, assumptions);
@@ -494,6 +553,7 @@ export function computeModel(data: ModelData, assumptions: Assumptions = DEFAULT
   const shortTermUpside = summarizeUpside(f.currentPrice, data.targetMeanPrice);
 
   const breakdown = buildFinancialBreakdown(data.yearlyRows);
+  const currentDebtToEquity = data.debtToEquity != null ? data.debtToEquity / 100 : null; // Yahoo vraća debtToEquity kao procenat
   const revenueHistory = data.yearlyRows.map((r) => r.revenue).filter((v): v is number => v != null);
   const netIncomeHistory = data.yearlyRows.map((r) => r.netIncome).filter((v): v is number => v != null);
   const growthFilter = runGrowthFilter({ revenueHistory, netIncomeHistory, ttmRevenueGrowth: data.revenueGrowthTtm });
@@ -561,5 +621,34 @@ export function computeModel(data: ModelData, assumptions: Assumptions = DEFAULT
     pricedForPerfection: valuationFilter.pricedForPerfection,
   });
 
-  return { data, wacc, avgIntrinsicValue, lynchValue, shortTermUpside, valuationUpside, breakdown, growthFilter, valuationFilter, moat, growthPotential, risks, management, bullBear, finalVerdict };
+  const fundamentalsRating = rateFundamentals({
+    revenueCagr: breakdown.revenueCagr,
+    patCagr: breakdown.patCagr,
+    grossMargin: data.grossMargin,
+    operatingMargins: data.operatingMargins,
+    returnOnEquity: data.returnOnEquity,
+    debtToEquity: currentDebtToEquity,
+    currentRatio: data.currentRatio,
+    moatScore: moat.score,
+  });
+
+  const latestFcf = data.yearlyRows.length ? data.yearlyRows[data.yearlyRows.length - 1].fcf : null;
+  const analystDispersionPercent =
+    data.targetHighPrice != null && data.targetLowPrice != null && data.targetMeanPrice != null && data.targetMeanPrice > 0
+      ? ((data.targetHighPrice - data.targetLowPrice) / data.targetMeanPrice) * 100
+      : null;
+  const redFlags = identifyRedFlags({
+    latestFcf,
+    operatingMargins: data.operatingMargins,
+    debtToEquity: currentDebtToEquity,
+    currentRatio: data.currentRatio,
+    payoutRatio: data.payoutRatio,
+    insiderNetPercentShares: data.insiderNetPercentShares,
+    shortPercentOfFloat: data.shortPercentOfFloat,
+    pegRatio: data.pegRatio,
+    revenueGrowthTtm: data.revenueGrowthTtm,
+    analystDispersionPercent,
+  });
+
+  return { data, wacc, avgIntrinsicValue, lynchValue, shortTermUpside, valuationUpside, breakdown, growthFilter, valuationFilter, moat, growthPotential, risks, management, bullBear, finalVerdict, fundamentalsRating, redFlags };
 }

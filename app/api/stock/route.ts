@@ -114,11 +114,17 @@ export async function GET(request: NextRequest) {
     }
 
     if (type === "history") {
+      // "range" je podesiv (podrazumevano "max") jer se ista ruta koristi i
+      // za istorijske multiplikatore (dovoljno je nekoliko godina) i za
+      // poređenje ukupnog prinosa sa SPY na 3/5/10/20 godina (potrebna je
+      // duža istorija) — jednostavnije je zatražiti celu dostupnu istoriju
+      // jednom nego praviti dva različita poziva.
+      const range = request.nextUrl.searchParams.get("range") || "max";
       const data = await fetchUpstream(
         (crumb) =>
           `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(
             symbol
-          )}?range=6y&interval=1mo&crumb=${encodeURIComponent(crumb)}`
+          )}?range=${encodeURIComponent(range)}&interval=1mo&crumb=${encodeURIComponent(crumb)}`
       );
       return NextResponse.json(data);
     }

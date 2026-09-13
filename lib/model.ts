@@ -549,6 +549,138 @@ export function buildBullBear(signals: DimensionSignal[]): BullBearResult {
   return { bull, bear, conclusion };
 }
 
+// ---------- Objektivna ocena fundamenata (jaka/osrednja/slaba) ----------
+
+export interface FundamentalsRatingInputs {
+  revenueCagr: number | null;
+  patCagr: number | null;
+  grossMargin: number | null;
+  operatingMargins: number | null;
+  returnOnEquity: number | null;
+  debtToEquity: number | null; // već kao odnos (ne procenat)
+  currentRatio: number | null;
+  moatScore: number | null; // 1-10, iz scoreMoat
+}
+
+export type FundamentalsRating = "Jaka" | "Osrednja" | "Slaba" | "Nedovoljno podataka";
+
+export interface FundamentalsRatingResult {
+  rating: FundamentalsRating;
+  score: number;
+  signals: number;
+  details: string[];
+}
+
+// Objektivan zbir bodova iz već izračunatih, proverljivih pokazatelja
+// (rast, marže, prinos na kapital, zaduženost, likvidnost, konkurentska
+// prednost) — namerno ne uključuje valuaciju (cenu akcije), jer "jaka
+// kompanija" i "jeftina akcija" nisu isto pitanje.
+export function rateFundamentals(inputs: FundamentalsRatingInputs): FundamentalsRatingResult {
+  let score = 0;
+  let signals = 0;
+  const details: string[] = [];
+
+  if (inputs.revenueCagr != null) {
+    signals++;
+    score += inputs.revenueCagr > 0.08 ? 1 : inputs.revenueCagr < 0 ? -1 : 0;
+    details.push(`Rast prihoda (CAGR): ${(inputs.revenueCagr * 100).toFixed(1)}%`);
+  }
+  if (inputs.patCagr != null) {
+    signals++;
+    score += inputs.patCagr > 0.08 ? 1 : inputs.patCagr < 0 ? -1 : 0;
+    details.push(`Rast neto dobiti (CAGR): ${(inputs.patCagr * 100).toFixed(1)}%`);
+  }
+  if (inputs.grossMargin != null) {
+    signals++;
+    score += inputs.grossMargin > 0.4 ? 1 : inputs.grossMargin < 0.15 ? -1 : 0;
+    details.push(`Bruto marža: ${(inputs.grossMargin * 100).toFixed(1)}%`);
+  }
+  if (inputs.operatingMargins != null) {
+    signals++;
+    score += inputs.operatingMargins > 0.15 ? 1 : inputs.operatingMargins < 0 ? -2 : 0;
+    details.push(`Operativna marža: ${(inputs.operatingMargins * 100).toFixed(1)}%`);
+  }
+  if (inputs.returnOnEquity != null) {
+    signals++;
+    score += inputs.returnOnEquity > 0.15 ? 1 : inputs.returnOnEquity < 0 ? -1 : 0;
+    details.push(`ROE: ${(inputs.returnOnEquity * 100).toFixed(1)}%`);
+  }
+  if (inputs.debtToEquity != null) {
+    signals++;
+    score += inputs.debtToEquity < 0.6 ? 1 : inputs.debtToEquity > 1.5 ? -1 : 0;
+    details.push(`Dug/kapital: ${inputs.debtToEquity.toFixed(2)}`);
+  }
+  if (inputs.currentRatio != null) {
+    signals++;
+    score += inputs.currentRatio > 1.3 ? 1 : inputs.currentRatio < 1 ? -1 : 0;
+    details.push(`Current ratio: ${inputs.currentRatio.toFixed(2)}`);
+  }
+  if (inputs.moatScore != null) {
+    signals++;
+    score += inputs.moatScore >= 6 ? 1 : inputs.moatScore <= 3 ? -1 : 0;
+    details.push(`Konkurentska prednost (proxy): ${inputs.moatScore}/10`);
+  }
+
+  if (signals === 0) {
+    return { rating: "Nedovoljno podataka", score: 0, signals: 0, details: ["Nema dovoljno podataka za ocenu fundamenata."] };
+  }
+
+  const rating: FundamentalsRating = score >= 3 ? "Jaka" : score <= -2 ? "Slaba" : "Osrednja";
+  return { rating, score, signals, details };
+}
+
+// ---------- Crvene zastavice (konkretni upozoravajući signali, odvojeno od opšte liste rizika) ----------
+
+export interface RedFlagInputs {
+  latestFcf: number | null;
+  operatingMargins: number | null;
+  debtToEquity: number | null; // odnos, ne procenat
+  currentRatio: number | null;
+  payoutRatio: number | null;
+  insiderNetPercentShares: number | null;
+  shortPercentOfFloat: number | null;
+  pegRatio: number | null;
+  revenueGrowthTtm: number | null;
+  analystDispersionPercent: number | null;
+}
+
+export function identifyRedFlags(inputs: RedFlagInputs): string[] {
+  const flags: string[] = [];
+
+  if (inputs.latestFcf != null && inputs.latestFcf < 0) {
+    flags.push("Negativan slobodan novčani tok u poslednjoj godini — kompanija trenutno ne generiše gotovinu iz poslovanja.");
+  }
+  if (inputs.operatingMargins != null && inputs.operatingMargins < 0) {
+    flags.push("Negativna operativna marža — poslovanje je gubitno na operativnom nivou, ne samo zbog jednokratnih stavki.");
+  }
+  if (inputs.debtToEquity != null && inputs.debtToEquity > 2) {
+    flags.push(`Veoma visoka zaduženost (Dug/kapital ${inputs.debtToEquity.toFixed(2)}) — finansijski rizik u slučaju pada prihoda ili rasta kamatnih stopa.`);
+  }
+  if (inputs.currentRatio != null && inputs.currentRatio < 1) {
+    flags.push(`Current ratio ispod 1 (${inputs.currentRatio.toFixed(2)}) — kratkoročne obaveze premašuju kratkoročnu imovinu.`);
+  }
+  if (inputs.payoutRatio != null && inputs.payoutRatio > 1) {
+    flags.push(`Payout ratio preko 100% (${(inputs.payoutRatio * 100).toFixed(0)}%) — dividenda se isplaćuje iz više od trenutne dobiti, teško održivo dugoročno.`);
+  }
+  if (inputs.insiderNetPercentShares != null && inputs.insiderNetPercentShares < -0.02) {
+    flags.push(`Insajderi su u neto prodaji akcija (${(inputs.insiderNetPercentShares * 100).toFixed(2)}%) u poslednjem periodu.`);
+  }
+  if (inputs.shortPercentOfFloat != null && inputs.shortPercentOfFloat > 0.15) {
+    flags.push(`Visok short interes (${(inputs.shortPercentOfFloat * 100).toFixed(1)}% slobodnih akcija) — deo tržišta aktivno kladi na pad cene.`);
+  }
+  if (inputs.pegRatio != null && inputs.pegRatio > 3) {
+    flags.push(`PEG preko 3 (${inputs.pegRatio.toFixed(2)}) — cena znatno prevazilazi trenutnu stopu rasta zarade.`);
+  }
+  if (inputs.revenueGrowthTtm != null && inputs.revenueGrowthTtm < -0.05) {
+    flags.push(`Prihod opada godišnje (${(inputs.revenueGrowthTtm * 100).toFixed(1)}%) u poslednjih 12 meseci.`);
+  }
+  if (inputs.analystDispersionPercent != null && inputs.analystDispersionPercent > 80) {
+    flags.push(`Veoma širok raspon ciljnih cena analitičara (${inputs.analystDispersionPercent.toFixed(0)}% oko proseka) — nizak konsenzus o vrednosti akcije.`);
+  }
+
+  return flags;
+}
+
 // ---------- Prompt: Should I Buy This Stock? (finalna sinteza) ----------
 
 export interface FinalVerdictInputs {

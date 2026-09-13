@@ -14,7 +14,8 @@ import { OMXS30_TICKERS } from "@/lib/omxs30";
 import { FTSEMIB_TICKERS } from "@/lib/ftsemib";
 import { WIG20_TICKERS } from "@/lib/wig20";
 import { SMI_TICKERS } from "@/lib/smi";
-import { DEFAULT_ASSUMPTIONS, computeModel, extractModelData } from "@/lib/buildModel";
+import { DEFAULT_ASSUMPTIONS, compareToBenchmark, computeModel, extractModelData, type HistoricalPricePoint } from "@/lib/buildModel";
+import type { FundamentalsRating } from "@/lib/model";
 
 const CONCURRENCY = 6;
 const CACHE_TTL_MS = 12 * 60 * 60 * 1000; // 12h — "realno vreme" u praksi znači osveženo par puta dnevno, ne svake sekunde
@@ -43,7 +44,40 @@ interface Row {
   currentPrice: number;
   currency: string;
   verdictLabel: string;
+  fundamentalsRating: FundamentalsRating;
+  redFlagCount: number;
+  vsSpy: Record<number, "outperform" | "underperform" | "na">;
   error?: string;
+}
+
+const BENCHMARK_HORIZONS = [3, 5, 10, 20];
+
+async function fetchPriceHistory(symbol: string): Promise<HistoricalPricePoint[]> {
+  try {
+    const res = await fetch(`/api/stock?symbol=${encodeURIComponent(symbol)}&type=history`, { cache: "no-store" });
+    if (!res.ok) return [];
+    const data = await res.json();
+    const chartResult = data?.chart?.result?.[0];
+    const timestamps: number[] = chartResult?.timestamp || [];
+    const closes: (number | null)[] = chartResult?.indicators?.quote?.[0]?.close || [];
+    const adjCloses: (number | null)[] = chartResult?.indicators?.adjclose?.[0]?.adjclose || [];
+    const points: HistoricalPricePoint[] = [];
+    for (let i = 0; i < timestamps.length; i++) {
+      const c = adjCloses[i] ?? closes[i];
+      if (c != null) points.push({ timestamp: timestamps[i], close: c });
+    }
+    return points;
+  } catch {
+    return [];
+  }
+}
+
+// SPY istorija je zajednička za sve akcije u jednom pokretanju skenera —
+// preuzima se jednom po pokretanju, ne po tikeru.
+let spyHistoryPromise: Promise<HistoricalPricePoint[]> | null = null;
+function fetchSpyHistory(): Promise<HistoricalPricePoint[]> {
+  if (!spyHistoryPromise) spyHistoryPromise = fetchPriceHistory("SPY");
+  return spyHistoryPromise;
 }
 
 const VERDICT_ORDER: Record<string, number> = {
@@ -57,7 +91,7 @@ const VERDICT_ORDER: Record<string, number> = {
 
 const fmtMoney = (x: number, currency: string) => `${x.toLocaleString("en-US", { maximumFractionDigits: 2 })} ${currency}`;
 
-async function fetchAndScore(ticker: string): Promise<Row> {
+async function fetchAndScore(ticker: string, nowSeconds: number): Promise<Row> {
   const res = await fetch(`/api/stock?symbol=${encodeURIComponent(ticker)}&type=valuation`, { cache: "no-store" });
   const data = await res.json();
   if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
@@ -65,12 +99,22 @@ async function fetchAndScore(ticker: string): Promise<Row> {
   const modelData = extractModelData(data, ticker);
   const computed = computeModel(modelData, DEFAULT_ASSUMPTIONS);
 
+  const [priceHistory, spyHistory] = await Promise.all([fetchPriceHistory(ticker), fetchSpyHistory()]);
+  const benchmark = compareToBenchmark(priceHistory, spyHistory, nowSeconds, BENCHMARK_HORIZONS);
+  const vsSpy: Row["vsSpy"] = {};
+  for (const row of benchmark) {
+    vsSpy[row.years] = row.verdict === "Nadmašuje SPY" ? "outperform" : row.verdict === "Ispod SPY" ? "underperform" : "na";
+  }
+
   return {
     ticker,
     companyName: modelData.companyName,
     currentPrice: modelData.currentPrice,
     currency: modelData.currency,
     verdictLabel: computed.finalVerdict.verdict,
+    fundamentalsRating: computed.fundamentalsRating.rating,
+    redFlagCount: computed.redFlags.length,
+    vsSpy,
   };
 }
 
@@ -84,7 +128,10 @@ export default function Sp500Screener() {
   const [lastUpdated, setLastUpdated] = useState<number | null>(null);
   const stopRef = useRef(false);
 
-  const cacheKeyFor = (idx: IndexKey) => `nemvida_screener_v1_${idx}`;
+  // v2: raniji ključ (v1) nije imao fundamentalsRating/redFlagCount/vsSpy —
+  // menja se verzija da se stari keš u localStorage ne bi učitao i pokvario
+  // prikaz (nedostajala bi polja).
+  const cacheKeyFor = (idx: IndexKey) => `nemvida_screener_v2_${idx}`;
 
   function loadFromCache(idx: IndexKey): boolean {
     try {
@@ -129,11 +176,13 @@ export default function Sp500Screener() {
     setProgress(0);
     const results: Row[] = [];
     const tickers = INDEXES[indexKey].tickers;
+    // eslint-disable-next-line react-hooks/purity -- poziva se iz event handlera, ne iz render-a
+    const nowSeconds = Math.floor(Date.now() / 1000);
 
     for (let i = 0; i < tickers.length; i += CONCURRENCY) {
       if (stopRef.current) break;
       const batch = tickers.slice(i, i + CONCURRENCY);
-      const settled = await Promise.allSettled(batch.map((t) => fetchAndScore(t)));
+      const settled = await Promise.allSettled(batch.map((t) => fetchAndScore(t, nowSeconds)));
       settled.forEach((s, idx) => {
         if (s.status === "fulfilled") {
           results.push(s.value);
@@ -144,6 +193,9 @@ export default function Sp500Screener() {
             currentPrice: 0,
             currency: "",
             verdictLabel: "—",
+            fundamentalsRating: "Nedovoljno podataka",
+            redFlagCount: 0,
+            vsSpy: {},
             error: s.reason instanceof Error ? s.reason.message : "Greška",
           });
         }
@@ -180,7 +232,10 @@ export default function Sp500Screener() {
         <a href="/model" className="underline">sveobuhvatni model</a>. Liste tikera po indeksima su
         snimci iz opšteg znanja i mogu odstupati od trenutnog zvaničnog sastava (kompozicije se povremeno menjaju).
         &quot;Osveženo&quot; znači vreme poslednjeg preuzimanja podataka (keširano lokalno do 12h), ne doslovno live
-        tik-po-tik cena.
+        tik-po-tik cena. &quot;Fundamenti&quot; je objektivna ocena poslovanja (rast, marže, zaduženost, konkurentska
+        prednost) — odvojeno od cene akcije. 🚩 je broj konkretnih upozoravajućih signala (npr. negativan novčani tok,
+        preterana zaduženost). &quot;vs SPY&quot; poredi ukupan prinos akcije sa SPY (S&P 500) na 3/5/10/20 godina —
+        &quot;—&quot; znači da istorija cene ne seže dovoljno unazad.
       </div>
 
       <div className="border border-zinc-200 dark:border-zinc-800 bg-white/70 dark:bg-zinc-900/50 rounded-xl p-4 mb-4 flex flex-wrap gap-3 items-center">
@@ -249,6 +304,11 @@ export default function Sp500Screener() {
                   <th className="text-left text-xs uppercase text-zinc-500 dark:text-zinc-400 py-2 px-3 border-b border-zinc-200 dark:border-zinc-800">Kompanija</th>
                   <th className="text-right text-xs uppercase text-zinc-500 dark:text-zinc-400 py-2 px-3 border-b border-zinc-200 dark:border-zinc-800">Cena</th>
                   <th className="text-left text-xs uppercase text-zinc-500 dark:text-zinc-400 py-2 px-3 border-b border-zinc-200 dark:border-zinc-800">Sud</th>
+                  <th className="text-left text-xs uppercase text-zinc-500 dark:text-zinc-400 py-2 px-3 border-b border-zinc-200 dark:border-zinc-800">Fundamenti</th>
+                  <th className="text-center text-xs uppercase text-zinc-500 dark:text-zinc-400 py-2 px-3 border-b border-zinc-200 dark:border-zinc-800">🚩</th>
+                  {BENCHMARK_HORIZONS.map((y) => (
+                    <th key={y} className="text-center text-xs uppercase text-zinc-500 dark:text-zinc-400 py-2 px-3 border-b border-zinc-200 dark:border-zinc-800">vs SPY {y}g</th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
@@ -272,6 +332,31 @@ export default function Sp500Screener() {
                     >
                       {r.verdictLabel}
                     </td>
+                    <td
+                      className={`py-2 px-3 border-b border-zinc-200 dark:border-zinc-800 text-xs font-medium ${
+                        r.fundamentalsRating === "Jaka"
+                          ? "text-emerald-600 dark:text-emerald-400"
+                          : r.fundamentalsRating === "Slaba"
+                            ? "text-red-600 dark:text-red-400"
+                            : "text-zinc-600 dark:text-zinc-400"
+                      }`}
+                    >
+                      {r.fundamentalsRating}
+                    </td>
+                    <td className="py-2 px-3 border-b border-zinc-200 dark:border-zinc-800 text-center">
+                      {r.redFlagCount > 0 ? <span className="text-red-600 dark:text-red-400 font-semibold">{r.redFlagCount}</span> : <span className="text-zinc-400">0</span>}
+                    </td>
+                    {BENCHMARK_HORIZONS.map((y) => (
+                      <td key={y} className="py-2 px-3 border-b border-zinc-200 dark:border-zinc-800 text-center">
+                        {r.vsSpy[y] === "outperform" ? (
+                          <span className="text-emerald-600 dark:text-emerald-400 font-bold">▲</span>
+                        ) : r.vsSpy[y] === "underperform" ? (
+                          <span className="text-red-600 dark:text-red-400 font-bold">▼</span>
+                        ) : (
+                          <span className="text-zinc-400">—</span>
+                        )}
+                      </td>
+                    ))}
                   </tr>
                 ))}
               </tbody>
@@ -283,7 +368,7 @@ export default function Sp500Screener() {
       {!running && !rows.length && (
         <p className="text-sm text-zinc-500 dark:text-zinc-400">
           Klikni &quot;Pokreni analizu&quot; — obrađuje se {INDEXES[indexKey].tickers.length} kompanija u grupama, traje otprilike
-          1-2 minuta. Rezultat se pamti lokalno 12 sati, tako da sledeći put učitavanje bude trenutno.
+          2-4 minuta (uključuje i istoriju cene za poređenje sa SPY). Rezultat se pamti lokalno 12 sati, tako da sledeći put učitavanje bude trenutno.
         </p>
       )}
     </div>

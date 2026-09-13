@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { analyzeHistoricalMultiples, computeDebtEquityHistory, computeHistoricalPE, computeHistoricalPEG, computeHistoricalPFcf, computeModel, extractModelData, synthesizeValuationMultiples, type ComputedModel, type HistoricalMultipleRow, type HistoricalPricePoint } from "@/lib/buildModel";
+import { analyzeHistoricalMultiples, compareToBenchmark, computeDebtEquityHistory, computeHistoricalPE, computeHistoricalPEG, computeHistoricalPFcf, computeModel, extractModelData, synthesizeValuationMultiples, type BenchmarkComparisonRow, type ComputedModel, type HistoricalMultipleRow, type HistoricalPricePoint } from "@/lib/buildModel";
 import { getSectorPeMedian, summarizeRecommendation, type FilterCheck } from "@/lib/model";
 
 const fmtPct = (x: number | null | undefined, digits = 1) =>
@@ -27,15 +27,28 @@ async function fetchPriceHistory(symbol: string): Promise<HistoricalPricePoint[]
     const chartResult = data?.chart?.result?.[0];
     const timestamps: number[] = chartResult?.timestamp || [];
     const closes: (number | null)[] = chartResult?.indicators?.quote?.[0]?.close || [];
+    // "adjclose" je prilagođen dividendama i podelama akcija — koristi se
+    // kad je dostupan da bi poređenje ukupnog prinosa (sekcija sa SPY)
+    // uključilo i dividende, ne samo promenu cene.
+    const adjCloses: (number | null)[] = chartResult?.indicators?.adjclose?.[0]?.adjclose || [];
     const points: HistoricalPricePoint[] = [];
     for (let i = 0; i < timestamps.length; i++) {
-      const c = closes[i];
+      const c = adjCloses[i] ?? closes[i];
       if (c != null) points.push({ timestamp: timestamps[i], close: c });
     }
     return points;
   } catch {
     return [];
   }
+}
+
+// SPY istorija je ista za svaku analizu u ovoj sesiji — kešira se u memoriji
+// (jedan zahtev po učitavanju stranice) umesto ponovnog preuzimanja pri
+// svakoj novoj pretrazi tikera.
+let spyHistoryPromise: Promise<HistoricalPricePoint[]> | null = null;
+function fetchSpyHistory(): Promise<HistoricalPricePoint[]> {
+  if (!spyHistoryPromise) spyHistoryPromise = fetchPriceHistory("SPY");
+  return spyHistoryPromise;
 }
 
 interface SearchResult {
@@ -78,6 +91,7 @@ export default function ModelAnalysis() {
   const [historicalPE, setHistoricalPE] = useState<HistoricalMultipleRow[] | null>(null);
   const [historicalPFcf, setHistoricalPFcf] = useState<HistoricalMultipleRow[] | null>(null);
   const [historicalPEG, setHistoricalPEG] = useState<HistoricalMultipleRow[] | null>(null);
+  const [benchmarkComparison, setBenchmarkComparison] = useState<BenchmarkComparisonRow[] | null>(null);
   const [suggestions, setSuggestions] = useState<SearchResult[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [now] = useState(() => Date.now());
@@ -91,14 +105,16 @@ export default function ModelAnalysis() {
     setHistoricalPE(null);
     setHistoricalPFcf(null);
     setHistoricalPEG(null);
+    setBenchmarkComparison(null);
     try {
       const r = await fetchModelResult(sym);
       setResult(r);
-      const priceHistory = await fetchPriceHistory(sym);
+      const [priceHistory, spyHistory] = await Promise.all([fetchPriceHistory(sym), fetchSpyHistory()]);
       const shares = r.data.fundamentals.sharesOutstanding;
       setHistoricalPE(computeHistoricalPE(r.breakdown.rows, priceHistory, shares));
       setHistoricalPFcf(computeHistoricalPFcf(r.breakdown.rows, priceHistory, shares));
       setHistoricalPEG(computeHistoricalPEG(r.breakdown.rows, priceHistory, shares));
+      setBenchmarkComparison(compareToBenchmark(priceHistory, spyHistory, Math.floor(now / 1000)));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Greška pri preuzimanju podataka.");
     } finally {
@@ -153,7 +169,7 @@ export default function ModelAnalysis() {
   let content: React.ReactNode = null;
 
   if (result) {
-    const { data, breakdown, growthFilter, valuationFilter, moat, growthPotential, risks, management, bullBear, finalVerdict, shortTermUpside } = result;
+    const { data, breakdown, growthFilter, valuationFilter, moat, growthPotential, risks, management, bullBear, finalVerdict, shortTermUpside, fundamentalsRating, redFlags } = result;
     const debtEquityHistory = computeDebtEquityHistory(breakdown.rows);
     const { fundamentals } = data;
     const currentPFcf =
@@ -253,6 +269,68 @@ export default function ModelAnalysis() {
           </div>
         </Section>
 
+        <Section title="Poređenje ukupnog prinosa sa SPY (S&P 500)">
+          {benchmarkComparison ? (
+            <>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm border-collapse">
+                  <thead>
+                    <tr>
+                      <th className="text-left text-xs uppercase text-zinc-500 py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800">Period</th>
+                      <th className="text-right text-xs uppercase text-zinc-500 py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800">{ticker.toUpperCase()}</th>
+                      <th className="text-right text-xs uppercase text-zinc-500 py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800">SPY</th>
+                      <th className="text-left text-xs uppercase text-zinc-500 py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800">Sud</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {benchmarkComparison.map((row) => (
+                      <tr key={row.years}>
+                        <td className="py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800">{row.years} god.</td>
+                        <td className="py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800 text-right tabular-nums">{fmtPct(row.stockReturn, 0)}</td>
+                        <td className="py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800 text-right tabular-nums">{fmtPct(row.benchmarkReturn, 0)}</td>
+                        <td
+                          className={`py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800 text-xs font-medium ${
+                            row.verdict === "Nadmašuje SPY"
+                              ? "text-emerald-600 dark:text-emerald-400"
+                              : row.verdict === "Ispod SPY"
+                                ? "text-red-600 dark:text-red-400"
+                                : "text-zinc-500 dark:text-zinc-400"
+                          }`}
+                        >
+                          {row.verdict}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <p className="mt-3 text-xs text-zinc-500 dark:text-zinc-400">
+                Ukupan prinos (uz reinvestiranje dividende, kad je taj podatak dostupan) od pre N godina do danas, poređen sa istim periodom za SPY (ETF koji prati S&P 500). &quot;Nedovoljno podataka&quot; znači da istorija cene ne seže dovoljno unazad (čest slučaj za kompanije koje su izašle na berzu pre manje od N godina) — ne znači da je akcija lošija.
+              </p>
+            </>
+          ) : (
+            <p className="text-sm italic text-zinc-500 dark:text-zinc-400">Učitavanje istorije cene...</p>
+          )}
+        </Section>
+
+        <Section title="Objektivna ocena fundamenata">
+          <p className="text-sm mb-2">
+            {fundamentalsRating.rating === "Nedovoljno podataka" ? (
+              <>Nema dovoljno podataka za ocenu fundamenata.</>
+            ) : (
+              <>Fundamenti kompanije: <b>{fundamentalsRating.rating}</b> ({fundamentalsRating.score >= 0 ? "+" : ""}{fundamentalsRating.score} od {fundamentalsRating.signals} pokazatelja).</>
+            )}
+          </p>
+          <ul className="list-disc pl-5 space-y-1 text-sm text-zinc-600 dark:text-zinc-400">
+            {fundamentalsRating.details.map((d, i) => (
+              <li key={i}>{d}</li>
+            ))}
+          </ul>
+          <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">
+            Ocena je zbir bodova iz rasta prihoda/dobiti, marži, ROE, zaduženosti, likvidnosti i konkurentske prednosti (proxy) — namerno bez cene akcije, jer &quot;jaka kompanija&quot; i &quot;jeftina akcija&quot; nisu isto pitanje (to pokriva filter valuacije ispod).
+          </p>
+        </Section>
+
         <Section title="1. Finansijski trend (poslednjih do 5 god.)">
           <div className="overflow-x-auto">
             <table className="w-full text-sm border-collapse">
@@ -340,6 +418,16 @@ export default function ModelAnalysis() {
             ))}
             {risks.length === 0 && <p className="text-sm italic text-zinc-500">Nema dovoljno podataka za procenu rizika.</p>}
           </div>
+          {redFlags.length > 0 && (
+            <div className="mt-4 pt-3 border-t border-zinc-200 dark:border-zinc-800">
+              <h4 className="text-xs font-semibold uppercase text-red-600 dark:text-red-400 mb-2">🚩 Crvene zastavice</h4>
+              <ul className="list-disc pl-5 space-y-1 text-sm text-red-700 dark:text-red-400">
+                {redFlags.map((f, i) => (
+                  <li key={i}>{f}</li>
+                ))}
+              </ul>
+            </div>
+          )}
         </Section>
 
         <Section title="7. Kvalitet menadžmenta (objektivni proxy)">
