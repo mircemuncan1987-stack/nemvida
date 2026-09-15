@@ -521,12 +521,22 @@ export function scoreManagementQuality(inputs: ManagementInputs): ManagementQual
   return { verdict, details };
 }
 
-// ---------- Prompt: Bull vs Bear Debate (strukturirano, iz već izračunatih dimenzija) ----------
+// ---------- Prompt: Bull vs Bear Debate (kratki, konkretni zaključci — bez ponavljanja detaljnih rečenica iz gornjih sekcija) ----------
 
-export interface DimensionSignal {
-  label: string;
-  positive: boolean;
-  detail: string;
+export interface BullBearInputs {
+  financialTrendVerdict: FinancialBreakdownResult["verdict"];
+  revenueCagr: number | null;
+  growthTier: GrowthTier;
+  growthEstimateRange: string;
+  pricedForPerfection: boolean;
+  pegRatio: number | null;
+  moatScore: number | null;
+  debtToEquity: number | null; // odnos, ne procenat
+  managementVerdict: ManagementQualityResult["verdict"];
+  dividendYield: number | null;
+  dividendPaidConsistently: boolean | null;
+  topRisk: RiskItem | null;
+  redFlagCount: number;
 }
 
 export interface BullBearResult {
@@ -535,16 +545,70 @@ export interface BullBearResult {
   conclusion: string;
 }
 
-export function buildBullBear(signals: DimensionSignal[]): BullBearResult {
-  const bull = signals.filter((s) => s.positive).map((s) => `${s.label}: ${s.detail}`);
-  const bear = signals.filter((s) => !s.positive).map((s) => `${s.label}: ${s.detail}`);
+const MAX_POINTS_PER_SIDE = 4;
+
+// Svaka tačka je jedna kratka, konkretna rečenica sa brojem — namerno bez
+// ponavljanja objašnjenja koja već stoje u sekcijama 1-7 iznad. Kandidati se
+// dodaju po prioritetu (najvažnije prvo) i seku na najviše 4 po strani, da
+// debata ostane čitljiva umesto da nabraja svaki pojedinačni filter.
+export function buildBullBear(inputs: BullBearInputs): BullBearResult {
+  const bullCandidates: string[] = [];
+  const bearCandidates: string[] = [];
+
+  if (inputs.growthTier === "visok" || inputs.growthTier === "umeren") {
+    bullCandidates.push(`Rast poslovanja je solidan (${inputs.growthEstimateRange}).`);
+  } else if (inputs.growthTier === "nizak" || inputs.growthTier === "upitan") {
+    bearCandidates.push(`Rast poslovanja je slab ili upitan (${inputs.growthEstimateRange}).`);
+  }
+
+  if (inputs.financialTrendVerdict === "jača") {
+    bullCandidates.push("Prihod i neto dobit rastu iz godine u godinu.");
+  } else if (inputs.financialTrendVerdict === "slabija") {
+    bearCandidates.push("Prihod i/ili neto dobit opadaju ili stagniraju.");
+  }
+
+  if (!inputs.pricedForPerfection) {
+    bullCandidates.push(`Cena ne uračunava ekstremna očekivanja${inputs.pegRatio != null ? ` (PEG ${inputs.pegRatio.toFixed(2)})` : ""}.`);
+  } else {
+    bearCandidates.push(`Cena već uračunava skoro savršeno izvršenje${inputs.pegRatio != null ? ` (PEG ${inputs.pegRatio.toFixed(2)})` : ""} — mala greška u poslovanju bi je oštro srušila.`);
+  }
+
+  if (inputs.moatScore != null) {
+    if (inputs.moatScore >= 6) bullCandidates.push(`Marže i prinos na kapital iznad proseka (moat proxy ${inputs.moatScore}/10).`);
+    else if (inputs.moatScore <= 3) bearCandidates.push(`Slabe marže i prinos na kapital (moat proxy ${inputs.moatScore}/10).`);
+  }
+
+  if (inputs.debtToEquity != null) {
+    if (inputs.debtToEquity < 0.6) bullCandidates.push(`Niska zaduženost (Dug/kapital ${inputs.debtToEquity.toFixed(2)}).`);
+    else if (inputs.debtToEquity > 1.5) bearCandidates.push(`Visoka zaduženost (Dug/kapital ${inputs.debtToEquity.toFixed(2)}).`);
+  }
+
+  if (inputs.managementVerdict === "izgleda pouzdano") {
+    bullCandidates.push("Vlasnička struktura i insajderske transakcije ulivaju poverenje.");
+  } else if (inputs.managementVerdict === "izgleda rizično") {
+    bearCandidates.push("Signali iz vlasničke strukture/insajderskih transakcija su nepovoljni.");
+  }
+
+  if (inputs.dividendPaidConsistently && inputs.dividendYield != null && inputs.dividendYield > 0.01) {
+    bullCandidates.push(`Dosledna dividenda (${(inputs.dividendYield * 100).toFixed(2)}%).`);
+  }
+
+  if (inputs.redFlagCount > 0) {
+    bearCandidates.push(`${inputs.redFlagCount} crvena zastavica u analizi rizika (vidi sekciju 6).`);
+  } else if (inputs.topRisk && inputs.topRisk.severity >= 4) {
+    bearCandidates.push(`Najveći pojedinačni rizik: ${inputs.topRisk.label.toLowerCase()} (${inputs.topRisk.detail}).`);
+  }
+
+  const bull = bullCandidates.slice(0, MAX_POINTS_PER_SIDE);
+  const bear = bearCandidates.slice(0, MAX_POINTS_PER_SIDE);
+
   let conclusion: string;
   if (bull.length > bear.length * 1.5) {
-    conclusion = "Bikovski argumenti brojčano preovlađuju, ali svaki pojedinačni pokazatelj treba proveriti — brojčana prevaga ne znači automatski da je akcija dobra kupovina.";
+    conclusion = "Bikovski argumenti preovlađuju, ali svaki treba proveriti pojedinačno — brojčana prevaga nije automatski poziv na kupovinu.";
   } else if (bear.length > bull.length * 1.5) {
-    conclusion = "Medveđi argumenti brojčano preovlađuju — vredi razumeti da li su to strukturni problemi ili privremene poteškoće.";
+    conclusion = "Medveđi argumenti preovlađuju — proveriti da li su to strukturni problemi ili privremene poteškoće.";
   } else {
-    conclusion = "Argumenti su podeljeni otprilike podjednako — ovo je znak da odluka zavisi od ličnog horizonta i tolerancije na rizik, ne od jasnog konsenzusa podataka.";
+    conclusion = "Argumenti su podeljeni — odluka zavisi od ličnog horizonta i tolerancije na rizik, ne od jasnog konsenzusa podataka.";
   }
   return { bull, bear, conclusion };
 }

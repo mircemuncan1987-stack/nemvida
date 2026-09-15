@@ -28,7 +28,6 @@ import {
   scoreGrowthPotential,
   scoreManagementQuality,
   scoreMoat,
-  type DimensionSignal,
   type FinalVerdict,
   type YearlyFinancials,
 } from "@/lib/model";
@@ -608,20 +607,6 @@ export function computeModel(data: ModelData, assumptions: Assumptions = DEFAULT
     dividendPaidConsistently: data.dividendPaidConsistently,
   });
 
-  const signals: DimensionSignal[] = [
-    { label: "Finansijski trend", positive: breakdown.verdict === "jača", detail: breakdown.detail },
-    ...growthFilter.checks
-      .filter((c) => c.pass != null)
-      .map((c): DimensionSignal => ({ label: `Filter rasta — ${c.label}`, positive: c.pass as boolean, detail: c.detail })),
-    ...valuationFilter.checks
-      .filter((c) => c.pass != null)
-      .map((c): DimensionSignal => ({ label: `Filter valuacije — ${c.label}`, positive: c.pass as boolean, detail: c.detail })),
-    { label: "Konkurentska prednost (proxy)", positive: moat.score >= 6, detail: `Ocena ${moat.score}/10 — ${moat.detail}` },
-    { label: "Kvalitet menadžmenta (proxy)", positive: management.verdict === "izgleda pouzdano", detail: management.details.filter((d) => !d.startsWith("Napomena")).join(" ") },
-    ...risks.slice(0, 3).map((r): DimensionSignal => ({ label: `Rizik — ${r.label}`, positive: r.severity <= 2, detail: r.detail })),
-  ];
-  const bullBear = buildBullBear(signals);
-
   const finalVerdict = buildFinalVerdict({
     shortTermUpside,
     growthTier: growthPotential.tier,
@@ -660,6 +645,22 @@ export function computeModel(data: ModelData, assumptions: Assumptions = DEFAULT
     pegRatio: data.pegRatio,
     revenueGrowthTtm: data.revenueGrowthTtm,
     analystDispersionPercent,
+  });
+
+  const bullBear = buildBullBear({
+    financialTrendVerdict: breakdown.verdict,
+    revenueCagr: breakdown.revenueCagr,
+    growthTier: growthPotential.tier,
+    growthEstimateRange: growthPotential.estimateRange,
+    pricedForPerfection: valuationFilter.pricedForPerfection,
+    pegRatio: data.pegRatio,
+    moatScore: moat.score,
+    debtToEquity: currentDebtToEquity,
+    managementVerdict: management.verdict,
+    dividendYield: data.dividendYield,
+    dividendPaidConsistently: data.dividendPaidConsistently,
+    topRisk: risks[0] ?? null,
+    redFlagCount: redFlags.length,
   });
 
   return { data, wacc, avgIntrinsicValue, lynchValue, shortTermUpside, valuationUpside, breakdown, growthFilter, valuationFilter, moat, growthPotential, risks, management, bullBear, finalVerdict, fundamentalsRating, redFlags };
