@@ -521,6 +521,18 @@ export function computeTotalReturn(points: HistoricalPricePoint[], years: number
   return latest.close / oldest.close - 1;
 }
 
+// Ukupan prinos od fiksnog datuma (npr. datum otvaranja portfelja) do danas —
+// varijanta computeTotalReturn koja ne računa unazad "N godina" nego uzima
+// tačan početni trenutak.
+export function computeReturnSince(points: HistoricalPricePoint[], startSeconds: number, nowSeconds: number): number | null {
+  if (points.length < 2) return null;
+  const latest = points[points.length - 1];
+  if (latest.timestamp < nowSeconds - 30 * 86400) return null; // istorija je zastarela više od mesec dana
+  const start = findClosestPoint(points, startSeconds, 60);
+  if (!start || start.close <= 0) return null;
+  return latest.close / start.close - 1;
+}
+
 export function compareToBenchmark(
   stockPoints: HistoricalPricePoint[],
   benchmarkPoints: HistoricalPricePoint[],

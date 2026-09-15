@@ -14,8 +14,9 @@ import { OMXS30_TICKERS } from "@/lib/omxs30";
 import { FTSEMIB_TICKERS } from "@/lib/ftsemib";
 import { WIG20_TICKERS } from "@/lib/wig20";
 import { SMI_TICKERS } from "@/lib/smi";
-import { DEFAULT_ASSUMPTIONS, compareToBenchmark, computeModel, extractModelData, type HistoricalPricePoint } from "@/lib/buildModel";
+import { DEFAULT_ASSUMPTIONS, compareToBenchmark, computeModel, extractModelData } from "@/lib/buildModel";
 import type { FundamentalsRating } from "@/lib/model";
+import { fetchPriceHistory, fetchSpyHistory } from "@/lib/clientData";
 
 const CONCURRENCY = 6;
 const CACHE_TTL_MS = 12 * 60 * 60 * 1000; // 12h — "realno vreme" u praksi znači osveženo par puta dnevno, ne svake sekunde
@@ -51,34 +52,6 @@ interface Row {
 }
 
 const BENCHMARK_HORIZONS = [3, 5, 10, 20];
-
-async function fetchPriceHistory(symbol: string): Promise<HistoricalPricePoint[]> {
-  try {
-    const res = await fetch(`/api/stock?symbol=${encodeURIComponent(symbol)}&type=history`, { cache: "no-store" });
-    if (!res.ok) return [];
-    const data = await res.json();
-    const chartResult = data?.chart?.result?.[0];
-    const timestamps: number[] = chartResult?.timestamp || [];
-    const closes: (number | null)[] = chartResult?.indicators?.quote?.[0]?.close || [];
-    const adjCloses: (number | null)[] = chartResult?.indicators?.adjclose?.[0]?.adjclose || [];
-    const points: HistoricalPricePoint[] = [];
-    for (let i = 0; i < timestamps.length; i++) {
-      const c = adjCloses[i] ?? closes[i];
-      if (c != null) points.push({ timestamp: timestamps[i], close: c });
-    }
-    return points;
-  } catch {
-    return [];
-  }
-}
-
-// SPY istorija je zajednička za sve akcije u jednom pokretanju skenera —
-// preuzima se jednom po pokretanju, ne po tikeru.
-let spyHistoryPromise: Promise<HistoricalPricePoint[]> | null = null;
-function fetchSpyHistory(): Promise<HistoricalPricePoint[]> {
-  if (!spyHistoryPromise) spyHistoryPromise = fetchPriceHistory("SPY");
-  return spyHistoryPromise;
-}
 
 const VERDICT_ORDER: Record<string, number> = {
   "Kupovina": 0,
