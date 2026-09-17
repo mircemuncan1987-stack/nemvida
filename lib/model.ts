@@ -626,7 +626,7 @@ export interface FundamentalsRatingInputs {
   moatScore: number | null; // 1-10, iz scoreMoat
 }
 
-export type FundamentalsRating = "Jaka" | "Osrednja" | "Slaba" | "Nedovoljno podataka";
+export type FundamentalsRating = "Jaki" | "Osrednji" | "Slabi" | "Nedovoljno podataka";
 
 export interface FundamentalsRatingResult {
   rating: FundamentalsRating;
@@ -689,7 +689,7 @@ export function rateFundamentals(inputs: FundamentalsRatingInputs): Fundamentals
     return { rating: "Nedovoljno podataka", score: 0, signals: 0, details: ["Nema dovoljno podataka za ocenu fundamenata."] };
   }
 
-  const rating: FundamentalsRating = score >= 3 ? "Jaka" : score <= -2 ? "Slaba" : "Osrednja";
+  const rating: FundamentalsRating = score >= 3 ? "Jaki" : score <= -2 ? "Slabi" : "Osrednji";
   return { rating, score, signals, details };
 }
 

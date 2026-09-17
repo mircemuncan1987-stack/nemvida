@@ -323,7 +323,7 @@ export default function PortfolioAnalysis() {
                             <td className={`py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800 text-xs font-medium ${c.finalVerdict.verdict === "Kupovina" ? "text-emerald-600 dark:text-emerald-400" : c.finalVerdict.verdict === "Izbegavanje" ? "text-red-600 dark:text-red-400" : c.finalVerdict.verdict === "Čekaj — preskupo" ? "text-amber-600 dark:text-amber-400" : "text-zinc-600 dark:text-zinc-400"}`}>
                               {c.finalVerdict.verdict}
                             </td>
-                            <td className={`py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800 text-xs font-medium ${c.fundamentalsRating.rating === "Jaka" ? "text-emerald-600 dark:text-emerald-400" : c.fundamentalsRating.rating === "Slaba" ? "text-red-600 dark:text-red-400" : "text-zinc-600 dark:text-zinc-400"}`}>
+                            <td className={`py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800 text-xs font-medium ${c.fundamentalsRating.rating === "Jaki" ? "text-emerald-600 dark:text-emerald-400" : c.fundamentalsRating.rating === "Slabi" ? "text-red-600 dark:text-red-400" : "text-zinc-600 dark:text-zinc-400"}`}>
                               {c.fundamentalsRating.rating}
                             </td>
                             <td className="py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800 text-center">

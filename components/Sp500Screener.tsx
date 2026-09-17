@@ -48,7 +48,42 @@ interface Row {
   fundamentalsRating: FundamentalsRating;
   redFlagCount: number;
   vsSpy: Record<number, "outperform" | "underperform" | "na">;
+  sector: string | null;
+  marketCap: number | null;
   error?: string;
+}
+
+function fmtMarketCap(x: number | null, currency: string): string {
+  if (x == null) return "—";
+  const abs = Math.abs(x);
+  if (abs >= 1e12) return `${(x / 1e12).toFixed(2)}T ${currency}`;
+  if (abs >= 1e9) return `${(x / 1e9).toFixed(1)}B ${currency}`;
+  if (abs >= 1e6) return `${(x / 1e6).toFixed(0)}M ${currency}`;
+  return `${x.toLocaleString("en-US")} ${currency}`;
+}
+
+interface SectorGroup {
+  sector: string;
+  totalMarketCap: number;
+  rows: Row[];
+}
+
+// Grupiše po sektoru, sortira sektore po ukupnoj tržišnoj kapitalizaciji
+// (najveći prvo), a kompanije unutar svakog sektora po sopstvenoj tržišnoj
+// kapitalizaciji (najveće prvo).
+function groupBySector(rowsIn: Row[]): SectorGroup[] {
+  const map = new Map<string, Row[]>();
+  for (const r of rowsIn) {
+    const key = r.sector || "Nepoznat sektor";
+    if (!map.has(key)) map.set(key, []);
+    map.get(key)!.push(r);
+  }
+  const groups: SectorGroup[] = Array.from(map.entries()).map(([sector, groupRows]) => ({
+    sector,
+    totalMarketCap: groupRows.reduce((sum, r) => sum + (r.marketCap ?? 0), 0),
+    rows: [...groupRows].sort((a, b) => (b.marketCap ?? 0) - (a.marketCap ?? 0)),
+  }));
+  return groups.sort((a, b) => b.totalMarketCap - a.totalMarketCap);
 }
 
 const BENCHMARK_HORIZONS = [3, 5, 10, 20];
@@ -88,6 +123,8 @@ async function fetchAndScore(ticker: string, nowSeconds: number): Promise<Row> {
     fundamentalsRating: computed.fundamentalsRating.rating,
     redFlagCount: computed.redFlags.length,
     vsSpy,
+    sector: modelData.sector,
+    marketCap: modelData.marketCap,
   };
 }
 
@@ -97,14 +134,14 @@ export default function Sp500Screener() {
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState(0);
   const [search, setSearch] = useState("");
-  const [sortKey, setSortKey] = useState<"verdict" | "ticker">("verdict");
+  const [sortKey, setSortKey] = useState<"verdict" | "ticker" | "sector">("verdict");
   const [lastUpdated, setLastUpdated] = useState<number | null>(null);
   const stopRef = useRef(false);
 
-  // v2: raniji ključ (v1) nije imao fundamentalsRating/redFlagCount/vsSpy —
-  // menja se verzija da se stari keš u localStorage ne bi učitao i pokvario
-  // prikaz (nedostajala bi polja).
-  const cacheKeyFor = (idx: IndexKey) => `nemvida_screener_v2_${idx}`;
+  // v3: raniji ključevi nisu imali sector/marketCap (potrebno za grupisanje
+  // po sektoru) — menja se verzija da se stari keš u localStorage ne bi
+  // učitao i pokvario prikaz (nedostajala bi polja).
+  const cacheKeyFor = (idx: IndexKey) => `nemvida_screener_v3_${idx}`;
 
   function loadFromCache(idx: IndexKey): boolean {
     try {
@@ -169,6 +206,8 @@ export default function Sp500Screener() {
             fundamentalsRating: "Nedovoljno podataka",
             redFlagCount: 0,
             vsSpy: {},
+            sector: null,
+            marketCap: null,
             error: s.reason instanceof Error ? s.reason.message : "Greška",
           });
         }
@@ -191,8 +230,11 @@ export default function Sp500Screener() {
     .filter((r) => !search || r.ticker.includes(search.toUpperCase()) || r.companyName.toUpperCase().includes(search.toUpperCase()))
     .sort((a, b) => {
       if (sortKey === "ticker") return a.ticker.localeCompare(b.ticker);
+      if (sortKey === "sector") return (b.marketCap ?? 0) - (a.marketCap ?? 0);
       return (VERDICT_ORDER[a.verdictLabel] ?? 5) - (VERDICT_ORDER[b.verdictLabel] ?? 5);
     });
+
+  const sectorGroups = sortKey === "sector" ? groupBySector(filteredRows) : null;
 
   const failedCount = rows.filter((r) => r.error).length;
 
@@ -208,7 +250,9 @@ export default function Sp500Screener() {
         tik-po-tik cena. &quot;Fundamenti&quot; je objektivna ocena poslovanja (rast, marže, zaduženost, konkurentska
         prednost) — odvojeno od cene akcije. 🚩 je broj konkretnih upozoravajućih signala (npr. negativan novčani tok,
         preterana zaduženost). &quot;vs SPY&quot; poredi ukupan prinos akcije sa SPY (S&P 500) na 3/5/10/20 godina —
-        &quot;—&quot; znači da istorija cene ne seže dovoljno unazad.
+        &quot;—&quot; znači da istorija cene ne seže dovoljno unazad. Sortiranje &quot;po sektoru&quot; grupiše kompanije po
+        sektoru (Yahoo Finance klasifikacija), sektore ređa po ukupnoj tržišnoj kapitalizaciji (najveći prvo), a
+        kompanije unutar sektora po sopstvenoj tržišnoj kapitalizaciji (najveće prvo).
       </div>
 
       <div className="border border-zinc-200 dark:border-zinc-800 bg-white/70 dark:bg-zinc-900/50 rounded-xl p-4 mb-4 flex flex-wrap gap-3 items-center">
@@ -244,11 +288,12 @@ export default function Sp500Screener() {
         />
         <select
           value={sortKey}
-          onChange={(e) => setSortKey(e.target.value as "verdict" | "ticker")}
+          onChange={(e) => setSortKey(e.target.value as "verdict" | "ticker" | "sector")}
           className="px-3 py-2 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-transparent text-sm"
         >
           <option value="verdict">Sortiraj: kupovina prvo</option>
           <option value="ticker">Sortiraj: abecedno</option>
+          <option value="sector">Sortiraj: po sektoru (tržišna kap.)</option>
         </select>
         {lastUpdated && (
           <span className="text-xs text-zinc-500 dark:text-zinc-400">
@@ -267,73 +312,26 @@ export default function Sp500Screener() {
         <div className="mb-3 text-xs text-zinc-500 dark:text-zinc-400">{failedCount} tikera nije uspelo da se učita (preskočeno).</div>
       )}
 
-      {filteredRows.length > 0 && (
+      {filteredRows.length > 0 && sectorGroups && (
+        <div className="space-y-4">
+          {sectorGroups.map((g) => (
+            <div key={g.sector} className="border border-zinc-200 dark:border-zinc-800 bg-white/70 dark:bg-zinc-900/50 rounded-xl overflow-hidden">
+              <div className="px-3 py-2 bg-zinc-100 dark:bg-zinc-800/60 flex justify-between items-baseline">
+                <h3 className="text-sm font-semibold">{g.sector}</h3>
+                <span className="text-xs text-zinc-500 dark:text-zinc-400">{g.rows.length} kompanija · ukupna tržišna kap. {fmtMarketCap(g.totalMarketCap, g.rows[0]?.currency || "")}</span>
+              </div>
+              <div className="overflow-x-auto">
+                <ScreenerTable rows={g.rows} />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {filteredRows.length > 0 && !sectorGroups && (
         <div className="border border-zinc-200 dark:border-zinc-800 bg-white/70 dark:bg-zinc-900/50 rounded-xl overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full text-sm border-collapse">
-              <thead>
-                <tr>
-                  <th className="text-left text-xs uppercase text-zinc-500 dark:text-zinc-400 py-2 px-3 border-b border-zinc-200 dark:border-zinc-800">Ticker</th>
-                  <th className="text-left text-xs uppercase text-zinc-500 dark:text-zinc-400 py-2 px-3 border-b border-zinc-200 dark:border-zinc-800">Kompanija</th>
-                  <th className="text-right text-xs uppercase text-zinc-500 dark:text-zinc-400 py-2 px-3 border-b border-zinc-200 dark:border-zinc-800">Cena</th>
-                  <th className="text-left text-xs uppercase text-zinc-500 dark:text-zinc-400 py-2 px-3 border-b border-zinc-200 dark:border-zinc-800">Sud</th>
-                  <th className="text-left text-xs uppercase text-zinc-500 dark:text-zinc-400 py-2 px-3 border-b border-zinc-200 dark:border-zinc-800">Fundamenti</th>
-                  <th className="text-center text-xs uppercase text-zinc-500 dark:text-zinc-400 py-2 px-3 border-b border-zinc-200 dark:border-zinc-800">🚩</th>
-                  {BENCHMARK_HORIZONS.map((y) => (
-                    <th key={y} className="text-center text-xs uppercase text-zinc-500 dark:text-zinc-400 py-2 px-3 border-b border-zinc-200 dark:border-zinc-800">vs SPY {y}g</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {filteredRows.map((r) => (
-                  <tr key={r.ticker}>
-                    <td className="py-2 px-3 border-b border-zinc-200 dark:border-zinc-800 font-semibold">
-                      <a href={`/model?ticker=${r.ticker}`} className="hover:underline">{r.ticker}</a>
-                    </td>
-                    <td className="py-2 px-3 border-b border-zinc-200 dark:border-zinc-800 text-zinc-600 dark:text-zinc-400">{r.companyName}</td>
-                    <td className="py-2 px-3 border-b border-zinc-200 dark:border-zinc-800 text-right tabular-nums">{fmtMoney(r.currentPrice, r.currency)}</td>
-                    <td
-                      className={`py-2 px-3 border-b border-zinc-200 dark:border-zinc-800 text-xs font-medium ${
-                        r.verdictLabel === "Kupovina"
-                          ? "text-emerald-600 dark:text-emerald-400"
-                          : r.verdictLabel === "Izbegavanje"
-                            ? "text-red-600 dark:text-red-400"
-                            : r.verdictLabel === "Čekaj — preskupo"
-                              ? "text-amber-600 dark:text-amber-400"
-                              : "text-zinc-600 dark:text-zinc-400"
-                      }`}
-                    >
-                      {r.verdictLabel}
-                    </td>
-                    <td
-                      className={`py-2 px-3 border-b border-zinc-200 dark:border-zinc-800 text-xs font-medium ${
-                        r.fundamentalsRating === "Jaka"
-                          ? "text-emerald-600 dark:text-emerald-400"
-                          : r.fundamentalsRating === "Slaba"
-                            ? "text-red-600 dark:text-red-400"
-                            : "text-zinc-600 dark:text-zinc-400"
-                      }`}
-                    >
-                      {r.fundamentalsRating}
-                    </td>
-                    <td className="py-2 px-3 border-b border-zinc-200 dark:border-zinc-800 text-center">
-                      {r.redFlagCount > 0 ? <span className="text-red-600 dark:text-red-400 font-semibold">{r.redFlagCount}</span> : <span className="text-zinc-400">0</span>}
-                    </td>
-                    {BENCHMARK_HORIZONS.map((y) => (
-                      <td key={y} className="py-2 px-3 border-b border-zinc-200 dark:border-zinc-800 text-center">
-                        {r.vsSpy[y] === "outperform" ? (
-                          <span className="text-emerald-600 dark:text-emerald-400 font-bold">▲</span>
-                        ) : r.vsSpy[y] === "underperform" ? (
-                          <span className="text-red-600 dark:text-red-400 font-bold">▼</span>
-                        ) : (
-                          <span className="text-zinc-400">—</span>
-                        )}
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <ScreenerTable rows={filteredRows} />
           </div>
         </div>
       )}
@@ -345,5 +343,76 @@ export default function Sp500Screener() {
         </p>
       )}
     </div>
+  );
+}
+
+function ScreenerTable({ rows }: { rows: Row[] }) {
+  return (
+    <table className="w-full text-sm border-collapse">
+      <thead>
+        <tr>
+          <th className="text-left text-xs uppercase text-zinc-500 dark:text-zinc-400 py-2 px-3 border-b border-zinc-200 dark:border-zinc-800">Ticker</th>
+          <th className="text-left text-xs uppercase text-zinc-500 dark:text-zinc-400 py-2 px-3 border-b border-zinc-200 dark:border-zinc-800">Kompanija</th>
+          <th className="text-right text-xs uppercase text-zinc-500 dark:text-zinc-400 py-2 px-3 border-b border-zinc-200 dark:border-zinc-800">Cena</th>
+          <th className="text-right text-xs uppercase text-zinc-500 dark:text-zinc-400 py-2 px-3 border-b border-zinc-200 dark:border-zinc-800">Tržišna kap.</th>
+          <th className="text-left text-xs uppercase text-zinc-500 dark:text-zinc-400 py-2 px-3 border-b border-zinc-200 dark:border-zinc-800">Sud</th>
+          <th className="text-left text-xs uppercase text-zinc-500 dark:text-zinc-400 py-2 px-3 border-b border-zinc-200 dark:border-zinc-800">Fundamenti</th>
+          <th className="text-center text-xs uppercase text-zinc-500 dark:text-zinc-400 py-2 px-3 border-b border-zinc-200 dark:border-zinc-800">🚩</th>
+          {BENCHMARK_HORIZONS.map((y) => (
+            <th key={y} className="text-center text-xs uppercase text-zinc-500 dark:text-zinc-400 py-2 px-3 border-b border-zinc-200 dark:border-zinc-800">vs SPY {y}g</th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((r) => (
+          <tr key={r.ticker}>
+            <td className="py-2 px-3 border-b border-zinc-200 dark:border-zinc-800 font-semibold">
+              <a href={`/model?ticker=${r.ticker}`} className="hover:underline">{r.ticker}</a>
+            </td>
+            <td className="py-2 px-3 border-b border-zinc-200 dark:border-zinc-800 text-zinc-600 dark:text-zinc-400">{r.companyName}</td>
+            <td className="py-2 px-3 border-b border-zinc-200 dark:border-zinc-800 text-right tabular-nums">{fmtMoney(r.currentPrice, r.currency)}</td>
+            <td className="py-2 px-3 border-b border-zinc-200 dark:border-zinc-800 text-right tabular-nums">{fmtMarketCap(r.marketCap, r.currency)}</td>
+            <td
+              className={`py-2 px-3 border-b border-zinc-200 dark:border-zinc-800 text-xs font-medium ${
+                r.verdictLabel === "Kupovina"
+                  ? "text-emerald-600 dark:text-emerald-400"
+                  : r.verdictLabel === "Izbegavanje"
+                    ? "text-red-600 dark:text-red-400"
+                    : r.verdictLabel === "Čekaj — preskupo"
+                      ? "text-amber-600 dark:text-amber-400"
+                      : "text-zinc-600 dark:text-zinc-400"
+              }`}
+            >
+              {r.verdictLabel}
+            </td>
+            <td
+              className={`py-2 px-3 border-b border-zinc-200 dark:border-zinc-800 text-xs font-medium ${
+                r.fundamentalsRating === "Jaki"
+                  ? "text-emerald-600 dark:text-emerald-400"
+                  : r.fundamentalsRating === "Slabi"
+                    ? "text-red-600 dark:text-red-400"
+                    : "text-zinc-600 dark:text-zinc-400"
+              }`}
+            >
+              {r.fundamentalsRating}
+            </td>
+            <td className="py-2 px-3 border-b border-zinc-200 dark:border-zinc-800 text-center">
+              {r.redFlagCount > 0 ? <span className="text-red-600 dark:text-red-400 font-semibold">{r.redFlagCount}</span> : <span className="text-zinc-400">0</span>}
+            </td>
+            {BENCHMARK_HORIZONS.map((y) => (
+              <td key={y} className="py-2 px-3 border-b border-zinc-200 dark:border-zinc-800 text-center">
+                {r.vsSpy[y] === "outperform" ? (
+                  <span className="text-emerald-600 dark:text-emerald-400 font-bold">▲</span>
+                ) : r.vsSpy[y] === "underperform" ? (
+                  <span className="text-red-600 dark:text-red-400 font-bold">▼</span>
+                ) : (
+                  <span className="text-zinc-400">—</span>
+                )}
+              </td>
+            ))}
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }
