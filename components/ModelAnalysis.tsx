@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { analyzeHistoricalMultiples, compareToBenchmark, computeDebtEquityHistory, computeHistoricalPE, computeHistoricalPEG, computeHistoricalPFcf, computeModel, extractModelData, synthesizeValuationMultiples, type BenchmarkComparisonRow, type ComputedModel, type HistoricalMultipleRow } from "@/lib/buildModel";
 import { getSectorPeMedian, summarizeRecommendation, type FilterCheck } from "@/lib/model";
-import { fetchPriceHistory, fetchSpyHistory, searchSymbols, type SearchResult } from "@/lib/clientData";
+import { fetchPriceHistory, fetchSpyHistory, searchSymbols, translateToSerbian, type SearchResult } from "@/lib/clientData";
 
 const fmtPct = (x: number | null | undefined, digits = 1) =>
   x === null || x === undefined || Number.isNaN(x) ? "—" : `${x >= 0 ? "+" : ""}${(x * 100).toFixed(digits)}%`;
@@ -43,6 +43,8 @@ export default function ModelAnalysis() {
   const [historicalPFcf, setHistoricalPFcf] = useState<HistoricalMultipleRow[] | null>(null);
   const [historicalPEG, setHistoricalPEG] = useState<HistoricalMultipleRow[] | null>(null);
   const [benchmarkComparison, setBenchmarkComparison] = useState<BenchmarkComparisonRow[] | null>(null);
+  const [translatedSummary, setTranslatedSummary] = useState<string | null>(null);
+  const [translatingSummary, setTranslatingSummary] = useState(false);
   const [suggestions, setSuggestions] = useState<SearchResult[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [now] = useState(() => Date.now());
@@ -57,6 +59,7 @@ export default function ModelAnalysis() {
     setHistoricalPFcf(null);
     setHistoricalPEG(null);
     setBenchmarkComparison(null);
+    setTranslatedSummary(null);
     try {
       const r = await fetchModelResult(sym);
       setResult(r);
@@ -66,6 +69,12 @@ export default function ModelAnalysis() {
       setHistoricalPFcf(computeHistoricalPFcf(r.breakdown.rows, priceHistory, shares));
       setHistoricalPEG(computeHistoricalPEG(r.breakdown.rows, priceHistory, shares));
       setBenchmarkComparison(compareToBenchmark(priceHistory, spyHistory, Math.floor(now / 1000)));
+      if (r.data.businessSummary) {
+        setTranslatingSummary(true);
+        translateToSerbian(r.data.businessSummary)
+          .then(setTranslatedSummary)
+          .finally(() => setTranslatingSummary(false));
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Greška pri preuzimanju podataka.");
     } finally {
@@ -148,7 +157,16 @@ export default function ModelAnalysis() {
 
         <Section title="O kompaniji">
           {data.businessSummary ? (
-            <p className="text-sm leading-relaxed">{data.businessSummary}</p>
+            <>
+              <p className="text-sm leading-relaxed">
+                {translatedSummary ?? (translatingSummary ? "Prevodim opis..." : data.businessSummary)}
+              </p>
+              <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-400 italic">
+                {translatedSummary
+                  ? "Automatski mašinski prevod sa engleskog (MyMemory) — može sadržati netačnosti."
+                  : !translatingSummary && "Prevod nije uspeo — prikazan je originalni opis sa Yahoo Finance (engleski)."}
+              </p>
+            </>
           ) : (
             <p className="text-sm italic text-zinc-500 dark:text-zinc-400">Opis poslovanja nije dostupan za ovaj tiker.</p>
           )}

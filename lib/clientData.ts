@@ -36,6 +36,21 @@ export function fetchSpyHistory(): Promise<HistoricalPricePoint[]> {
   return spyHistoryPromise;
 }
 
+// Prevodi tekst (samo opis poslovanja kompanije) sa engleskog na srpski
+// preko servera (vidi app/api/translate) — besplatan mašinski prevod
+// (MyMemory), bez API ključa. Vraća null ako prevod ne uspe, da bi pozivalac
+// mogao da prikaže originalni tekst kao rezervu.
+export async function translateToSerbian(text: string): Promise<string | null> {
+  try {
+    const res = await fetch(`/api/translate?text=${encodeURIComponent(text)}`, { cache: "no-store" });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return typeof data?.translated === "string" ? data.translated : null;
+  } catch {
+    return null;
+  }
+}
+
 export interface SearchResult {
   symbol: string;
   name: string;
