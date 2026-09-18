@@ -519,10 +519,10 @@ export function buildMultiplesTable(inputs: {
     });
   }
 
-  // EV/EBITDA — fiksni pragovi (isti kao u filteru valuacije): <15 razumno, 15-25 povišeno, >25 uračunava skoro savršeno izvršenje.
+  // EV/EBITDA — fiksni pragovi: <15 razumno, 15-30 umereno povišeno (uobičajeno za kvalitetne kompanije koje brzo rastu), >30 uračunava skoro savršeno izvršenje.
   {
     const v = inputs.evToEbitda;
-    const tone: MultipleReadingTone = v == null ? "nedovoljno podataka" : v < 15 ? "povoljno" : v > 25 ? "skupo" : "neutralno";
+    const tone: MultipleReadingTone = v == null ? "nedovoljno podataka" : v < 15 ? "povoljno" : v > 30 ? "skupo" : "neutralno";
     rows.push({
       metric: "EV/EBITDA",
       value: v,
@@ -531,7 +531,7 @@ export function buildMultiplesTable(inputs: {
       sectorBenchmark: null,
       trend: null,
       meaning: "Vrednost kompanije (tržišna kapitalizacija + dug − gotovina) podeljena operativnom zaradom (EBITDA).",
-      reading: v == null ? "Nije dostupno." : v < 15 ? "Razumna cena za operativnu zaradu." : v > 25 ? "Uračunava skoro savršeno izvršenje." : "Umereno povišeno.",
+      reading: v == null ? "Nije dostupno." : v < 15 ? "Razumna cena za operativnu zaradu." : v > 30 ? "Uračunava skoro savršeno izvršenje." : "Umereno povišeno — uobičajeno za kvalitetne kompanije sa bržim rastom.",
       tone,
     });
   }
@@ -553,9 +553,14 @@ export function buildMultiplesTable(inputs: {
   }
 
   // FCF prinos — obrnuto od P/FCF, izraženo kao prinos (poput dividendnog prinosa): koliko gotovine kompanija godišnje generiše po uloženom novcu.
+  // Pragovi kalibrisani prema realnoj raspodeli na tržištu (prosek tržišta je
+  // otprilike 3-4%; kvalitetne kompanije koje brzo rastu često imaju niži
+  // prinos jer ulažu gotovinu nazad u rast, ne zato što su nužno "skupe") —
+  // raniji pragovi (8%/4%) su bili nerealno visoki i skoro svaku kompaniju
+  // gurali u "skupo", bez obzira na stvarnu cenu.
   {
     const v = computeFcfYield(inputs.freeCashflowTtm, inputs.marketCap);
-    const tone: MultipleReadingTone = v == null ? "nedovoljno podataka" : v < 0 ? "skupo" : v >= 0.08 ? "povoljno" : v >= 0.04 ? "neutralno" : "skupo";
+    const tone: MultipleReadingTone = v == null ? "nedovoljno podataka" : v < 0 ? "skupo" : v >= 0.06 ? "povoljno" : v >= 0.025 ? "neutralno" : "skupo";
     rows.push({
       metric: "FCF prinos",
       value: v,
@@ -569,11 +574,11 @@ export function buildMultiplesTable(inputs: {
           ? "Nije dostupno."
           : v < 0
             ? "Negativno — kompanija trenutno troši više gotovine nego što generiše."
-            : v >= 0.08
+            : v >= 0.06
               ? "Visok prinos — generiše mnogo gotovine u odnosu na cenu."
-              : v >= 0.04
-                ? "Umeren prinos."
-                : "Nizak prinos — cena je visoka u odnosu na gotovinu koju kompanija generiše.",
+              : v >= 0.025
+                ? "Prosečan prinos, u skladu sa tržištem."
+                : "Nizak prinos — ili je cena visoka u odnosu na gotovinu, ili kompanija ulaže gotovo sav novčani tok nazad u rast.",
       tone,
     });
   }
