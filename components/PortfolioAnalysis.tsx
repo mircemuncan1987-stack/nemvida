@@ -11,6 +11,7 @@ import {
   type HistoricalPricePoint,
 } from "@/lib/buildModel";
 import { fetchPriceHistory, fetchSpyHistory } from "@/lib/clientData";
+import { computeFcfYield } from "@/lib/valuation";
 import {
   analyzeConcentration,
   DEFAULT_HOLDINGS,
@@ -300,6 +301,7 @@ export default function PortfolioAnalysis() {
                   <tr>
                     <th className="text-left text-xs uppercase text-zinc-500 py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800">Pozicija</th>
                     <th className="text-right text-xs uppercase text-zinc-500 py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800">Udeo</th>
+                    <th className="text-right text-xs uppercase text-zinc-500 py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800">FCF prinos</th>
                     <th className="text-left text-xs uppercase text-zinc-500 py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800">Sud</th>
                     <th className="text-left text-xs uppercase text-zinc-500 py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800">Fundamenti</th>
                     <th className="text-center text-xs uppercase text-zinc-500 py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800">🚩</th>
@@ -310,6 +312,7 @@ export default function PortfolioAnalysis() {
                   {holdings.filter((h) => h.ticker).map((h) => {
                     const r = results.get(h.ticker!);
                     const c = r?.computed;
+                    const fcfYield = c ? computeFcfYield(c.data.fundamentals.freeCashflowTtm, c.data.marketCap) : null;
                     return (
                       <tr key={h.id}>
                         <td className="py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800">
@@ -317,9 +320,12 @@ export default function PortfolioAnalysis() {
                         </td>
                         <td className="py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800 text-right tabular-nums">{total > 0 ? `${((h.marketValueNok / total) * 100).toFixed(1)}%` : "—"}</td>
                         {r?.error ? (
-                          <td colSpan={4} className="py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800 text-xs text-zinc-500 dark:text-zinc-400 italic">Greška: {r.error}</td>
+                          <td colSpan={5} className="py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800 text-xs text-zinc-500 dark:text-zinc-400 italic">Greška: {r.error}</td>
                         ) : c ? (
                           <>
+                            <td className={`py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800 text-right tabular-nums ${fcfYield != null && fcfYield < 0 ? "text-red-600 dark:text-red-400" : ""}`}>
+                              {fcfYield != null ? `${(fcfYield * 100).toFixed(1)}%` : "—"}
+                            </td>
                             <td className={`py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800 text-xs font-medium ${c.finalVerdict.verdict === "Kupovina" ? "text-emerald-600 dark:text-emerald-400" : c.finalVerdict.verdict === "Izbegavanje" ? "text-red-600 dark:text-red-400" : c.finalVerdict.verdict === "Čekaj — preskupo" ? "text-amber-600 dark:text-amber-400" : "text-zinc-600 dark:text-zinc-400"}`}>
                               {c.finalVerdict.verdict}
                             </td>
@@ -334,7 +340,7 @@ export default function PortfolioAnalysis() {
                             </td>
                           </>
                         ) : (
-                          <td colSpan={4} className="py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800 text-xs italic text-zinc-500 dark:text-zinc-400">…</td>
+                          <td colSpan={5} className="py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800 text-xs italic text-zinc-500 dark:text-zinc-400">…</td>
                         )}
                       </tr>
                     );

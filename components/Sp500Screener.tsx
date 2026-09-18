@@ -15,6 +15,7 @@ import { FTSEMIB_TICKERS } from "@/lib/ftsemib";
 import { WIG20_TICKERS } from "@/lib/wig20";
 import { SMI_TICKERS } from "@/lib/smi";
 import { DEFAULT_ASSUMPTIONS, compareToBenchmark, computeModel, extractModelData } from "@/lib/buildModel";
+import { computeFcfYield } from "@/lib/valuation";
 import type { FundamentalsRating } from "@/lib/model";
 import { fetchPriceHistory, fetchSpyHistory } from "@/lib/clientData";
 
@@ -50,8 +51,11 @@ interface Row {
   vsSpy: Record<number, "outperform" | "underperform" | "na">;
   sector: string | null;
   marketCap: number | null;
+  fcfYield: number | null;
   error?: string;
 }
+
+const fmtPct = (x: number | null, digits = 1) => (x == null ? "—" : `${(x * 100).toFixed(digits)}%`);
 
 function fmtMarketCap(x: number | null, currency: string): string {
   if (x == null) return "—";
@@ -125,6 +129,7 @@ async function fetchAndScore(ticker: string, nowSeconds: number): Promise<Row> {
     vsSpy,
     sector: modelData.sector,
     marketCap: modelData.marketCap,
+    fcfYield: computeFcfYield(modelData.fundamentals.freeCashflowTtm, modelData.marketCap),
   };
 }
 
@@ -138,10 +143,9 @@ export default function Sp500Screener() {
   const [lastUpdated, setLastUpdated] = useState<number | null>(null);
   const stopRef = useRef(false);
 
-  // v3: raniji ključevi nisu imali sector/marketCap (potrebno za grupisanje
-  // po sektoru) — menja se verzija da se stari keš u localStorage ne bi
-  // učitao i pokvario prikaz (nedostajala bi polja).
-  const cacheKeyFor = (idx: IndexKey) => `nemvida_screener_v3_${idx}`;
+  // v4: raniji ključevi nisu imali fcfYield — menja se verzija da se stari
+  // keš u localStorage ne bi učitao i pokvario prikaz (nedostajalo bi polje).
+  const cacheKeyFor = (idx: IndexKey) => `nemvida_screener_v4_${idx}`;
 
   function loadFromCache(idx: IndexKey): boolean {
     try {
@@ -208,6 +212,7 @@ export default function Sp500Screener() {
             vsSpy: {},
             sector: null,
             marketCap: null,
+            fcfYield: null,
             error: s.reason instanceof Error ? s.reason.message : "Greška",
           });
         }
@@ -252,7 +257,10 @@ export default function Sp500Screener() {
         preterana zaduženost). &quot;vs SPY&quot; poredi ukupan prinos akcije sa SPY (S&P 500) na 3/5/10/20 godina —
         &quot;—&quot; znači da istorija cene ne seže dovoljno unazad. Sortiranje &quot;po sektoru&quot; grupiše kompanije po
         sektoru (Yahoo Finance klasifikacija), sektore ređa po ukupnoj tržišnoj kapitalizaciji (najveći prvo), a
-        kompanije unutar sektora po sopstvenoj tržišnoj kapitalizaciji (najveće prvo).
+        kompanije unutar sektora po sopstvenoj tržišnoj kapitalizaciji (najveće prvo). &quot;FCF prinos&quot; je slobodan
+        novčani tok (TTM) podeljen trenutnom tržišnom kapitalizacijom — što je veći, to kompanija generiše više
+        gotovine u odnosu na cenu; negativan (crveno) znači da kompanija trenutno troši više gotovine nego što
+        generiše.
       </div>
 
       <div className="border border-zinc-200 dark:border-zinc-800 bg-white/70 dark:bg-zinc-900/50 rounded-xl p-4 mb-4 flex flex-wrap gap-3 items-center">
@@ -355,6 +363,7 @@ function ScreenerTable({ rows }: { rows: Row[] }) {
           <th className="text-left text-xs uppercase text-zinc-500 dark:text-zinc-400 py-2 px-3 border-b border-zinc-200 dark:border-zinc-800">Kompanija</th>
           <th className="text-right text-xs uppercase text-zinc-500 dark:text-zinc-400 py-2 px-3 border-b border-zinc-200 dark:border-zinc-800">Cena</th>
           <th className="text-right text-xs uppercase text-zinc-500 dark:text-zinc-400 py-2 px-3 border-b border-zinc-200 dark:border-zinc-800">Tržišna kap.</th>
+          <th className="text-right text-xs uppercase text-zinc-500 dark:text-zinc-400 py-2 px-3 border-b border-zinc-200 dark:border-zinc-800">FCF prinos</th>
           <th className="text-left text-xs uppercase text-zinc-500 dark:text-zinc-400 py-2 px-3 border-b border-zinc-200 dark:border-zinc-800">Sud</th>
           <th className="text-left text-xs uppercase text-zinc-500 dark:text-zinc-400 py-2 px-3 border-b border-zinc-200 dark:border-zinc-800">Fundamenti</th>
           <th className="text-center text-xs uppercase text-zinc-500 dark:text-zinc-400 py-2 px-3 border-b border-zinc-200 dark:border-zinc-800">🚩</th>
@@ -372,6 +381,13 @@ function ScreenerTable({ rows }: { rows: Row[] }) {
             <td className="py-2 px-3 border-b border-zinc-200 dark:border-zinc-800 text-zinc-600 dark:text-zinc-400">{r.companyName}</td>
             <td className="py-2 px-3 border-b border-zinc-200 dark:border-zinc-800 text-right tabular-nums">{fmtMoney(r.currentPrice, r.currency)}</td>
             <td className="py-2 px-3 border-b border-zinc-200 dark:border-zinc-800 text-right tabular-nums">{fmtMarketCap(r.marketCap, r.currency)}</td>
+            <td
+              className={`py-2 px-3 border-b border-zinc-200 dark:border-zinc-800 text-right tabular-nums ${
+                r.fcfYield != null && r.fcfYield < 0 ? "text-red-600 dark:text-red-400" : ""
+              }`}
+            >
+              {fmtPct(r.fcfYield)}
+            </td>
             <td
               className={`py-2 px-3 border-b border-zinc-200 dark:border-zinc-800 text-xs font-medium ${
                 r.verdictLabel === "Kupovina"
