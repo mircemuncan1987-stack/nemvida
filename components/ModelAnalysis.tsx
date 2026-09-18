@@ -394,12 +394,8 @@ export default function ModelAnalysis() {
             )}
           </p>
           <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">
-            P/E i P/FCF (procena) dele istorijsku cenu akcije oko kraja svake godine sa procenjenom dobiti/FCF-om po akciji te godine (koristeći trenutni broj akcija, jer istorijski broj nije dostupan) — procena, ne tačna knjigovodstvena vrednost. PEG (procena) je taj P/E podeljen godišnjim rastom neto dobiti u odnosu na prethodnu godinu (prazno kad je rast te godine negativan ili nula, jer PEG tada nema smislenu vrednost). Dug/kapital je ukupan dug podeljen sopstvenim kapitalom te godine.
+            P/E i P/FCF (procena) dele istorijsku cenu akcije oko kraja svake godine sa procenjenom dobiti/FCF-om po akciji te godine (koristeći trenutni broj akcija, jer istorijski broj nije dostupan) — procena, ne tačna knjigovodstvena vrednost. PEG (procena) je taj P/E podeljen godišnjim rastom neto dobiti u odnosu na prethodnu godinu (prazno kad je rast te godine negativan ili nula, jer PEG tada nema smislenu vrednost). Dug/kapital je ukupan dug podeljen sopstvenim kapitalom te godine. Puna analiza da li je akcija skupa je u sekciji 4 (Filter valuacije).
           </p>
-          <div className="mt-4 pt-3 border-t border-zinc-200 dark:border-zinc-800">
-            <h4 className="text-xs font-semibold uppercase text-zinc-500 dark:text-zinc-400 mb-2">Analiza multiplikatora — skupa ili jeftina u odnosu na sopstvenu istoriju?</h4>
-            <p className="text-sm">{multipleAnalysis.text}</p>
-          </div>
         </Section>
 
         <Section title="2. Filter rasta — kvantitativni skrining">
@@ -418,9 +414,10 @@ export default function ModelAnalysis() {
           <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">{valuationFilter.passCount}/{valuationFilter.totalApplicable} primenjivih kriterijuma zadovoljeno. Jeftino ponekad znači pokvareno, a skupo ponekad znači kvalitet — ovo je samo disciplinski filter, ne presuda.</p>
 
           <div className="mt-4 pt-3 border-t border-zinc-200 dark:border-zinc-800">
-            <h4 className="text-xs font-semibold uppercase text-zinc-500 dark:text-zinc-400 mb-2">Da li je akcija skupa? — činjenice naspram scenarija</h4>
-            <p className="text-sm">
-              <span className="text-zinc-500 dark:text-zinc-400">Činjenice (trenutni multiplikatori): </span>
+            <h4 className="text-xs font-semibold uppercase text-zinc-500 dark:text-zinc-400 mb-2">Da li je akcija skupa? — sopstvena istorija, sektor i scenario rasta</h4>
+            <p className="text-sm">{multipleAnalysis.text}</p>
+            <p className="text-sm mt-2">
+              <span className="text-zinc-500 dark:text-zinc-400">Ostale činjenice (trenutni multiplikatori): </span>
               {expensivenessCheck.facts.length ? expensivenessCheck.facts.join(" · ") : "nedovoljno podataka"}.
             </p>
             {expensivenessCheck.scenarios.some((s) => s.requiredEpsGrowth != null) && (

@@ -524,7 +524,6 @@ export function buildExpensivenessCheck(inputs: {
   if (inputs.peRatio != null) facts.push(`P/E ${inputs.peRatio.toFixed(1)}×`);
   if (inputs.pegRatio != null) facts.push(`PEG ${inputs.pegRatio.toFixed(2)}`);
   if (inputs.evToEbitda != null) facts.push(`EV/EBITDA ${inputs.evToEbitda.toFixed(1)}×`);
-  if (inputs.ownHistoricalPeAvg != null) facts.push(`sopstveni prosečan P/E (do 5 god.) ${inputs.ownHistoricalPeAvg.toFixed(1)}×`);
   if (inputs.sectorPeMedian != null) facts.push(`medijana P/E sektora${inputs.sector ? ` (${inputs.sector})` : ""} ${inputs.sectorPeMedian.toFixed(0)}×`);
 
   const targets: { label: string; targetPE: number | null }[] = [
