@@ -466,17 +466,20 @@ export default function ModelAnalysis() {
               </table>
             </div>
             <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">
-              Medijana sektora je trenutno dostupna samo za P/E (fiksna orijentaciona tabela po sektoru) — ostali pokazatelji nemaju pouzdan izvor za poređenje po sektoru, pa se porede samo sa sopstvenom istorijom ili fiksnim pragom.
+              Medijana sektora je trenutno dostupna samo za P/E (fiksna orijentaciona tabela po sektoru) — ostali pokazatelji nemaju pouzdan izvor za poređenje po sektoru, pa se porede samo sa sopstvenom istorijom ili fiksnim pragom. FCF prinos je dodat pored P/FCF jer se zasniva na stvarnom novčanom toku (teže ga je računovodstveno &quot;ulepšati&quot; od neto dobiti) i lako se upoređuje sa drugim prinosima koje već poznaješ — dividendnim prinosom ili prinosom državnih obveznica — kao odgovor na pitanje &quot;koliko gotovine dobijam godišnje za uloženi novac&quot;.
             </p>
 
             <h4 className="text-xs font-semibold uppercase text-zinc-500 dark:text-zinc-400 mt-4 mb-2">Scenario — koliki rast tržište implicitno očekuje</h4>
+            <p className="text-sm text-zinc-600 dark:text-zinc-400 mb-2">
+              Ovo nije predviđanje nego obrnut račun: ako se cena akcije ne menja, a P/E se za 3 godine spusti (ili poraste) sa trenutnog nivoa na referentnu vrednost ispod, jedini način da se to matematički poklopi jeste da zarada po akciji u međuvremenu naraste — koliko tačno, piše ispod. Što je viši trenutni P/E u odnosu na referentnu vrednost, to je veći potreban rast.
+            </p>
             {expensivenessCheck.scenarios.some((s) => s.requiredEpsGrowth != null) ? (
               <ul className="list-disc pl-5 space-y-1 text-sm text-zinc-600 dark:text-zinc-400">
                 {expensivenessCheck.scenarios
                   .filter((s) => s.requiredEpsGrowth != null)
                   .map((s) => (
                     <li key={s.label}>
-                      Pretpostavka — da bi P/E za 3 god. konvergirao ka &quot;{s.label.toLowerCase()}&quot; ({s.targetPE!.toFixed(1)}×), zarada bi morala da raste ~{fmtPct(s.requiredEpsGrowth, 1)} godišnje (cena nepromenjena).
+                      Sa trenutnih {data.peRatio != null ? `${data.peRatio.toFixed(1)}×` : "—"} na P/E od {s.targetPE!.toFixed(1)}× (&quot;{s.label.toLowerCase()}&quot;) za 3 godine, uz nepromenjenu cenu: zarada po akciji bi morala da raste ~{fmtPct(s.requiredEpsGrowth, 1)} godišnje.
                     </li>
                   ))}
               </ul>
