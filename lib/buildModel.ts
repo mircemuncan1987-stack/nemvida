@@ -642,13 +642,19 @@ export interface ExpensivenessCheck {
   summary: string;
 }
 
+// Prag (u procentnim poenima) iznad kog se razlika između potrebnog i
+// očekivanog rasta smatra značajnom — ispod toga se smatra da se procena i
+// očekivanje "otprilike poklapaju" (fer vrednovano), umesto da se svaka mala
+// razlika proglasi za potcenjenost/precenjenost.
+const EXPENSIVENESS_GAP_THRESHOLD = 0.04;
+
 export function buildExpensivenessCheck(inputs: {
   currentPrice: number;
   trailingEps: number | null;
   ownHistoricalPeAvg: number | null;
   sectorPeMedian: number | null;
   analystLongTermGrowth: number | null;
-  historicalRevenueCagr: number | null;
+  historicalPatCagr: number | null;
 }): ExpensivenessCheck {
   const targets: { label: string; targetPE: number | null }[] = [
     { label: "Sopstveni istorijski prosek P/E", targetPE: inputs.ownHistoricalPeAvg },
@@ -661,9 +667,13 @@ export function buildExpensivenessCheck(inputs: {
       t.targetPE != null ? impliedGrowthForFairValue(inputs.currentPrice, inputs.trailingEps, t.targetPE, EXPENSIVENESS_SCENARIO_YEARS) : null,
   }));
 
-  const comparisonGrowth = inputs.analystLongTermGrowth ?? inputs.historicalRevenueCagr ?? null;
+  // Poredi se isključivo sa rastom ZARADE (analitičarska procena ili
+  // istorijski CAGR neto dobiti) — namerno ne i sa rastom prihoda, jer bi to
+  // bilo poređenje različitih veličina (prihod naspram zarade po akciji) i
+  // moglo bi dati zbunjujuć, naizgled nelogičan zaključak.
+  const comparisonGrowth = inputs.analystLongTermGrowth ?? inputs.historicalPatCagr ?? null;
   const comparisonGrowthLabel =
-    inputs.analystLongTermGrowth != null ? "konsenzus analitičara o dugoročnom rastu" : inputs.historicalRevenueCagr != null ? "istorijski CAGR prihoda" : null;
+    inputs.analystLongTermGrowth != null ? "konsenzus analitičara o rastu zarade" : inputs.historicalPatCagr != null ? "istorijski CAGR neto dobiti" : null;
 
   const validScenarios = scenarios.filter((s): s is ExpensivenessScenario & { requiredEpsGrowth: number } => s.requiredEpsGrowth != null);
 
@@ -673,16 +683,27 @@ export function buildExpensivenessCheck(inputs: {
   if (validScenarios.length > 0 && comparisonGrowth != null) {
     const avgRequired = validScenarios.reduce((a, s) => a + s.requiredEpsGrowth, 0) / validScenarios.length;
     const gap = comparisonGrowth - avgRequired;
-    const gLabel = comparisonGrowthLabel ?? "procenjeni rast";
-    if (gap > 0.03) {
+    const gLabel = comparisonGrowthLabel ?? "procenjeni rast zarade";
+    const requiredPct = (avgRequired * 100).toFixed(1);
+    const comparisonPct = (comparisonGrowth * 100).toFixed(1);
+
+    // Kad su dva referentna scenarija (sopstvena istorija i sektor) daleko
+    // jedan od drugog, prost prosek prikriva tu neslogu — dodaje se
+    // napomena umesto da se to ćutke izgladi u jedan broj.
+    const divergenceNote =
+      validScenarios.length === 2 && Math.abs(validScenarios[0].requiredEpsGrowth - validScenarios[1].requiredEpsGrowth) > 0.08
+        ? " Napomena: sopstvena istorija i sektor ovde daju dosta različite procene (vidi scenario ispod pojedinačno), pa je ovaj prosek gruba procena."
+        : "";
+
+    if (gap > EXPENSIVENESS_GAP_THRESHOLD) {
       verdict = "izgleda potcenjeno";
-      summary = `Da bi P/E za ${EXPENSIVENESS_SCENARIO_YEARS} god. konvergirao ka sopstvenoj istoriji/sektoru, dovoljan bi bio rast zarade od ~${(avgRequired * 100).toFixed(1)}% godišnje — ${gLabel} (${(comparisonGrowth * 100).toFixed(1)}%) je viši od toga, što ukazuje da cena ne uračunava puni očekivani rast.`;
-    } else if (gap < -0.03) {
+      summary = `Da bi cena bila opravdana za ${EXPENSIVENESS_SCENARIO_YEARS} god., dovoljan je rast zarade od ~${requiredPct}% godišnje. ${gLabel} je viši (~${comparisonPct}%) — ako se to ostvari, akcija ima prostora da poraste ili da joj tržište prizna viši multiplikator.${divergenceNote}`;
+    } else if (gap < -EXPENSIVENESS_GAP_THRESHOLD) {
       verdict = "izgleda precenjeno";
-      summary = `Da bi akcija za ${EXPENSIVENESS_SCENARIO_YEARS} god. izgledala fer vrednovana po sopstvenoj istoriji/sektoru, zarada bi morala da raste ~${(avgRequired * 100).toFixed(1)}% godišnje — više od ${gLabel} (${(comparisonGrowth * 100).toFixed(1)}%). Cena već uračunava optimističnija očekivanja nego što se realno projektuje.`;
+      summary = `Cena već pretpostavlja rast zarade od ~${requiredPct}% godišnje da bi se opravdala za ${EXPENSIVENESS_SCENARIO_YEARS} god. — brže od ${gLabel} (~${comparisonPct}%). Ako se rast ne ubrza iznad očekivanog, cena bi trebalo da padne ili da ostane skupa dugo.${divergenceNote}`;
     } else {
       verdict = "izgleda fer vrednovano";
-      summary = `Potreban rast zarade da bi P/E za ${EXPENSIVENESS_SCENARIO_YEARS} god. konvergirao ka sopstvenoj istoriji/sektoru (~${(avgRequired * 100).toFixed(1)}%) je blizu ${gLabel} (${(comparisonGrowth * 100).toFixed(1)}%) — cena otprilike odgovara očekivanjima.`;
+      summary = `Potreban rast zarade (~${requiredPct}% godišnje) je blizu ${gLabel} (~${comparisonPct}%) — cena otprilike odgovara realnim očekivanjima, bez velike margine u bilo kom pravcu.${divergenceNote}`;
     }
   }
 

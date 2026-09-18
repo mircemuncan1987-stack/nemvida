@@ -199,7 +199,7 @@ export default function ModelAnalysis() {
       ownHistoricalPeAvg: multipleAnalysis.peAvg,
       sectorPeMedian,
       analystLongTermGrowth: data.analystLongTermGrowth,
-      historicalRevenueCagr: breakdown.revenueCagr,
+      historicalPatCagr: breakdown.patCagr,
     });
     const rangePosition =
       data.fiftyTwoWeekLow != null && data.fiftyTwoWeekHigh != null && data.fiftyTwoWeekHigh > data.fiftyTwoWeekLow
