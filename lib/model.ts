@@ -770,12 +770,36 @@ export interface FinalVerdictInputs {
 
 export type Verdict4 = "Kupovina" | "Držanje" | "Čekaj — preskupo" | "Izbegavanje" | "Nedovoljno podataka";
 
+// Koji red pravila (vidi VERDICT_RULES ispod) je doveo do ovog suda — UI
+// koristi ovo da uvek prikaže CEO sistem pravila i istakne primenjeni red,
+// umesto da korisnik mora da pogodi zašto je baš ovaj sud izašao.
+export type VerdictRule = "nedovoljno-podataka" | "rast-upitan" | "rast-spor" | "cena-preskupa" | "razumna-cena";
+
 export interface FinalVerdict {
   shortTermLabel: string;
   growthLabel: string;
   verdict: Verdict4;
+  rule: VerdictRule;
   detail: string;
 }
+
+// Kompletna tabela odlučivanja — TAČNO ono što buildFinalVerdict primenjuje,
+// izdvojeno kao podaci da bi se moglo prikazati kao vidljiva tabela na
+// sajtu (umesto da logika ostane skrivena u kodu i vidljiva samo kroz
+// tekst objašnjenja za JEDNU akciju).
+export interface VerdictRuleRow {
+  rule: VerdictRule;
+  growthCondition: string;
+  priceCondition: string;
+  verdict: Verdict4;
+}
+
+export const VERDICT_RULES: VerdictRuleRow[] = [
+  { rule: "rast-upitan", growthCondition: "Upitan (0% ili manje godišnje)", priceCondition: "Bilo koja — cena nije ni bitna", verdict: "Izbegavanje" },
+  { rule: "rast-spor", growthCondition: "Nizak (0–5% godišnje)", priceCondition: "Bilo koja — cena nije ni bitna", verdict: "Držanje" },
+  { rule: "cena-preskupa", growthCondition: "Umeren ili visok (5%+ godišnje)", priceCondition: "Uračunava skoro savršeno izvršenje (PEG > 2,5 ili EV/EBITDA > 25)", verdict: "Čekaj — preskupo" },
+  { rule: "razumna-cena", growthCondition: "Umeren ili visok (5%+ godišnje)", priceCondition: "Razumna — ne uračunava ekstremna očekivanja", verdict: "Kupovina" },
+];
 
 function outlookLabel(upside: number | null): string {
   if (upside == null) return "Nedovoljno podataka";
@@ -801,6 +825,7 @@ export function buildFinalVerdict(inputs: FinalVerdictInputs): FinalVerdict {
       shortTermLabel,
       growthLabel: inputs.growthLabel,
       verdict: "Nedovoljno podataka",
+      rule: "nedovoljno-podataka",
       detail: "Nema dovoljno podataka o rastu za konačan sud.",
     };
   }
@@ -811,22 +836,27 @@ export function buildFinalVerdict(inputs: FinalVerdictInputs): FinalVerdict {
   const pricingText = pricingFacts.length ? pricingFacts.join(", ") : "multiplikatori nisu dostupni";
 
   let verdict: Verdict4;
+  let rule: VerdictRule;
   let reasoning: string;
   if (gScore === -1) {
     verdict = "Izbegavanje";
+    rule = "rast-upitan";
     reasoning = `Rast je ${inputs.growthEstimateRange} (${inputs.growthLabel.toLowerCase()}) — nedovoljno da opravda ulaganje, bez obzira na cenu.${
       inputs.topRiskDetail ? ` Najveći rizik: ${inputs.topRiskDetail}.` : ""
     }`;
   } else if (gScore === 0) {
     verdict = "Držanje";
+    rule = "rast-spor";
     reasoning = `Rast je spor (${inputs.growthEstimateRange}) — pre za držanje postojeće pozicije nego za novu kupovinu.`;
   } else if (inputs.pricedForPerfection) {
     verdict = "Čekaj — preskupo";
+    rule = "cena-preskupa";
     reasoning = `Rast od ${inputs.growthEstimateRange} je solidan, ali cena već uračunava gotovo savršeno izvršenje (${pricingText}) — bolje sačekati povoljniji ulaz.`;
   } else {
     verdict = "Kupovina";
+    rule = "razumna-cena";
     reasoning = `Rast od ${inputs.growthEstimateRange} je solidan, a cena ne uračunava ekstremna očekivanja (${pricingText}).`;
   }
 
-  return { shortTermLabel, growthLabel: inputs.growthLabel, verdict, detail: reasoning };
+  return { shortTermLabel, growthLabel: inputs.growthLabel, verdict, rule, detail: reasoning };
 }

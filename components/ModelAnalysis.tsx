@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { analyzeHistoricalMultiples, buildMultiplesTable, compareToBenchmark, computeDebtEquityHistory, computeHistoricalPE, computeHistoricalPEG, computeHistoricalPFcf, computeModel, extractModelData, resolveFcfForYield, summarizeMultiplesTable, synthesizeValuationMultiples, type BenchmarkComparisonRow, type ComputedModel, type HistoricalMultipleRow } from "@/lib/buildModel";
-import { getSectorPeMedian, summarizeRecommendation, type FilterCheck, type RecommendationCounts } from "@/lib/model";
+import { getSectorPeMedian, summarizeRecommendation, VERDICT_RULES, type FilterCheck, type RecommendationCounts } from "@/lib/model";
 import { fetchPriceHistory, fetchSpyHistory, fetchStockAnalysisFcf, searchSymbols, translateToSerbian, type SearchResult } from "@/lib/clientData";
 
 const fmtPct = (x: number | null | undefined, digits = 1) =>
@@ -571,6 +571,38 @@ export default function ModelAnalysis() {
           <p className="mt-3 text-xs text-zinc-500 dark:text-zinc-400">
             Dugoročni izgled rasta se procenjuje iz istorijskog rasta i konsenzusa analitičara o rastu (vidi sekciju 3), namerno bez oslanjanja na modele procene vrednosti — svaki takav model nosi svoja ograničenja koja mogu iskriviti sud čak i za kvalitetne kompanije.
           </p>
+
+          <div className="mt-4 pt-3 border-t border-zinc-200 dark:border-zinc-800">
+            <h4 className="text-xs font-semibold uppercase text-zinc-500 dark:text-zinc-400 mb-2">Ceo sistem odlučivanja (koje pravilo je ovde primenjeno)</h4>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm border-collapse">
+                <thead>
+                  <tr>
+                    <th className="text-left text-xs uppercase text-zinc-500 py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800">Rast poslovanja</th>
+                    <th className="text-left text-xs uppercase text-zinc-500 py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800">Cena</th>
+                    <th className="text-left text-xs uppercase text-zinc-500 py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800">Sud</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {VERDICT_RULES.map((r) => {
+                    const active = r.rule === finalVerdict.rule;
+                    return (
+                      <tr key={r.rule} className={active ? "bg-blue-50 dark:bg-blue-900/20" : ""}>
+                        <td className={`py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800 ${active ? "font-semibold" : "text-zinc-600 dark:text-zinc-400"}`}>{r.growthCondition}</td>
+                        <td className={`py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800 ${active ? "font-semibold" : "text-zinc-600 dark:text-zinc-400"}`}>{r.priceCondition}</td>
+                        <td className={`py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800 font-medium ${active ? "font-bold" : ""} ${r.verdict === "Kupovina" ? "text-emerald-600 dark:text-emerald-400" : r.verdict === "Izbegavanje" ? "text-red-600 dark:text-red-400" : r.verdict === "Čekaj — preskupo" ? "text-amber-600 dark:text-amber-400" : "text-zinc-600 dark:text-zinc-400"}`}>
+                          {active && "→ "}{r.verdict}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">
+              Pravila se čitaju odozgo nadole — prvi red koji odgovara (rast, pa tek onda cena) određuje sud. Rast se proverava prvi jer slab ili upitan rast poslovanja čini kupovinu lošom idejom bez obzira na to koliko je cena atraktivna; tek kad je rast solidan (5%+ godišnje), cena postaje odlučujući faktor između &quot;Kupovina&quot; i &quot;Čekaj — preskupo&quot;.
+            </p>
+          </div>
         </div>
 
         <div className="text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed border border-zinc-200 dark:border-zinc-800 rounded-xl p-4">
