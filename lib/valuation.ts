@@ -202,6 +202,15 @@ export function summarizeUpside(currentPrice: number, value: number | null): num
   return value / currentPrice - 1;
 }
 
+// FCF prinos: slobodan novčani tok (TTM) u odnosu na tržišnu kapitalizaciju —
+// koliko gotovine kompanija godišnje generiše za svaki uloženi dinar/dolar
+// cene akcije. Suprotan broj od P/FCF (1/P/FCF), ali izražen kao prinos
+// (poput dividendnog prinosa) je intuitivniji za poređenje "da li je jeftino".
+export function computeFcfYield(freeCashflowTtm: number | null, marketCap: number | null): number | null {
+  if (freeCashflowTtm == null || marketCap == null || marketCap <= 0) return null;
+  return freeCashflowTtm / marketCap;
+}
+
 // Koliko bi zarada po akciji morala da raste godišnje da bi, uz NEPROMENJENU
 // cenu akcije, P/E multiplikator za "years" godina konvergirao ka targetPE
 // (npr. sopstveni istorijski prosek ili medijana sektora). Ovo je eksplicitno

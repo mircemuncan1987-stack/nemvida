@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { analyzeHistoricalMultiples, buildExpensivenessCheck, compareToBenchmark, computeDebtEquityHistory, computeHistoricalPE, computeHistoricalPEG, computeHistoricalPFcf, computeModel, extractModelData, synthesizeValuationMultiples, type BenchmarkComparisonRow, type ComputedModel, type HistoricalMultipleRow } from "@/lib/buildModel";
+import { analyzeHistoricalMultiples, buildExpensivenessCheck, buildMultiplesTable, compareToBenchmark, computeDebtEquityHistory, computeHistoricalPE, computeHistoricalPEG, computeHistoricalPFcf, computeModel, extractModelData, synthesizeValuationMultiples, type BenchmarkComparisonRow, type ComputedModel, type HistoricalMultipleRow } from "@/lib/buildModel";
 import { getSectorPeMedian, summarizeRecommendation, type FilterCheck, type RecommendationCounts } from "@/lib/model";
 import { fetchPriceHistory, fetchSpyHistory, searchSymbols, translateToSerbian, type SearchResult } from "@/lib/clientData";
 
@@ -175,19 +175,29 @@ export default function ModelAnalysis() {
       fundamentals.freeCashflowTtm != null && fundamentals.freeCashflowTtm > 0 && fundamentals.sharesOutstanding
         ? fundamentals.currentPrice / (fundamentals.freeCashflowTtm / fundamentals.sharesOutstanding)
         : null;
-    const multipleAnalysis = analyzeHistoricalMultiples(historicalPE ?? [], historicalPFcf ?? [], data.peRatio, currentPFcf);
+    const multipleAnalysis = analyzeHistoricalMultiples(historicalPE ?? [], historicalPFcf ?? []);
     const currentDebtToEquity = data.debtToEquity != null ? data.debtToEquity / 100 : null;
     const sectorPeMedian = getSectorPeMedian(data.sector);
     const valuationSynthesis = synthesizeValuationMultiples(data.pegRatio, data.peRatio, multipleAnalysis.peAvg, currentPFcf, multipleAnalysis.pFcfAvg, currentDebtToEquity, sectorPeMedian, data.sector);
-    const expensivenessCheck = buildExpensivenessCheck({
-      currentPrice: data.currentPrice,
-      trailingEps: fundamentals.trailingEps,
+    const multiplesTable = buildMultiplesTable({
       peRatio: data.peRatio,
       pegRatio: data.pegRatio,
       evToEbitda: data.evToEbitda,
+      currentPFcf,
+      freeCashflowTtm: fundamentals.freeCashflowTtm,
+      marketCap: data.marketCap,
       ownHistoricalPeAvg: multipleAnalysis.peAvg,
+      ownHistoricalPFcfAvg: multipleAnalysis.pFcfAvg,
+      peTrend: multipleAnalysis.peTrend,
+      pFcfTrend: multipleAnalysis.pFcfTrend,
       sectorPeMedian,
       sector: data.sector,
+    });
+    const expensivenessCheck = buildExpensivenessCheck({
+      currentPrice: data.currentPrice,
+      trailingEps: fundamentals.trailingEps,
+      ownHistoricalPeAvg: multipleAnalysis.peAvg,
+      sectorPeMedian,
       analystLongTermGrowth: data.analystLongTermGrowth,
       historicalRevenueCagr: breakdown.revenueCagr,
     });
@@ -414,14 +424,54 @@ export default function ModelAnalysis() {
           <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">{valuationFilter.passCount}/{valuationFilter.totalApplicable} primenjivih kriterijuma zadovoljeno. Jeftino ponekad znači pokvareno, a skupo ponekad znači kvalitet — ovo je samo disciplinski filter, ne presuda.</p>
 
           <div className="mt-4 pt-3 border-t border-zinc-200 dark:border-zinc-800">
-            <h4 className="text-xs font-semibold uppercase text-zinc-500 dark:text-zinc-400 mb-2">Da li je akcija skupa? — sopstvena istorija, sektor i scenario rasta</h4>
-            <p className="text-sm">{multipleAnalysis.text}</p>
-            <p className="text-sm mt-2">
-              <span className="text-zinc-500 dark:text-zinc-400">Ostale činjenice (trenutni multiplikatori): </span>
-              {expensivenessCheck.facts.length ? expensivenessCheck.facts.join(" · ") : "nedovoljno podataka"}.
+            <h4 className="text-xs font-semibold uppercase text-zinc-500 dark:text-zinc-400 mb-2">Da li je akcija skupa? — tabela multiplikatora</h4>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm border-collapse">
+                <thead>
+                  <tr>
+                    <th className="text-left text-xs uppercase text-zinc-500 py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800">Pokazatelj</th>
+                    <th className="text-right text-xs uppercase text-zinc-500 py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800">Vrednost</th>
+                    <th className="text-right text-xs uppercase text-zinc-500 py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800">Sopstveni prosek</th>
+                    <th className="text-right text-xs uppercase text-zinc-500 py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800">Medijana sektora</th>
+                    <th className="text-left text-xs uppercase text-zinc-500 py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800">Trend (5g)</th>
+                    <th className="text-left text-xs uppercase text-zinc-500 py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800">Šta znači</th>
+                    <th className="text-left text-xs uppercase text-zinc-500 py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800">Ocena</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {multiplesTable.map((row) => (
+                    <tr key={row.metric}>
+                      <td className="py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800 font-medium">{row.metric}</td>
+                      <td className="py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800 text-right tabular-nums">
+                        {row.value != null ? (row.unit === "%" ? `${(row.value * 100).toFixed(1)}%` : `${row.value.toFixed(2)}×`) : "—"}
+                      </td>
+                      <td className="py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800 text-right tabular-nums text-zinc-500 dark:text-zinc-400">
+                        {row.ownAverage != null ? `${row.ownAverage.toFixed(1)}×` : "—"}
+                      </td>
+                      <td className="py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800 text-right tabular-nums text-zinc-500 dark:text-zinc-400">
+                        {row.sectorBenchmark != null ? `${row.sectorBenchmark.toFixed(0)}×` : "—"}
+                      </td>
+                      <td className="py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800 text-xs text-zinc-500 dark:text-zinc-400">{row.trend ?? "—"}</td>
+                      <td className="py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800 text-xs text-zinc-500 dark:text-zinc-400">{row.meaning}</td>
+                      <td
+                        className={`py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800 text-xs font-medium ${
+                          row.tone === "povoljno" ? "text-emerald-600 dark:text-emerald-400" : row.tone === "skupo" ? "text-red-600 dark:text-red-400" : "text-zinc-600 dark:text-zinc-400"
+                        }`}
+                      >
+                        {row.reading}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">
+              Medijana sektora je trenutno dostupna samo za P/E (fiksna orijentaciona tabela po sektoru) — ostali pokazatelji nemaju pouzdan izvor za poređenje po sektoru, pa se porede samo sa sopstvenom istorijom ili fiksnim pragom.
             </p>
-            {expensivenessCheck.scenarios.some((s) => s.requiredEpsGrowth != null) && (
-              <ul className="list-disc pl-5 mt-2 space-y-1 text-sm text-zinc-600 dark:text-zinc-400">
+
+            <h4 className="text-xs font-semibold uppercase text-zinc-500 dark:text-zinc-400 mt-4 mb-2">Scenario — koliki rast tržište implicitno očekuje</h4>
+            {expensivenessCheck.scenarios.some((s) => s.requiredEpsGrowth != null) ? (
+              <ul className="list-disc pl-5 space-y-1 text-sm text-zinc-600 dark:text-zinc-400">
                 {expensivenessCheck.scenarios
                   .filter((s) => s.requiredEpsGrowth != null)
                   .map((s) => (
@@ -430,6 +480,8 @@ export default function ModelAnalysis() {
                     </li>
                   ))}
               </ul>
+            ) : (
+              <p className="text-sm text-zinc-500 dark:text-zinc-400">Nedovoljno podataka za scenario (potrebni su P/E, EPS i referentni multiplikator).</p>
             )}
             <p
               className={`mt-2 text-sm font-medium ${

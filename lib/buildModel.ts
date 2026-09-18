@@ -6,6 +6,7 @@
 import {
   computeDcf,
   computeDdm,
+  computeFcfYield,
   computeLynchValuation,
   computeRelativeValuation,
   estimateFcfCagr,
@@ -384,55 +385,189 @@ export function computeDebtEquityHistory(yearlyRows: YearlyFinancials[]): DebtEq
   }));
 }
 
+export type MultipleTrend = "rastao" | "opadao" | "stabilan";
+
 export interface MultipleTrendAnalysis {
-  text: string;
   peAvg: number | null;
   pFcfAvg: number | null;
+  peTrend: MultipleTrend | null;
+  pFcfTrend: MultipleTrend | null;
 }
 
-function describeMultipleTrend(label: string, values: number[], current: number | null, unit: "×" | ""): { text: string; avg: number } | null {
+function describeMultipleTrend(values: number[]): { avg: number; trend: MultipleTrend } | null {
   if (values.length < 2) return null;
   const avg = values.reduce((a, b) => a + b, 0) / values.length;
   const first = values[0];
   const last = values[values.length - 1];
-  const trend = last > first * 1.1 ? "rastao" : last < first * 0.9 ? "opadao" : "bio stabilan";
-  let vsAvgText = "";
-  if (current != null && avg !== 0) {
-    const vsAvgPct = (current / avg - 1) * 100;
-    const richness = vsAvgPct > 15 ? "iznad" : vsAvgPct < -15 ? "ispod" : "blizu";
-    const meaning =
-      richness === "iznad"
-        ? "trenutno se trguje skuplje nego što je istorijski uobičajeno"
-        : richness === "ispod"
-          ? "trenutno se trguje jeftinije nego što je istorijski uobičajeno"
-          : "trenutna cena je u skladu sa sopstvenom istorijom";
-    vsAvgText = ` Trenutni ${label} od ${current.toFixed(1)}${unit} je ${richness} sopstvenog proseka (${vsAvgPct >= 0 ? "+" : ""}${vsAvgPct.toFixed(0)}%) — ${meaning}.`;
-  }
-  return { text: `${label} je u posmatranom periodu ${trend} (sa ${first.toFixed(1)}${unit} na ${last.toFixed(1)}${unit}, prosek ${avg.toFixed(1)}${unit}).${vsAvgText}`, avg };
+  const trend: MultipleTrend = last > first * 1.1 ? "rastao" : last < first * 0.9 ? "opadao" : "stabilan";
+  return { avg, trend };
 }
 
 // Poredi trenutne multiplikatore (P/E, P/FCF) sa sopstvenom istorijom
 // kompanije poslednjih godina — da li je akcija trenutno skuplja ili
 // jeftinija nego što je bila u odnosu na sopstvenu zaradu/novčani tok, a ne
-// samo u odnosu na generičke pragove. Odvojeno od finalne sinteze (Prompt
-// 10) — ovo je dodatna, samostalna analiza multiplikatora.
+// samo u odnosu na generičke pragove. Vraća strukturovane podatke (prosek +
+// smer trenda) koje koristi buildMultiplesTable za jedinstvenu tabelu, umesto
+// da svaki poziv sam sastavlja tekst.
 export function analyzeHistoricalMultiples(
   historicalPE: HistoricalMultipleRow[],
-  historicalPFcf: HistoricalMultipleRow[],
-  currentPE: number | null,
-  currentPFcf: number | null
+  historicalPFcf: HistoricalMultipleRow[]
 ): MultipleTrendAnalysis {
   const peValues = historicalPE.map((r) => r.multiple).filter((v): v is number => v != null);
   const pFcfValues = historicalPFcf.map((r) => r.multiple).filter((v): v is number => v != null);
 
-  const pe = describeMultipleTrend("P/E", peValues, currentPE, "×");
-  const pFcf = describeMultipleTrend("P/FCF", pFcfValues, currentPFcf, "×");
-  const parts = [pe?.text, pFcf?.text].filter((p): p is string => p != null);
+  const pe = describeMultipleTrend(peValues);
+  const pFcf = describeMultipleTrend(pFcfValues);
 
-  if (parts.length === 0) {
-    return { text: "Nema dovoljno istorijskih podataka o P/E ili P/FCF da bi se trenutna cena uporedila sa sopstvenom istorijom kompanije.", peAvg: null, pFcfAvg: null };
+  return { peAvg: pe?.avg ?? null, pFcfAvg: pFcf?.avg ?? null, peTrend: pe?.trend ?? null, pFcfTrend: pFcf?.trend ?? null };
+}
+
+// ---------- Jedinstvena tabela multiplikatora (sistematizovano, sa objašnjenjem i ocenom svakog reda) ----------
+
+export type MultipleReadingTone = "povoljno" | "neutralno" | "skupo" | "nedovoljno podataka";
+
+export interface MultipleTableRow {
+  metric: string;
+  value: number | null;
+  unit: "×" | "%";
+  ownAverage: number | null;
+  sectorBenchmark: number | null;
+  trend: MultipleTrend | null;
+  meaning: string;
+  reading: string;
+  tone: MultipleReadingTone;
+}
+
+function toneFromRatio(ratio: number | null): MultipleReadingTone {
+  if (ratio == null) return "nedovoljno podataka";
+  if (ratio < 0.85) return "povoljno";
+  if (ratio > 1.15) return "skupo";
+  return "neutralno";
+}
+
+function readingVsBenchmark(value: number | null, benchmark: number | null, benchmarkLabel: string, unit: "×" | "%"): { reading: string; tone: MultipleReadingTone } {
+  if (value == null || benchmark == null || benchmark === 0) return { reading: "Nedovoljno podataka za poređenje.", tone: "nedovoljno podataka" };
+  const ratio = value / benchmark;
+  const tone = toneFromRatio(ratio);
+  const diffPct = Math.abs(ratio - 1) * 100;
+  const fmtVal = (v: number) => (unit === "%" ? `${(v * 100).toFixed(1)}%` : `${v.toFixed(1)}×`);
+  if (tone === "povoljno") return { reading: `${diffPct.toFixed(0)}% ispod ${benchmarkLabel} (${fmtVal(benchmark)}) — jeftinije.`, tone };
+  if (tone === "skupo") return { reading: `${diffPct.toFixed(0)}% iznad ${benchmarkLabel} (${fmtVal(benchmark)}) — skuplje.`, tone };
+  return { reading: `Blizu ${benchmarkLabel} (${fmtVal(benchmark)}).`, tone };
+}
+
+export function buildMultiplesTable(inputs: {
+  peRatio: number | null;
+  pegRatio: number | null;
+  evToEbitda: number | null;
+  currentPFcf: number | null;
+  freeCashflowTtm: number | null;
+  marketCap: number | null;
+  ownHistoricalPeAvg: number | null;
+  ownHistoricalPFcfAvg: number | null;
+  peTrend: MultipleTrend | null;
+  pFcfTrend: MultipleTrend | null;
+  sectorPeMedian: number | null;
+  sector: string | null;
+}): MultipleTableRow[] {
+  const rows: MultipleTableRow[] = [];
+  const sectorLabel = `medijane sektora${inputs.sector ? ` (${inputs.sector})` : ""}`;
+
+  // P/E — prvo poređenje sa sektorom (relevantnije za "da li je skupo u odnosu na slične kompanije"), a ako sektor nije poznat, sa sopstvenom istorijom.
+  {
+    const benchmark = inputs.sectorPeMedian ?? inputs.ownHistoricalPeAvg;
+    const benchmarkLabel = inputs.sectorPeMedian != null ? sectorLabel : "sopstvenog istorijskog proseka";
+    const { reading, tone } = readingVsBenchmark(inputs.peRatio, benchmark, benchmarkLabel, "×");
+    rows.push({
+      metric: "P/E (cena/zarada)",
+      value: inputs.peRatio,
+      unit: "×",
+      ownAverage: inputs.ownHistoricalPeAvg,
+      sectorBenchmark: inputs.sectorPeMedian,
+      trend: inputs.peTrend,
+      meaning: "Koliko se plaća za svaku jedinicu godišnje neto dobiti.",
+      reading,
+      tone,
+    });
   }
-  return { text: parts.join(" "), peAvg: pe?.avg ?? null, pFcfAvg: pFcf?.avg ?? null };
+
+  // PEG — fiksni pragovi (isti kao u filteru valuacije): <0.5 vrlo jeftino, 0.5-2.0 u skladu sa rastom, >2.0 skupo.
+  {
+    const v = inputs.pegRatio;
+    const tone: MultipleReadingTone = v == null ? "nedovoljno podataka" : v < 0.5 ? "povoljno" : v > 2.0 ? "skupo" : "neutralno";
+    rows.push({
+      metric: "PEG",
+      value: v,
+      unit: "×",
+      ownAverage: null,
+      sectorBenchmark: null,
+      trend: null,
+      meaning: "P/E podeljen procenjenom godišnjom stopom rasta zarade — da li cena prati rast.",
+      reading: v == null ? "Nije dostupno." : v < 0.5 ? "Vrlo jeftino u odnosu na rast." : v > 2.0 ? "Skupo u odnosu na rast." : "U skladu sa rastom (poželjan raspon 0,5–2,0).",
+      tone,
+    });
+  }
+
+  // EV/EBITDA — fiksni pragovi (isti kao u filteru valuacije): <15 razumno, 15-25 povišeno, >25 uračunava skoro savršeno izvršenje.
+  {
+    const v = inputs.evToEbitda;
+    const tone: MultipleReadingTone = v == null ? "nedovoljno podataka" : v < 15 ? "povoljno" : v > 25 ? "skupo" : "neutralno";
+    rows.push({
+      metric: "EV/EBITDA",
+      value: v,
+      unit: "×",
+      ownAverage: null,
+      sectorBenchmark: null,
+      trend: null,
+      meaning: "Vrednost kompanije (tržišna kapitalizacija + dug − gotovina) podeljena operativnom zaradom (EBITDA).",
+      reading: v == null ? "Nije dostupno." : v < 15 ? "Razumna cena za operativnu zaradu." : v > 25 ? "Uračunava skoro savršeno izvršenje." : "Umereno povišeno.",
+      tone,
+    });
+  }
+
+  // P/FCF — poređenje samo sa sopstvenom istorijom (nema sektorske medijane za ovaj pokazatelj).
+  {
+    const { reading, tone } = readingVsBenchmark(inputs.currentPFcf, inputs.ownHistoricalPFcfAvg, "sopstvenog istorijskog proseka", "×");
+    rows.push({
+      metric: "P/FCF (cena/slobodan novčani tok)",
+      value: inputs.currentPFcf,
+      unit: "×",
+      ownAverage: inputs.ownHistoricalPFcfAvg,
+      sectorBenchmark: null,
+      trend: inputs.pFcfTrend,
+      meaning: "Cena akcije podeljena slobodnim novčanim tokom po akciji.",
+      reading,
+      tone,
+    });
+  }
+
+  // FCF prinos — obrnuto od P/FCF, izraženo kao prinos (poput dividendnog prinosa): koliko gotovine kompanija godišnje generiše po uloženom novcu.
+  {
+    const v = computeFcfYield(inputs.freeCashflowTtm, inputs.marketCap);
+    const tone: MultipleReadingTone = v == null ? "nedovoljno podataka" : v < 0 ? "skupo" : v >= 0.08 ? "povoljno" : v >= 0.04 ? "neutralno" : "skupo";
+    rows.push({
+      metric: "FCF prinos",
+      value: v,
+      unit: "%",
+      ownAverage: null,
+      sectorBenchmark: null,
+      trend: null,
+      meaning: "Slobodan novčani tok (TTM) u odnosu na tržišnu kapitalizaciju — koliko gotovine kompanija generiše za svaki uloženi dinar cene.",
+      reading:
+        v == null
+          ? "Nije dostupno."
+          : v < 0
+            ? "Negativno — kompanija trenutno troši više gotovine nego što generiše."
+            : v >= 0.08
+              ? "Visok prinos — generiše mnogo gotovine u odnosu na cenu."
+              : v >= 0.04
+                ? "Umeren prinos."
+                : "Nizak prinos — cena je visoka u odnosu na gotovinu koju kompanija generiše.",
+      tone,
+    });
+  }
+
+  return rows;
 }
 
 // Objedinjena 1-2 rečenice: šta PEG, P/E (naspram sopstvenog proseka),
@@ -500,7 +635,6 @@ export interface ExpensivenessScenario {
 }
 
 export interface ExpensivenessCheck {
-  facts: string[];
   scenarios: ExpensivenessScenario[];
   comparisonGrowth: number | null;
   comparisonGrowthLabel: string | null;
@@ -511,21 +645,11 @@ export interface ExpensivenessCheck {
 export function buildExpensivenessCheck(inputs: {
   currentPrice: number;
   trailingEps: number | null;
-  peRatio: number | null;
-  pegRatio: number | null;
-  evToEbitda: number | null;
   ownHistoricalPeAvg: number | null;
   sectorPeMedian: number | null;
-  sector: string | null;
   analystLongTermGrowth: number | null;
   historicalRevenueCagr: number | null;
 }): ExpensivenessCheck {
-  const facts: string[] = [];
-  if (inputs.peRatio != null) facts.push(`P/E ${inputs.peRatio.toFixed(1)}×`);
-  if (inputs.pegRatio != null) facts.push(`PEG ${inputs.pegRatio.toFixed(2)}`);
-  if (inputs.evToEbitda != null) facts.push(`EV/EBITDA ${inputs.evToEbitda.toFixed(1)}×`);
-  if (inputs.sectorPeMedian != null) facts.push(`medijana P/E sektora${inputs.sector ? ` (${inputs.sector})` : ""} ${inputs.sectorPeMedian.toFixed(0)}×`);
-
   const targets: { label: string; targetPE: number | null }[] = [
     { label: "Sopstveni istorijski prosek P/E", targetPE: inputs.ownHistoricalPeAvg },
     { label: "Medijana P/E sektora", targetPE: inputs.sectorPeMedian },
@@ -562,7 +686,7 @@ export function buildExpensivenessCheck(inputs: {
     }
   }
 
-  return { facts, scenarios, comparisonGrowth, comparisonGrowthLabel, verdict, summary };
+  return { scenarios, comparisonGrowth, comparisonGrowthLabel, verdict, summary };
 }
 
 // ---------- Poređenje ukupnog prinosa sa SPY (S&P 500) na 3/5/10/20 godina ----------
