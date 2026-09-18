@@ -14,7 +14,7 @@ import { OMXS30_TICKERS } from "@/lib/omxs30";
 import { FTSEMIB_TICKERS } from "@/lib/ftsemib";
 import { WIG20_TICKERS } from "@/lib/wig20";
 import { SMI_TICKERS } from "@/lib/smi";
-import { DEFAULT_ASSUMPTIONS, compareToBenchmark, computeModel, extractModelData } from "@/lib/buildModel";
+import { DEFAULT_ASSUMPTIONS, compareToBenchmark, computeModel, extractModelData, resolveFcfForYield } from "@/lib/buildModel";
 import { computeFcfYield } from "@/lib/valuation";
 import type { FundamentalsRating } from "@/lib/model";
 import { fetchPriceHistory, fetchSpyHistory } from "@/lib/clientData";
@@ -129,7 +129,7 @@ async function fetchAndScore(ticker: string, nowSeconds: number): Promise<Row> {
     vsSpy,
     sector: modelData.sector,
     marketCap: modelData.marketCap,
-    fcfYield: computeFcfYield(modelData.fundamentals.freeCashflowTtm, modelData.marketCap),
+    fcfYield: computeFcfYield(resolveFcfForYield(modelData), modelData.marketCap),
   };
 }
 
@@ -143,9 +143,10 @@ export default function Sp500Screener() {
   const [lastUpdated, setLastUpdated] = useState<number | null>(null);
   const stopRef = useRef(false);
 
-  // v4: raniji ključevi nisu imali fcfYield — menja se verzija da se stari
-  // keš u localStorage ne bi učitao i pokvario prikaz (nedostajalo bi polje).
-  const cacheKeyFor = (idx: IndexKey) => `nemvida_screener_v4_${idx}`;
+  // v5: fcfYield se sada računa i kad TTM FCF nedostaje (fallback na FCF
+  // poslednje godine) — stariji keš bi imao dosta praznih vrednosti, pa se
+  // verzija menja da se osveži.
+  const cacheKeyFor = (idx: IndexKey) => `nemvida_screener_v5_${idx}`;
 
   function loadFromCache(idx: IndexKey): boolean {
     try {

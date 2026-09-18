@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { analyzeHistoricalMultiples, buildMultiplesTable, compareToBenchmark, computeDebtEquityHistory, computeHistoricalPE, computeHistoricalPEG, computeHistoricalPFcf, computeModel, extractModelData, summarizeMultiplesTable, synthesizeValuationMultiples, type BenchmarkComparisonRow, type ComputedModel, type HistoricalMultipleRow } from "@/lib/buildModel";
+import { analyzeHistoricalMultiples, buildMultiplesTable, compareToBenchmark, computeDebtEquityHistory, computeHistoricalPE, computeHistoricalPEG, computeHistoricalPFcf, computeModel, extractModelData, resolveFcfForYield, summarizeMultiplesTable, synthesizeValuationMultiples, type BenchmarkComparisonRow, type ComputedModel, type HistoricalMultipleRow } from "@/lib/buildModel";
 import { getSectorPeMedian, summarizeRecommendation, type FilterCheck, type RecommendationCounts } from "@/lib/model";
 import { fetchPriceHistory, fetchSpyHistory, searchSymbols, translateToSerbian, type SearchResult } from "@/lib/clientData";
 
@@ -171,9 +171,10 @@ export default function ModelAnalysis() {
     const { data, breakdown, growthFilter, valuationFilter, moat, growthPotential, risks, management, bullBear, finalVerdict, shortTermUpside, fundamentalsRating, redFlags } = result;
     const debtEquityHistory = computeDebtEquityHistory(breakdown.rows);
     const { fundamentals } = data;
+    const resolvedFcf = resolveFcfForYield(data);
     const currentPFcf =
-      fundamentals.freeCashflowTtm != null && fundamentals.freeCashflowTtm > 0 && fundamentals.sharesOutstanding
-        ? fundamentals.currentPrice / (fundamentals.freeCashflowTtm / fundamentals.sharesOutstanding)
+      resolvedFcf != null && resolvedFcf > 0 && fundamentals.sharesOutstanding
+        ? fundamentals.currentPrice / (resolvedFcf / fundamentals.sharesOutstanding)
         : null;
     const multipleAnalysis = analyzeHistoricalMultiples(historicalPE ?? [], historicalPFcf ?? []);
     const currentDebtToEquity = data.debtToEquity != null ? data.debtToEquity / 100 : null;
@@ -184,7 +185,7 @@ export default function ModelAnalysis() {
       pegRatio: data.pegRatio,
       evToEbitda: data.evToEbitda,
       currentPFcf,
-      freeCashflowTtm: fundamentals.freeCashflowTtm,
+      freeCashflowTtm: resolvedFcf,
       marketCap: data.marketCap,
       ownHistoricalPeAvg: multipleAnalysis.peAvg,
       ownHistoricalPFcfAvg: multipleAnalysis.pFcfAvg,

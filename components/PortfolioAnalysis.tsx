@@ -7,6 +7,7 @@ import {
   computeReturnSince,
   computeTotalReturn,
   extractModelData,
+  resolveFcfForYield,
   type ComputedModel,
   type HistoricalPricePoint,
 } from "@/lib/buildModel";
@@ -312,7 +313,7 @@ export default function PortfolioAnalysis() {
                   {holdings.filter((h) => h.ticker).map((h) => {
                     const r = results.get(h.ticker!);
                     const c = r?.computed;
-                    const fcfYield = c ? computeFcfYield(c.data.fundamentals.freeCashflowTtm, c.data.marketCap) : null;
+                    const fcfYield = c ? computeFcfYield(resolveFcfForYield(c.data), c.data.marketCap) : null;
                     return (
                       <tr key={h.id}>
                         <td className="py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800">

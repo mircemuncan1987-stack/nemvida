@@ -421,6 +421,18 @@ export function analyzeHistoricalMultiples(
   return { peAvg: pe?.avg ?? null, pFcfAvg: pFcf?.avg ?? null, peTrend: pe?.trend ?? null, pFcfTrend: pFcf?.trend ?? null };
 }
 
+// TTM slobodan novčani tok (financialData.freeCashflow sa Yahoo-a) često
+// nedostaje — posebno kod evropskih tikera i finansijskih institucija (banke,
+// osiguravajuća društva), gde Yahoo tu vrednost jednostavno ne popunjava.
+// Kad nedostaje, koristi se FCF poslednje raspoložive fiskalne godine (isti
+// izvor kao redovi u tabeli finansijskog trenda) kao razumna zamena —
+// umesto da FCF prinos i P/FCF ostanu prazni za veliki deo tikera.
+export function resolveFcfForYield(data: ModelData): number | null {
+  if (data.fundamentals.freeCashflowTtm != null) return data.fundamentals.freeCashflowTtm;
+  const rows = data.yearlyRows;
+  return rows.length ? rows[rows.length - 1].fcf : null;
+}
+
 // ---------- Jedinstvena tabela multiplikatora (sistematizovano, sa objašnjenjem i ocenom svakog reda) ----------
 
 export type MultipleReadingTone = "povoljno" | "neutralno" | "skupo" | "nedovoljno podataka";
