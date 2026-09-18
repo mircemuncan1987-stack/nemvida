@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { analyzeHistoricalMultiples, buildExpensivenessCheck, buildMultiplesTable, compareToBenchmark, computeDebtEquityHistory, computeHistoricalPE, computeHistoricalPEG, computeHistoricalPFcf, computeModel, extractModelData, synthesizeValuationMultiples, type BenchmarkComparisonRow, type ComputedModel, type HistoricalMultipleRow } from "@/lib/buildModel";
+import { analyzeHistoricalMultiples, buildMultiplesTable, compareToBenchmark, computeDebtEquityHistory, computeHistoricalPE, computeHistoricalPEG, computeHistoricalPFcf, computeModel, extractModelData, summarizeMultiplesTable, synthesizeValuationMultiples, type BenchmarkComparisonRow, type ComputedModel, type HistoricalMultipleRow } from "@/lib/buildModel";
 import { getSectorPeMedian, summarizeRecommendation, type FilterCheck, type RecommendationCounts } from "@/lib/model";
 import { fetchPriceHistory, fetchSpyHistory, searchSymbols, translateToSerbian, type SearchResult } from "@/lib/clientData";
 
@@ -193,14 +193,7 @@ export default function ModelAnalysis() {
       sectorPeMedian,
       sector: data.sector,
     });
-    const expensivenessCheck = buildExpensivenessCheck({
-      currentPrice: data.currentPrice,
-      trailingEps: fundamentals.trailingEps,
-      ownHistoricalPeAvg: multipleAnalysis.peAvg,
-      sectorPeMedian,
-      analystLongTermGrowth: data.analystLongTermGrowth,
-      historicalPatCagr: breakdown.patCagr,
-    });
+    const multiplesVerdict = summarizeMultiplesTable(multiplesTable);
     const rangePosition =
       data.fiftyTwoWeekLow != null && data.fiftyTwoWeekHigh != null && data.fiftyTwoWeekHigh > data.fiftyTwoWeekLow
         ? ((data.currentPrice - data.fiftyTwoWeekLow) / (data.fiftyTwoWeekHigh - data.fiftyTwoWeekLow)) * 100
@@ -469,35 +462,20 @@ export default function ModelAnalysis() {
               Medijana sektora je trenutno dostupna samo za P/E (fiksna orijentaciona tabela po sektoru) — ostali pokazatelji nemaju pouzdan izvor za poređenje po sektoru, pa se porede samo sa sopstvenom istorijom ili fiksnim pragom. FCF prinos je dodat pored P/FCF jer se zasniva na stvarnom novčanom toku (teže ga je računovodstveno &quot;ulepšati&quot; od neto dobiti) i lako se upoređuje sa drugim prinosima koje već poznaješ — dividendnim prinosom ili prinosom državnih obveznica — kao odgovor na pitanje &quot;koliko gotovine dobijam godišnje za uloženi novac&quot;.
             </p>
 
-            <h4 className="text-xs font-semibold uppercase text-zinc-500 dark:text-zinc-400 mt-4 mb-2">Scenario — koliki rast tržište implicitno očekuje</h4>
-            <p className="text-sm text-zinc-600 dark:text-zinc-400 mb-2">
-              Ovo nije predviđanje nego obrnut račun: ako se cena akcije ne menja, a P/E se za 3 godine spusti (ili poraste) sa trenutnog nivoa na referentnu vrednost ispod, jedini način da se to matematički poklopi jeste da zarada po akciji u međuvremenu naraste — koliko tačno, piše ispod. Što je viši trenutni P/E u odnosu na referentnu vrednost, to je veći potreban rast.
-            </p>
-            {expensivenessCheck.scenarios.some((s) => s.requiredEpsGrowth != null) ? (
-              <ul className="list-disc pl-5 space-y-1 text-sm text-zinc-600 dark:text-zinc-400">
-                {expensivenessCheck.scenarios
-                  .filter((s) => s.requiredEpsGrowth != null)
-                  .map((s) => (
-                    <li key={s.label}>
-                      Sa trenutnih {data.peRatio != null ? `${data.peRatio.toFixed(1)}×` : "—"} na P/E od {s.targetPE!.toFixed(1)}× (&quot;{s.label.toLowerCase()}&quot;) za 3 godine, uz nepromenjenu cenu: zarada po akciji bi morala da raste ~{fmtPct(s.requiredEpsGrowth, 1)} godišnje.
-                    </li>
-                  ))}
-              </ul>
-            ) : (
-              <p className="text-sm text-zinc-500 dark:text-zinc-400">Nedovoljno podataka za scenario (potrebni su P/E, EPS i referentni multiplikator).</p>
-            )}
-            <p
-              className={`mt-2 text-sm font-medium ${
-                expensivenessCheck.verdict === "izgleda potcenjeno"
-                  ? "text-emerald-600 dark:text-emerald-400"
-                  : expensivenessCheck.verdict === "izgleda precenjeno"
-                    ? "text-red-600 dark:text-red-400"
-                    : "text-zinc-600 dark:text-zinc-400"
-              }`}
-            >
-              {expensivenessCheck.verdict !== "nedovoljno podataka" && `Pod ovim pretpostavkama: ${expensivenessCheck.verdict}.`}
-            </p>
-            <p className="mt-1 text-sm">{expensivenessCheck.summary}</p>
+            <div className="mt-4 pt-3 border-t border-zinc-200 dark:border-zinc-800">
+              <p
+                className={`text-sm font-semibold ${
+                  multiplesVerdict.verdict === "Izgleda jeftino"
+                    ? "text-emerald-600 dark:text-emerald-400"
+                    : multiplesVerdict.verdict === "Izgleda skupo"
+                      ? "text-red-600 dark:text-red-400"
+                      : "text-zinc-600 dark:text-zinc-400"
+                }`}
+              >
+                Zaključak: {multiplesVerdict.verdict}
+              </p>
+              <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">{multiplesVerdict.summary}</p>
+            </div>
           </div>
         </Section>
 

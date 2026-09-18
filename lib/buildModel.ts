@@ -11,7 +11,6 @@ import {
   computeRelativeValuation,
   estimateFcfCagr,
   estimateWacc,
-  impliedGrowthForFairValue,
   summarizeUpside,
   type Assumptions,
   type Fundamentals,
@@ -618,96 +617,44 @@ export function synthesizeValuationMultiples(
   return [sentence1, sentence2, sentence3].filter(Boolean).join(" ") || "Nema dovoljno podataka o multiplikatorima za objedinjenu sintezu.";
 }
 
-// ---------- "Da li je akcija skupa?" — scenario umesto samo trenutnih pragova ----------
+// ---------- "Da li je akcija skupa?" — jednostavan zbir, bez reverse-engineering-a rasta ----------
 //
-// Razdvaja ČINJENICE (trenutni multiplikatori) od PRETPOSTAVKI (scenario: šta
-// bi trebalo da se desi da cena izgleda fer vrednovana za par godina) — po
-// uzoru na prompt "Check if the stock is expensive": ne samo da li je P/E
-// visok, nego koliki rast zarade tržište implicitno očekuje u odnosu na ono
-// što istorija/konsenzus analitičara sugerišu.
+// Prethodna verzija je iz trenutnih multiplikatora "unazad" računala koliki
+// bi rast zarade bio potreban da se P/E vrati na normalu (reverse-DCF stil
+// rasuđivanja) — matematički tačno, ali previše apstraktno za brz pregled.
+// Ova verzija radi ono što bi uradio iskusan hobi investitor rukom: prebroji
+// koliko pokazatelja iz tabele iznad čita "povoljno" naspram "skupo" i to
+// jednostavno saopšti, bez procene budućeg rasta.
 
-const EXPENSIVENESS_SCENARIO_YEARS = 3;
-
-export interface ExpensivenessScenario {
-  label: string;
-  targetPE: number | null;
-  requiredEpsGrowth: number | null; // decimalno — pretpostavka, ne činjenica
-}
-
-export interface ExpensivenessCheck {
-  scenarios: ExpensivenessScenario[];
-  comparisonGrowth: number | null;
-  comparisonGrowthLabel: string | null;
-  verdict: "izgleda potcenjeno" | "izgleda fer vrednovano" | "izgleda precenjeno" | "nedovoljno podataka";
+export interface MultiplesVerdict {
+  verdict: "Izgleda jeftino" | "Izgleda skupo" | "Mešovito — nema jasnog signala" | "Nedovoljno podataka";
   summary: string;
 }
 
-// Prag (u procentnim poenima) iznad kog se razlika između potrebnog i
-// očekivanog rasta smatra značajnom — ispod toga se smatra da se procena i
-// očekivanje "otprilike poklapaju" (fer vrednovano), umesto da se svaka mala
-// razlika proglasi za potcenjenost/precenjenost.
-const EXPENSIVENESS_GAP_THRESHOLD = 0.04;
+export function summarizeMultiplesTable(rows: MultipleTableRow[]): MultiplesVerdict {
+  const favorable = rows.filter((r) => r.tone === "povoljno").length;
+  const expensive = rows.filter((r) => r.tone === "skupo").length;
+  const known = rows.filter((r) => r.tone !== "nedovoljno podataka").length;
 
-export function buildExpensivenessCheck(inputs: {
-  currentPrice: number;
-  trailingEps: number | null;
-  ownHistoricalPeAvg: number | null;
-  sectorPeMedian: number | null;
-  analystLongTermGrowth: number | null;
-  historicalPatCagr: number | null;
-}): ExpensivenessCheck {
-  const targets: { label: string; targetPE: number | null }[] = [
-    { label: "Sopstveni istorijski prosek P/E", targetPE: inputs.ownHistoricalPeAvg },
-    { label: "Medijana P/E sektora", targetPE: inputs.sectorPeMedian },
-  ];
-  const scenarios: ExpensivenessScenario[] = targets.map((t) => ({
-    label: t.label,
-    targetPE: t.targetPE,
-    requiredEpsGrowth:
-      t.targetPE != null ? impliedGrowthForFairValue(inputs.currentPrice, inputs.trailingEps, t.targetPE, EXPENSIVENESS_SCENARIO_YEARS) : null,
-  }));
-
-  // Poredi se isključivo sa rastom ZARADE (analitičarska procena ili
-  // istorijski CAGR neto dobiti) — namerno ne i sa rastom prihoda, jer bi to
-  // bilo poređenje različitih veličina (prihod naspram zarade po akciji) i
-  // moglo bi dati zbunjujuć, naizgled nelogičan zaključak.
-  const comparisonGrowth = inputs.analystLongTermGrowth ?? inputs.historicalPatCagr ?? null;
-  const comparisonGrowthLabel =
-    inputs.analystLongTermGrowth != null ? "konsenzus analitičara o rastu zarade" : inputs.historicalPatCagr != null ? "istorijski CAGR neto dobiti" : null;
-
-  const validScenarios = scenarios.filter((s): s is ExpensivenessScenario & { requiredEpsGrowth: number } => s.requiredEpsGrowth != null);
-
-  let verdict: ExpensivenessCheck["verdict"] = "nedovoljno podataka";
-  let summary = "Nema dovoljno podataka (P/E, EPS ili istorijskog/sektorskog referentnog multiplikatora) da bi se izračunao scenario.";
-
-  if (validScenarios.length > 0 && comparisonGrowth != null) {
-    const avgRequired = validScenarios.reduce((a, s) => a + s.requiredEpsGrowth, 0) / validScenarios.length;
-    const gap = comparisonGrowth - avgRequired;
-    const gLabel = comparisonGrowthLabel ?? "procenjeni rast zarade";
-    const requiredPct = (avgRequired * 100).toFixed(1);
-    const comparisonPct = (comparisonGrowth * 100).toFixed(1);
-
-    // Kad su dva referentna scenarija (sopstvena istorija i sektor) daleko
-    // jedan od drugog, prost prosek prikriva tu neslogu — dodaje se
-    // napomena umesto da se to ćutke izgladi u jedan broj.
-    const divergenceNote =
-      validScenarios.length === 2 && Math.abs(validScenarios[0].requiredEpsGrowth - validScenarios[1].requiredEpsGrowth) > 0.08
-        ? " Napomena: sopstvena istorija i sektor ovde daju dosta različite procene (vidi scenario ispod pojedinačno), pa je ovaj prosek gruba procena."
-        : "";
-
-    if (gap > EXPENSIVENESS_GAP_THRESHOLD) {
-      verdict = "izgleda potcenjeno";
-      summary = `Da bi cena bila opravdana za ${EXPENSIVENESS_SCENARIO_YEARS} god., dovoljan je rast zarade od ~${requiredPct}% godišnje. ${gLabel} je viši (~${comparisonPct}%) — ako se to ostvari, akcija ima prostora da poraste ili da joj tržište prizna viši multiplikator.${divergenceNote}`;
-    } else if (gap < -EXPENSIVENESS_GAP_THRESHOLD) {
-      verdict = "izgleda precenjeno";
-      summary = `Cena već pretpostavlja rast zarade od ~${requiredPct}% godišnje da bi se opravdala za ${EXPENSIVENESS_SCENARIO_YEARS} god. — brže od ${gLabel} (~${comparisonPct}%). Ako se rast ne ubrza iznad očekivanog, cena bi trebalo da padne ili da ostane skupa dugo.${divergenceNote}`;
-    } else {
-      verdict = "izgleda fer vrednovano";
-      summary = `Potreban rast zarade (~${requiredPct}% godišnje) je blizu ${gLabel} (~${comparisonPct}%) — cena otprilike odgovara realnim očekivanjima, bez velike margine u bilo kom pravcu.${divergenceNote}`;
-    }
+  if (known === 0) {
+    return { verdict: "Nedovoljno podataka", summary: "Nema dovoljno podataka o multiplikatorima za zaključak." };
   }
-
-  return { scenarios, comparisonGrowth, comparisonGrowthLabel, verdict, summary };
+  if (favorable > expensive) {
+    return {
+      verdict: "Izgleda jeftino",
+      summary: `${favorable} od ${known} pokazatelja iznad čita "povoljno" (jeftinije od sopstvene istorije ili sektora), a samo ${expensive} čita "skupo".`,
+    };
+  }
+  if (expensive > favorable) {
+    return {
+      verdict: "Izgleda skupo",
+      summary: `${expensive} od ${known} pokazatelja iznad čita "skupo" (skuplje od sopstvene istorije ili sektora), a samo ${favorable} čita "povoljno".`,
+    };
+  }
+  return {
+    verdict: "Mešovito — nema jasnog signala",
+    summary: `Pokazatelji su podeljeni (${favorable} povoljno, ${expensive} skupo) — nema jasnog signala da je akcija jeftina ili skupa.`,
+  };
 }
 
 // ---------- Poređenje ukupnog prinosa sa SPY (S&P 500) na 3/5/10/20 godina ----------

@@ -210,21 +210,3 @@ export function computeFcfYield(freeCashflowTtm: number | null, marketCap: numbe
   if (freeCashflowTtm == null || marketCap == null || marketCap <= 0) return null;
   return freeCashflowTtm / marketCap;
 }
-
-// Koliko bi zarada po akciji morala da raste godišnje da bi, uz NEPROMENJENU
-// cenu akcije, P/E multiplikator za "years" godina konvergirao ka targetPE
-// (npr. sopstveni istorijski prosek ili medijana sektora). Ovo je eksplicitno
-// scenario zasnovan na pretpostavci (konstantna cena) — ne procena vrednosti
-// niti predikcija — koristi se da se pokaže KOLIKI rast tržište implicitno
-// očekuje, odvojeno od činjenica (trenutni multiplikatori).
-export function impliedGrowthForFairValue(
-  currentPrice: number,
-  currentEps: number | null,
-  targetPE: number,
-  years: number
-): number | null {
-  if (!currentEps || currentEps <= 0 || targetPE <= 0 || years <= 0) return null;
-  const impliedFutureEps = currentPrice / targetPE;
-  if (impliedFutureEps <= 0) return null;
-  return Math.pow(impliedFutureEps / currentEps, 1 / years) - 1;
-}
