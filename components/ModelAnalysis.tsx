@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { analyzeHistoricalMultiples, buildExpensivenessCheck, compareToBenchmark, computeDebtEquityHistory, computeHistoricalPE, computeHistoricalPEG, computeHistoricalPFcf, computeModel, extractModelData, synthesizeValuationMultiples, type BenchmarkComparisonRow, type ComputedModel, type HistoricalMultipleRow } from "@/lib/buildModel";
-import { getSectorPeMedian, summarizeRecommendation, type FilterCheck } from "@/lib/model";
+import { getSectorPeMedian, summarizeRecommendation, type FilterCheck, type RecommendationCounts } from "@/lib/model";
 import { fetchPriceHistory, fetchSpyHistory, searchSymbols, translateToSerbian, type SearchResult } from "@/lib/clientData";
 
 const fmtPct = (x: number | null | undefined, digits = 1) =>
@@ -29,6 +29,45 @@ function checkRow(c: FilterCheck) {
       <div>
         <div className="text-sm font-medium">{c.label}</div>
         <div className="text-xs text-zinc-500 dark:text-zinc-400">{c.detail}</div>
+      </div>
+    </div>
+  );
+}
+
+const RECOMMENDATION_SEGMENTS: { key: keyof RecommendationCounts; label: string; color: string }[] = [
+  { key: "strongBuy", label: "Snažna kupovina", color: "bg-emerald-600" },
+  { key: "buy", label: "Kupovina", color: "bg-emerald-400" },
+  { key: "hold", label: "Držanje", color: "bg-zinc-400 dark:bg-zinc-500" },
+  { key: "sell", label: "Prodaja", color: "bg-amber-500" },
+  { key: "strongSell", label: "Snažna prodaja", color: "bg-red-600" },
+];
+
+function RecommendationSummaryView({ rec }: { rec: RecommendationCounts | null }) {
+  const summary = summarizeRecommendation(rec);
+  if (!summary) return <div className="text-zinc-500 dark:text-zinc-400">Nema podataka o preporukama analitičara.</div>;
+
+  const labelColor =
+    summary.score <= 2.6 ? "text-emerald-600 dark:text-emerald-400" : summary.score <= 3.4 ? "text-zinc-600 dark:text-zinc-400" : "text-red-600 dark:text-red-400";
+
+  return (
+    <div>
+      <div className={`font-semibold ${labelColor}`}>{summary.label}</div>
+      <div className="text-xs text-zinc-500 dark:text-zinc-400 mb-1.5">
+        Prosečna ocena {summary.score.toFixed(1)}/5 (1 = snažna kupovina, 5 = snažna prodaja) · {summary.total} analitičara
+      </div>
+      <div className="flex h-2 rounded-full overflow-hidden bg-zinc-200 dark:bg-zinc-800">
+        {RECOMMENDATION_SEGMENTS.map((s) => {
+          const count = summary.counts[s.key];
+          return count > 0 ? <div key={s.key} className={s.color} style={{ width: `${(count / summary.total) * 100}%` }} title={`${s.label}: ${count}`} /> : null;
+        })}
+      </div>
+      <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-zinc-500 dark:text-zinc-400">
+        {RECOMMENDATION_SEGMENTS.filter((s) => summary.counts[s.key] > 0).map((s) => (
+          <span key={s.key} className="flex items-center gap-1">
+            <span className={`inline-block w-2 h-2 rounded-full ${s.color}`} />
+            {s.label}: {summary.counts[s.key]}
+          </span>
+        ))}
       </div>
     </div>
   );
@@ -245,7 +284,7 @@ export default function ModelAnalysis() {
             </div>
             <div>
               <div className="text-xs text-zinc-500 dark:text-zinc-400 mb-1">Konsenzus analitičara</div>
-              <div>{summarizeRecommendation(data.recommendation)}</div>
+              <RecommendationSummaryView rec={data.recommendation} />
             </div>
           </div>
         </Section>

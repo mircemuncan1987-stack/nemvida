@@ -16,13 +16,23 @@ export interface RecommendationCounts {
   strongSell: number;
 }
 
-export function summarizeRecommendation(rec: RecommendationCounts | null): string {
-  if (!rec) return "Nema podataka o preporukama analitičara.";
+export interface RecommendationSummary {
+  label: string;
+  score: number; // 1 (snažna kupovina) - 5 (snažna prodaja)
+  total: number;
+  counts: RecommendationCounts;
+}
+
+// Vraća strukturovan rezultat (ne gotov tekst) da bi prikaz mogao da bude
+// vizuelan (traka + legenda) umesto jedne guste rečenice koja nabraja svih
+// pet brojeva — isti podatak, čitljiviji format.
+export function summarizeRecommendation(rec: RecommendationCounts | null): RecommendationSummary | null {
+  if (!rec) return null;
   const total = rec.strongBuy + rec.buy + rec.hold + rec.sell + rec.strongSell;
-  if (total === 0) return "Nema podataka o preporukama analitičara.";
+  if (total === 0) return null;
   const score = (rec.strongBuy * 1 + rec.buy * 2 + rec.hold * 3 + rec.sell * 4 + rec.strongSell * 5) / total;
   const label = score <= 1.8 ? "Snažna kupovina" : score <= 2.6 ? "Kupovina" : score <= 3.4 ? "Držanje" : score <= 4.2 ? "Prodaja" : "Snažna prodaja";
-  return `${label} (prosečna ocena ${score.toFixed(1)}/5 od ${total} analitičara: ${rec.strongBuy} snažna kupovina, ${rec.buy} kupovina, ${rec.hold} držanje, ${rec.sell} prodaja, ${rec.strongSell} snažna prodaja).`;
+  return { label, score, total, counts: rec };
 }
 
 export interface YearlyFinancials {
