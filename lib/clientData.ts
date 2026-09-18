@@ -51,6 +51,21 @@ export async function translateToSerbian(text: string): Promise<string | null> {
   }
 }
 
+// Rezervni izvor za TTM slobodan novčani tok kad Yahoo nema podatak (vidi
+// app/api/stockanalysis) — poziva se SAMO kad je Yahoo-ova vrednost null,
+// nikad kao zamena za Yahoo kad podatak postoji. Vraća null i kad rezerva
+// nije primenjiva (npr. tiker van SAD) ili kad ne uspe da pronađe vrednost.
+export async function fetchStockAnalysisFcf(symbol: string): Promise<number | null> {
+  try {
+    const res = await fetch(`/api/stockanalysis?symbol=${encodeURIComponent(symbol)}&type=fcf`, { cache: "no-store" });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return typeof data?.freeCashflowTtm === "number" ? data.freeCashflowTtm : null;
+  } catch {
+    return null;
+  }
+}
+
 export interface SearchResult {
   symbol: string;
   name: string;

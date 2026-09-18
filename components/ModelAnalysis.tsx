@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { analyzeHistoricalMultiples, buildMultiplesTable, compareToBenchmark, computeDebtEquityHistory, computeHistoricalPE, computeHistoricalPEG, computeHistoricalPFcf, computeModel, extractModelData, resolveFcfForYield, summarizeMultiplesTable, synthesizeValuationMultiples, type BenchmarkComparisonRow, type ComputedModel, type HistoricalMultipleRow } from "@/lib/buildModel";
 import { getSectorPeMedian, summarizeRecommendation, type FilterCheck, type RecommendationCounts } from "@/lib/model";
-import { fetchPriceHistory, fetchSpyHistory, searchSymbols, translateToSerbian, type SearchResult } from "@/lib/clientData";
+import { fetchPriceHistory, fetchSpyHistory, fetchStockAnalysisFcf, searchSymbols, translateToSerbian, type SearchResult } from "@/lib/clientData";
 
 const fmtPct = (x: number | null | undefined, digits = 1) =>
   x === null || x === undefined || Number.isNaN(x) ? "—" : `${x >= 0 ? "+" : ""}${(x * 100).toFixed(digits)}%`;
@@ -84,6 +84,7 @@ export default function ModelAnalysis() {
   const [benchmarkComparison, setBenchmarkComparison] = useState<BenchmarkComparisonRow[] | null>(null);
   const [translatedSummary, setTranslatedSummary] = useState<string | null>(null);
   const [translatingSummary, setTranslatingSummary] = useState(false);
+  const [fallbackFcf, setFallbackFcf] = useState<number | null>(null);
   const [suggestions, setSuggestions] = useState<SearchResult[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [now] = useState(() => Date.now());
@@ -99,6 +100,7 @@ export default function ModelAnalysis() {
     setHistoricalPEG(null);
     setBenchmarkComparison(null);
     setTranslatedSummary(null);
+    setFallbackFcf(null);
     try {
       const r = await fetchModelResult(sym);
       setResult(r);
@@ -108,6 +110,11 @@ export default function ModelAnalysis() {
       setHistoricalPFcf(computeHistoricalPFcf(r.breakdown.rows, priceHistory, shares));
       setHistoricalPEG(computeHistoricalPEG(r.breakdown.rows, priceHistory, shares));
       setBenchmarkComparison(compareToBenchmark(priceHistory, spyHistory, Math.floor(now / 1000)));
+      // Yahoo ponekad nema ni TTM ni istorijski FCF za dati tiker — kao
+      // poslednja rezerva (samo za američke tikere), proba se stockanalysis.com.
+      if (resolveFcfForYield(r.data) == null) {
+        fetchStockAnalysisFcf(sym).then(setFallbackFcf);
+      }
       if (r.data.businessSummary) {
         setTranslatingSummary(true);
         translateToSerbian(r.data.businessSummary)
@@ -171,7 +178,7 @@ export default function ModelAnalysis() {
     const { data, breakdown, growthFilter, valuationFilter, moat, growthPotential, risks, management, bullBear, finalVerdict, shortTermUpside, fundamentalsRating, redFlags } = result;
     const debtEquityHistory = computeDebtEquityHistory(breakdown.rows);
     const { fundamentals } = data;
-    const resolvedFcf = resolveFcfForYield(data);
+    const resolvedFcf = resolveFcfForYield(data) ?? fallbackFcf;
     const currentPFcf =
       resolvedFcf != null && resolvedFcf > 0 && fundamentals.sharesOutstanding
         ? fundamentals.currentPrice / (resolvedFcf / fundamentals.sharesOutstanding)
@@ -461,6 +468,7 @@ export default function ModelAnalysis() {
             </div>
             <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">
               Medijana sektora je trenutno dostupna samo za P/E (fiksna orijentaciona tabela po sektoru) — ostali pokazatelji nemaju pouzdan izvor za poređenje po sektoru, pa se porede samo sa sopstvenom istorijom ili fiksnim pragom. FCF prinos je dodat pored P/FCF jer se zasniva na stvarnom novčanom toku (teže ga je računovodstveno &quot;ulepšati&quot; od neto dobiti) i lako se upoređuje sa drugim prinosima koje već poznaješ — dividendnim prinosom ili prinosom državnih obveznica — kao odgovor na pitanje &quot;koliko gotovine dobijam godišnje za uloženi novac&quot;.
+              {resolveFcfForYield(data) == null && fallbackFcf != null && " (Slobodan novčani tok za ovaj tiker nije dostupan na Yahoo Finance — vrednost je preuzeta sa stockanalysis.com kao rezerva.)"}
             </p>
 
             <div className="mt-4 pt-3 border-t border-zinc-200 dark:border-zinc-800">

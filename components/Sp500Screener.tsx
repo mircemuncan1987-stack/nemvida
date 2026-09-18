@@ -17,7 +17,7 @@ import { SMI_TICKERS } from "@/lib/smi";
 import { DEFAULT_ASSUMPTIONS, compareToBenchmark, computeModel, extractModelData, resolveFcfForYield } from "@/lib/buildModel";
 import { computeFcfYield } from "@/lib/valuation";
 import type { FundamentalsRating } from "@/lib/model";
-import { fetchPriceHistory, fetchSpyHistory } from "@/lib/clientData";
+import { fetchPriceHistory, fetchSpyHistory, fetchStockAnalysisFcf } from "@/lib/clientData";
 
 const CONCURRENCY = 6;
 const CACHE_TTL_MS = 12 * 60 * 60 * 1000; // 12h — "realno vreme" u praksi znači osveženo par puta dnevno, ne svake sekunde
@@ -118,6 +118,11 @@ async function fetchAndScore(ticker: string, nowSeconds: number): Promise<Row> {
     vsSpy[row.years] = row.verdict === "Nadmašuje SPY" ? "outperform" : row.verdict === "Ispod SPY" ? "underperform" : "na";
   }
 
+  // Kad Yahoo nema FCF ni za TTM ni za poslednju godinu, proba se
+  // stockanalysis.com kao poslednja rezerva (samo za američke tikere).
+  let fcf = resolveFcfForYield(modelData);
+  if (fcf == null) fcf = await fetchStockAnalysisFcf(ticker);
+
   return {
     ticker,
     companyName: modelData.companyName,
@@ -129,7 +134,7 @@ async function fetchAndScore(ticker: string, nowSeconds: number): Promise<Row> {
     vsSpy,
     sector: modelData.sector,
     marketCap: modelData.marketCap,
-    fcfYield: computeFcfYield(resolveFcfForYield(modelData), modelData.marketCap),
+    fcfYield: computeFcfYield(fcf, modelData.marketCap),
   };
 }
 
@@ -143,10 +148,10 @@ export default function Sp500Screener() {
   const [lastUpdated, setLastUpdated] = useState<number | null>(null);
   const stopRef = useRef(false);
 
-  // v5: fcfYield se sada računa i kad TTM FCF nedostaje (fallback na FCF
-  // poslednje godine) — stariji keš bi imao dosta praznih vrednosti, pa se
-  // verzija menja da se osveži.
-  const cacheKeyFor = (idx: IndexKey) => `nemvida_screener_v5_${idx}`;
+  // v6: fcfYield sad dodatno pokušava stockanalysis.com kad ni Yahoo nema
+  // podatak — stariji keš bi imao dosta praznih vrednosti, pa se verzija
+  // menja da se osveži.
+  const cacheKeyFor = (idx: IndexKey) => `nemvida_screener_v6_${idx}`;
 
   function loadFromCache(idx: IndexKey): boolean {
     try {
@@ -259,9 +264,10 @@ export default function Sp500Screener() {
         &quot;—&quot; znači da istorija cene ne seže dovoljno unazad. Sortiranje &quot;po sektoru&quot; grupiše kompanije po
         sektoru (Yahoo Finance klasifikacija), sektore ređa po ukupnoj tržišnoj kapitalizaciji (najveći prvo), a
         kompanije unutar sektora po sopstvenoj tržišnoj kapitalizaciji (najveće prvo). &quot;FCF prinos&quot; je slobodan
-        novčani tok (TTM) podeljen trenutnom tržišnom kapitalizacijom — što je veći, to kompanija generiše više
-        gotovine u odnosu na cenu; negativan (crveno) znači da kompanija trenutno troši više gotovine nego što
-        generiše.
+        novčani tok podeljen trenutnom tržišnom kapitalizacijom — što je veći, to kompanija generiše više gotovine u
+        odnosu na cenu; negativan (crveno) znači da kompanija trenutno troši više gotovine nego što generiše. Kad
+        Yahoo Finance nema taj podatak (čest slučaj za neke tikere), za američke akcije se kao rezerva proba
+        stockanalysis.com.
       </div>
 
       <div className="border border-zinc-200 dark:border-zinc-800 bg-white/70 dark:bg-zinc-900/50 rounded-xl p-4 mb-4 flex flex-wrap gap-3 items-center">

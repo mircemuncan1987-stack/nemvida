@@ -11,7 +11,7 @@ import {
   type ComputedModel,
   type HistoricalPricePoint,
 } from "@/lib/buildModel";
-import { fetchPriceHistory, fetchSpyHistory } from "@/lib/clientData";
+import { fetchPriceHistory, fetchSpyHistory, fetchStockAnalysisFcf } from "@/lib/clientData";
 import { computeFcfYield } from "@/lib/valuation";
 import {
   analyzeConcentration,
@@ -33,6 +33,7 @@ const fmtPct = (x: number | null, digits = 1) =>
 interface HoldingResult {
   computed: ComputedModel | null;
   priceHistory: HistoricalPricePoint[];
+  resolvedFcf: number | null; // Yahoo (TTM ili poslednja godina), uz stockanalysis.com kao poslednju rezervu
   error?: string;
 }
 
@@ -112,15 +113,17 @@ export default function PortfolioAnalysis() {
           const modelData = extractModelData(data, ticker);
           const computed = computeModel(modelData);
           const priceHistory = await fetchPriceHistory(ticker);
-          return { ticker, computed, priceHistory };
+          let resolvedFcf = resolveFcfForYield(modelData);
+          if (resolvedFcf == null) resolvedFcf = await fetchStockAnalysisFcf(ticker);
+          return { ticker, computed, priceHistory, resolvedFcf };
         })
       );
       settled.forEach((s, idx) => {
         const ticker = batch[idx];
         if (s.status === "fulfilled") {
-          newResults.set(ticker, { computed: s.value.computed, priceHistory: s.value.priceHistory });
+          newResults.set(ticker, { computed: s.value.computed, priceHistory: s.value.priceHistory, resolvedFcf: s.value.resolvedFcf });
         } else {
-          newResults.set(ticker, { computed: null, priceHistory: [], error: s.reason instanceof Error ? s.reason.message : "Greška" });
+          newResults.set(ticker, { computed: null, priceHistory: [], resolvedFcf: null, error: s.reason instanceof Error ? s.reason.message : "Greška" });
         }
       });
       setResults(new Map(newResults));
@@ -313,7 +316,7 @@ export default function PortfolioAnalysis() {
                   {holdings.filter((h) => h.ticker).map((h) => {
                     const r = results.get(h.ticker!);
                     const c = r?.computed;
-                    const fcfYield = c ? computeFcfYield(resolveFcfForYield(c.data), c.data.marketCap) : null;
+                    const fcfYield = c ? computeFcfYield(r?.resolvedFcf ?? null, c.data.marketCap) : null;
                     return (
                       <tr key={h.id}>
                         <td className="py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800">
