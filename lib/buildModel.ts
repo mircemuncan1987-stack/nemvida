@@ -10,6 +10,7 @@ import {
   computeRelativeValuation,
   estimateFcfCagr,
   estimateWacc,
+  impliedGrowthForFairValue,
   summarizeUpside,
   type Assumptions,
   type Fundamentals,
@@ -480,6 +481,89 @@ export function synthesizeValuationMultiples(
   }
 
   return [sentence1, sentence2, sentence3].filter(Boolean).join(" ") || "Nema dovoljno podataka o multiplikatorima za objedinjenu sintezu.";
+}
+
+// ---------- "Da li je akcija skupa?" — scenario umesto samo trenutnih pragova ----------
+//
+// Razdvaja ČINJENICE (trenutni multiplikatori) od PRETPOSTAVKI (scenario: šta
+// bi trebalo da se desi da cena izgleda fer vrednovana za par godina) — po
+// uzoru na prompt "Check if the stock is expensive": ne samo da li je P/E
+// visok, nego koliki rast zarade tržište implicitno očekuje u odnosu na ono
+// što istorija/konsenzus analitičara sugerišu.
+
+const EXPENSIVENESS_SCENARIO_YEARS = 3;
+
+export interface ExpensivenessScenario {
+  label: string;
+  targetPE: number | null;
+  requiredEpsGrowth: number | null; // decimalno — pretpostavka, ne činjenica
+}
+
+export interface ExpensivenessCheck {
+  facts: string[];
+  scenarios: ExpensivenessScenario[];
+  comparisonGrowth: number | null;
+  comparisonGrowthLabel: string | null;
+  verdict: "izgleda potcenjeno" | "izgleda fer vrednovano" | "izgleda precenjeno" | "nedovoljno podataka";
+  summary: string;
+}
+
+export function buildExpensivenessCheck(inputs: {
+  currentPrice: number;
+  trailingEps: number | null;
+  peRatio: number | null;
+  pegRatio: number | null;
+  evToEbitda: number | null;
+  ownHistoricalPeAvg: number | null;
+  sectorPeMedian: number | null;
+  sector: string | null;
+  analystLongTermGrowth: number | null;
+  historicalRevenueCagr: number | null;
+}): ExpensivenessCheck {
+  const facts: string[] = [];
+  if (inputs.peRatio != null) facts.push(`P/E ${inputs.peRatio.toFixed(1)}×`);
+  if (inputs.pegRatio != null) facts.push(`PEG ${inputs.pegRatio.toFixed(2)}`);
+  if (inputs.evToEbitda != null) facts.push(`EV/EBITDA ${inputs.evToEbitda.toFixed(1)}×`);
+  if (inputs.ownHistoricalPeAvg != null) facts.push(`sopstveni prosečan P/E (do 5 god.) ${inputs.ownHistoricalPeAvg.toFixed(1)}×`);
+  if (inputs.sectorPeMedian != null) facts.push(`medijana P/E sektora${inputs.sector ? ` (${inputs.sector})` : ""} ${inputs.sectorPeMedian.toFixed(0)}×`);
+
+  const targets: { label: string; targetPE: number | null }[] = [
+    { label: "Sopstveni istorijski prosek P/E", targetPE: inputs.ownHistoricalPeAvg },
+    { label: "Medijana P/E sektora", targetPE: inputs.sectorPeMedian },
+  ];
+  const scenarios: ExpensivenessScenario[] = targets.map((t) => ({
+    label: t.label,
+    targetPE: t.targetPE,
+    requiredEpsGrowth:
+      t.targetPE != null ? impliedGrowthForFairValue(inputs.currentPrice, inputs.trailingEps, t.targetPE, EXPENSIVENESS_SCENARIO_YEARS) : null,
+  }));
+
+  const comparisonGrowth = inputs.analystLongTermGrowth ?? inputs.historicalRevenueCagr ?? null;
+  const comparisonGrowthLabel =
+    inputs.analystLongTermGrowth != null ? "konsenzus analitičara o dugoročnom rastu" : inputs.historicalRevenueCagr != null ? "istorijski CAGR prihoda" : null;
+
+  const validScenarios = scenarios.filter((s): s is ExpensivenessScenario & { requiredEpsGrowth: number } => s.requiredEpsGrowth != null);
+
+  let verdict: ExpensivenessCheck["verdict"] = "nedovoljno podataka";
+  let summary = "Nema dovoljno podataka (P/E, EPS ili istorijskog/sektorskog referentnog multiplikatora) da bi se izračunao scenario.";
+
+  if (validScenarios.length > 0 && comparisonGrowth != null) {
+    const avgRequired = validScenarios.reduce((a, s) => a + s.requiredEpsGrowth, 0) / validScenarios.length;
+    const gap = comparisonGrowth - avgRequired;
+    const gLabel = comparisonGrowthLabel ?? "procenjeni rast";
+    if (gap > 0.03) {
+      verdict = "izgleda potcenjeno";
+      summary = `Da bi P/E za ${EXPENSIVENESS_SCENARIO_YEARS} god. konvergirao ka sopstvenoj istoriji/sektoru, dovoljan bi bio rast zarade od ~${(avgRequired * 100).toFixed(1)}% godišnje — ${gLabel} (${(comparisonGrowth * 100).toFixed(1)}%) je viši od toga, što ukazuje da cena ne uračunava puni očekivani rast.`;
+    } else if (gap < -0.03) {
+      verdict = "izgleda precenjeno";
+      summary = `Da bi akcija za ${EXPENSIVENESS_SCENARIO_YEARS} god. izgledala fer vrednovana po sopstvenoj istoriji/sektoru, zarada bi morala da raste ~${(avgRequired * 100).toFixed(1)}% godišnje — više od ${gLabel} (${(comparisonGrowth * 100).toFixed(1)}%). Cena već uračunava optimističnija očekivanja nego što se realno projektuje.`;
+    } else {
+      verdict = "izgleda fer vrednovano";
+      summary = `Potreban rast zarade da bi P/E za ${EXPENSIVENESS_SCENARIO_YEARS} god. konvergirao ka sopstvenoj istoriji/sektoru (~${(avgRequired * 100).toFixed(1)}%) je blizu ${gLabel} (${(comparisonGrowth * 100).toFixed(1)}%) — cena otprilike odgovara očekivanjima.`;
+    }
+  }
+
+  return { facts, scenarios, comparisonGrowth, comparisonGrowthLabel, verdict, summary };
 }
 
 // ---------- Poređenje ukupnog prinosa sa SPY (S&P 500) na 3/5/10/20 godina ----------

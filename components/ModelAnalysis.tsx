@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { analyzeHistoricalMultiples, compareToBenchmark, computeDebtEquityHistory, computeHistoricalPE, computeHistoricalPEG, computeHistoricalPFcf, computeModel, extractModelData, synthesizeValuationMultiples, type BenchmarkComparisonRow, type ComputedModel, type HistoricalMultipleRow } from "@/lib/buildModel";
+import { analyzeHistoricalMultiples, buildExpensivenessCheck, compareToBenchmark, computeDebtEquityHistory, computeHistoricalPE, computeHistoricalPEG, computeHistoricalPFcf, computeModel, extractModelData, synthesizeValuationMultiples, type BenchmarkComparisonRow, type ComputedModel, type HistoricalMultipleRow } from "@/lib/buildModel";
 import { getSectorPeMedian, summarizeRecommendation, type FilterCheck } from "@/lib/model";
 import { fetchPriceHistory, fetchSpyHistory, searchSymbols, translateToSerbian, type SearchResult } from "@/lib/clientData";
 
@@ -140,6 +140,18 @@ export default function ModelAnalysis() {
     const currentDebtToEquity = data.debtToEquity != null ? data.debtToEquity / 100 : null;
     const sectorPeMedian = getSectorPeMedian(data.sector);
     const valuationSynthesis = synthesizeValuationMultiples(data.pegRatio, data.peRatio, multipleAnalysis.peAvg, currentPFcf, multipleAnalysis.pFcfAvg, currentDebtToEquity, sectorPeMedian, data.sector);
+    const expensivenessCheck = buildExpensivenessCheck({
+      currentPrice: data.currentPrice,
+      trailingEps: fundamentals.trailingEps,
+      peRatio: data.peRatio,
+      pegRatio: data.pegRatio,
+      evToEbitda: data.evToEbitda,
+      ownHistoricalPeAvg: multipleAnalysis.peAvg,
+      sectorPeMedian,
+      sector: data.sector,
+      analystLongTermGrowth: data.analystLongTermGrowth,
+      historicalRevenueCagr: breakdown.revenueCagr,
+    });
     const rangePosition =
       data.fiftyTwoWeekLow != null && data.fiftyTwoWeekHigh != null && data.fiftyTwoWeekHigh > data.fiftyTwoWeekLow
         ? ((data.currentPrice - data.fiftyTwoWeekLow) / (data.fiftyTwoWeekHigh - data.fiftyTwoWeekLow)) * 100
@@ -365,6 +377,37 @@ export default function ModelAnalysis() {
           <p className="text-sm text-zinc-600 dark:text-zinc-400 mb-3">Proverava da li trenutna cena akcije ima smisla u odnosu na rast, zaradu i imovinu kompanije.</p>
           <div>{valuationFilter.checks.map(checkRow)}</div>
           <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">{valuationFilter.passCount}/{valuationFilter.totalApplicable} primenjivih kriterijuma zadovoljeno. Jeftino ponekad znači pokvareno, a skupo ponekad znači kvalitet — ovo je samo disciplinski filter, ne presuda.</p>
+
+          <div className="mt-4 pt-3 border-t border-zinc-200 dark:border-zinc-800">
+            <h4 className="text-xs font-semibold uppercase text-zinc-500 dark:text-zinc-400 mb-2">Da li je akcija skupa? — činjenice naspram scenarija</h4>
+            <p className="text-sm">
+              <span className="text-zinc-500 dark:text-zinc-400">Činjenice (trenutni multiplikatori): </span>
+              {expensivenessCheck.facts.length ? expensivenessCheck.facts.join(" · ") : "nedovoljno podataka"}.
+            </p>
+            {expensivenessCheck.scenarios.some((s) => s.requiredEpsGrowth != null) && (
+              <ul className="list-disc pl-5 mt-2 space-y-1 text-sm text-zinc-600 dark:text-zinc-400">
+                {expensivenessCheck.scenarios
+                  .filter((s) => s.requiredEpsGrowth != null)
+                  .map((s) => (
+                    <li key={s.label}>
+                      Pretpostavka — da bi P/E za 3 god. konvergirao ka &quot;{s.label.toLowerCase()}&quot; ({s.targetPE!.toFixed(1)}×), zarada bi morala da raste ~{fmtPct(s.requiredEpsGrowth, 1)} godišnje (cena nepromenjena).
+                    </li>
+                  ))}
+              </ul>
+            )}
+            <p
+              className={`mt-2 text-sm font-medium ${
+                expensivenessCheck.verdict === "izgleda potcenjeno"
+                  ? "text-emerald-600 dark:text-emerald-400"
+                  : expensivenessCheck.verdict === "izgleda precenjeno"
+                    ? "text-red-600 dark:text-red-400"
+                    : "text-zinc-600 dark:text-zinc-400"
+              }`}
+            >
+              {expensivenessCheck.verdict !== "nedovoljno podataka" && `Pod ovim pretpostavkama: ${expensivenessCheck.verdict}.`}
+            </p>
+            <p className="mt-1 text-sm">{expensivenessCheck.summary}</p>
+          </div>
         </Section>
 
         <Section title="5. Konkurentska prednost (objektivni proxy)">
