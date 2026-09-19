@@ -52,10 +52,12 @@ interface Row {
   sector: string | null;
   marketCap: number | null;
   fcfYield: number | null;
+  evToEbitda: number | null;
   error?: string;
 }
 
 const fmtPct = (x: number | null, digits = 1) => (x == null ? "—" : `${(x * 100).toFixed(digits)}%`);
+const fmtRatio = (x: number | null) => (x == null ? "—" : `${x.toFixed(1)}×`);
 
 function fmtMarketCap(x: number | null, currency: string): string {
   if (x == null) return "—";
@@ -135,6 +137,7 @@ async function fetchAndScore(ticker: string, nowSeconds: number): Promise<Row> {
     sector: modelData.sector,
     marketCap: modelData.marketCap,
     fcfYield: computeFcfYield(fcf, modelData.marketCap),
+    evToEbitda: modelData.evToEbitda,
   };
 }
 
@@ -148,10 +151,8 @@ export default function Sp500Screener() {
   const [lastUpdated, setLastUpdated] = useState<number | null>(null);
   const stopRef = useRef(false);
 
-  // v6: fcfYield sad dodatno pokušava stockanalysis.com kad ni Yahoo nema
-  // podatak — stariji keš bi imao dosta praznih vrednosti, pa se verzija
-  // menja da se osveži.
-  const cacheKeyFor = (idx: IndexKey) => `nemvida_screener_v6_${idx}`;
+  // v7: dodat evToEbitda — stariji keš nema to polje, pa se verzija menja da se osveži.
+  const cacheKeyFor = (idx: IndexKey) => `nemvida_screener_v7_${idx}`;
 
   function loadFromCache(idx: IndexKey): boolean {
     try {
@@ -219,6 +220,7 @@ export default function Sp500Screener() {
             sector: null,
             marketCap: null,
             fcfYield: null,
+            evToEbitda: null,
             error: s.reason instanceof Error ? s.reason.message : "Greška",
           });
         }
@@ -267,7 +269,9 @@ export default function Sp500Screener() {
         novčani tok podeljen trenutnom tržišnom kapitalizacijom — što je veći, to kompanija generiše više gotovine u
         odnosu na cenu; negativan (crveno) znači da kompanija trenutno troši više gotovine nego što generiše. Kad
         Yahoo Finance nema taj podatak (čest slučaj za neke tikere), za američke akcije se kao rezerva proba
-        stockanalysis.com.
+        stockanalysis.com. &quot;EV/EBITDA&quot; poredi vrednost kompanije (tržišna kapitalizacija + dug − gotovina) sa
+        operativnom zaradom — niže obično znači jeftinije, ali zavisi od sektora (kapitalno intenzivne delatnosti
+        imaju prirodno niže multiple).
       </div>
 
       <div className="border border-zinc-200 dark:border-zinc-800 bg-white/70 dark:bg-zinc-900/50 rounded-xl p-4 mb-4 flex flex-wrap gap-3 items-center">
@@ -371,6 +375,7 @@ function ScreenerTable({ rows }: { rows: Row[] }) {
           <th className="text-right text-xs uppercase text-zinc-500 dark:text-zinc-400 py-2 px-3 border-b border-zinc-200 dark:border-zinc-800">Cena</th>
           <th className="text-right text-xs uppercase text-zinc-500 dark:text-zinc-400 py-2 px-3 border-b border-zinc-200 dark:border-zinc-800">Tržišna kap.</th>
           <th className="text-right text-xs uppercase text-zinc-500 dark:text-zinc-400 py-2 px-3 border-b border-zinc-200 dark:border-zinc-800">FCF prinos</th>
+          <th className="text-right text-xs uppercase text-zinc-500 dark:text-zinc-400 py-2 px-3 border-b border-zinc-200 dark:border-zinc-800">EV/EBITDA</th>
           <th className="text-left text-xs uppercase text-zinc-500 dark:text-zinc-400 py-2 px-3 border-b border-zinc-200 dark:border-zinc-800">Sud</th>
           <th className="text-left text-xs uppercase text-zinc-500 dark:text-zinc-400 py-2 px-3 border-b border-zinc-200 dark:border-zinc-800">Fundamenti</th>
           <th className="text-center text-xs uppercase text-zinc-500 dark:text-zinc-400 py-2 px-3 border-b border-zinc-200 dark:border-zinc-800">🚩</th>
@@ -394,6 +399,13 @@ function ScreenerTable({ rows }: { rows: Row[] }) {
               }`}
             >
               {fmtPct(r.fcfYield)}
+            </td>
+            <td
+              className={`py-2 px-3 border-b border-zinc-200 dark:border-zinc-800 text-right tabular-nums ${
+                r.evToEbitda != null && r.evToEbitda > 30 ? "text-red-600 dark:text-red-400" : ""
+              }`}
+            >
+              {fmtRatio(r.evToEbitda)}
             </td>
             <td
               className={`py-2 px-3 border-b border-zinc-200 dark:border-zinc-800 text-xs font-medium ${
