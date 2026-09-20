@@ -14,6 +14,9 @@ export default function Header() {
           <Link href="/model" className="hover:text-blue-600 dark:hover:text-blue-400">
             Sveobuhvatni model
           </Link>
+          <Link href="/pregled" className="hover:text-blue-600 dark:hover:text-blue-400">
+            Pregled kompanije
+          </Link>
           <Link href="/lista" className="hover:text-blue-600 dark:hover:text-blue-400">
             Skener indeksa
           </Link>

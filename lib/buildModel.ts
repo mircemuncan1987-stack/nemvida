@@ -372,6 +372,35 @@ export function computeHistoricalPEG(
   });
 }
 
+// ---------- CAGR na više horizonta (1/3/5 godina), za prikaz kao "1G/3G/5G" umesto jednog proseka za sav dostupan period ----------
+
+export interface GrowthHorizons {
+  oneYear: number | null;
+  threeYear: number | null;
+  fiveYear: number | null;
+}
+
+function cagrBasic(first: number, last: number, years: number): number | null {
+  if (first <= 0 || last <= 0 || years <= 0) return null;
+  return Math.pow(last / first, 1 / years) - 1;
+}
+
+// yearlyRows je hronološki (najstarije prvo) — vidi extractModelData. Yahoo-ov
+// incomeStatementHistory obično pokriva samo poslednje 4 fiskalne godine, pa
+// "5G" često ostaje "—" (nedovoljno istorije), što je tačnije nego da se
+// prikaže procena zasnovana na manje godina nego što je naznačeno.
+export function computeGrowthHorizons(rows: YearlyFinancials[], selector: (r: YearlyFinancials) => number | null): GrowthHorizons {
+  const n = rows.length;
+  const at = (yearsAgo: number): number | null => (n - 1 - yearsAgo >= 0 ? selector(rows[n - 1 - yearsAgo]) : null);
+  const latest = at(0);
+  const horizon = (years: number): number | null => {
+    const past = at(years);
+    if (latest == null || past == null) return null;
+    return cagrBasic(past, latest, years);
+  };
+  return { oneYear: horizon(1), threeYear: horizon(3), fiveYear: horizon(5) };
+}
+
 export interface DebtEquityRow {
   year: string;
   ratio: number | null;
