@@ -493,32 +493,31 @@ export default function OverviewCard() {
             </div>
           </Box>
 
-          {/* Ključni pokazatelji */}
-          <Box title="Ključni pokazatelji">
+          {/* Ključni pokazatelji — namerno BEZ rasta prihoda/dobiti (već su u kutiji "Rast")
+              i BEZ ROE/dividende (već su u kutiji "Menadžment"), da isti broj ne bi
+              stajao dvaput pod dva imena. Fokus ovde je isključivo profitabilnost i
+              novčani tok. */}
+          <Box title="Profitabilnost i novčani tok">
             <div className="grid grid-cols-3 gap-2 mb-3">
-              <StatTile label="Prihod 3G" value={fmtPct(revenueGrowth.threeYear)} />
+              <StatTile label="Bruto marža" value={fmtPct(data.grossMargin, 1)} />
               <StatTile label="Operativna marža" value={fmtPct(data.operatingMargins, 1)} />
-              <StatTile label="FCF marža" value={fmtPct(fcfMargin, 1)} />
-              <StatTile label="Dobit 3G" value={fmtPct(earningsGrowth.threeYear)} />
-              <StatTile label="ROC (ROE proxy)" value={fmtPct(data.returnOnEquity, 1)} />
-              <StatTile label="Rast FCF 3G" value={fmtPct(fcfGrowth.threeYear)} />
+              <StatTile label="Neto marža" value={fmtPct(netMargin, 1)} />
             </div>
             <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
               <div>
-                <div className="text-[10px] uppercase text-zinc-400 mb-0.5">Profitabilnost</div>
-                <KeyVal label="Bruto marža" value={fmtPct(data.grossMargin, 1)} />
-                <KeyVal label="Neto marža" value={fmtPct(netMargin, 1)} />
+                <div className="text-[10px] uppercase text-zinc-400 mb-0.5">Slobodan novčani tok</div>
+                <KeyVal label="FCF marža" value={fmtPct(fcfMargin, 1)} />
+                <KeyVal label="Rast FCF (3G)" value={fmtPct(fcfGrowth.threeYear)} />
               </div>
               <div>
                 <div className="text-[10px] uppercase text-zinc-400 mb-0.5">Bilans stanja</div>
                 <KeyVal label="Gotovina" value={fmtMarketCap(data.fundamentals.totalCash, data.currency)} />
                 <KeyVal label="Dug" value={fmtMarketCap(data.fundamentals.totalDebt, data.currency)} />
               </div>
-              <div className="col-span-2">
-                <div className="text-[10px] uppercase text-zinc-400 mb-0.5">Prinos</div>
-                <KeyVal label="Dividendni prinos" value={fmtPct(data.dividendYield, 2)} />
-              </div>
             </div>
+            <p className="text-[11px] text-zinc-400 mt-2 italic">
+              Rast prihoda/dobiti je u kutiji &quot;Rast&quot;, a ROE i dividenda u kutiji &quot;Menadžment&quot; — ovde su samo marže i gotovina, da se isti broj ne ponavlja pod dva imena.
+            </p>
           </Box>
 
           {/* Rizik */}
