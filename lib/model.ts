@@ -184,9 +184,11 @@ export interface MoatNarrativeInputs {
   moatScore: number; // 1-10, iz scoreMoat
   grossMargin: number | null;
   operatingMargins: number | null;
-  roicSpread: number | null; // returnOnInvestedCapitalProxy − wacc
+  returnOnEquity: number | null; // proxy za ROIC
+  wacc: number | null;
   direction: "širi se" | "stabilan" | "sužava se" | "nepoznato";
   marketCap: number | null;
+  sector: string | null;
 }
 
 export interface MoatNarrative {
@@ -194,19 +196,58 @@ export interface MoatNarrative {
   reasons: string[];
 }
 
+// Bodovni doprinos svakog faktora — ISTA aritmetika kao scoreMoat (marže +1/
+// +1/-1, operativna marža +1/-1, ROE-WACC spread +1/-2) — koristi se da se
+// imenuje koji je faktor NAJVIŠE doprineo/oduzeo od konačne ocene ove
+// konkretne kompanije, umesto da se nabroje svi faktori bez hijerarhije.
+function moatFactorContribution(inputs: MoatNarrativeInputs): { factor: string; points: number } | null {
+  const contributions: { factor: string; points: number }[] = [];
+  if (inputs.grossMargin != null) {
+    let points = 0;
+    if (inputs.grossMargin > 0.4) points += 1;
+    if (inputs.grossMargin > 0.6) points += 1;
+    if (inputs.grossMargin < 0.2) points -= 1;
+    contributions.push({ factor: "bruto marža (cenovna moć)", points });
+  }
+  if (inputs.operatingMargins != null) {
+    contributions.push({ factor: "operativna marža (ekonomija obima)", points: inputs.operatingMargins > 0.2 ? 1 : inputs.operatingMargins < 0.05 ? -1 : 0 });
+  }
+  if (inputs.returnOnEquity != null && inputs.wacc != null) {
+    const spread = inputs.returnOnEquity - inputs.wacc;
+    contributions.push({ factor: "prinos na kapital iznad cene kapitala", points: spread > 0.1 ? 1 : spread < 0 ? -2 : 0 });
+  }
+  const nonZero = contributions.filter((c) => c.points !== 0);
+  if (!nonZero.length) return null;
+  return nonZero.reduce((max, c) => (Math.abs(c.points) > Math.abs(max.points) ? c : max));
+}
+
 export function buildMoatNarrative(inputs: MoatNarrativeInputs): MoatNarrative {
   const reasons: string[] = [];
+  const roicSpread = inputs.returnOnEquity != null && inputs.wacc != null ? inputs.returnOnEquity - inputs.wacc : null;
+  const sectorGrossMedian = getSectorGrossMarginMedian(inputs.sector);
+  const sectorOpMedian = getSectorOperatingMarginMedian(inputs.sector);
 
   if (inputs.grossMargin != null) {
     const gm = inputs.grossMargin * 100;
-    if (inputs.grossMargin > 0.6) {
-      reasons.push(`Bruto marža od ${gm.toFixed(1)}% je izuzetno visoka za bilo koju industriju — snažan znak da kupci plaćaju za nešto što konkurencija ne može lako da kopira (brend, patentna zaštita, visoki troškovi prelaska na drugog dobavljača), a ne za sam proizvod po tržišnoj ceni koštanja.`);
-    } else if (inputs.grossMargin > 0.4) {
-      reasons.push(`Bruto marža od ${gm.toFixed(1)}% je iznad proseka realnog sektora — kompanija ima merljivu cenovnu moć, verovatno kroz diferencijaciju proizvoda ili brend.`);
+    if (sectorGrossMedian != null) {
+      // Poređenje sa TIPIČNOM maržom baš za taj sektor — 45% je osrednje za
+      // softver, a izuzetno za maloprodaju, pa fiksan prag za sve industrije
+      // ne bi imao smisla.
+      const diffPts = (inputs.grossMargin - sectorGrossMedian) * 100;
+      const sectorLabel = `${inputs.sector} (tipično ~${(sectorGrossMedian * 100).toFixed(0)}%)`;
+      if (diffPts > 15) {
+        reasons.push(`Bruto marža od ${gm.toFixed(1)}% je ${diffPts.toFixed(0)} procentnih poena iznad tipične marže za sektor ${sectorLabel} — kompanija ostvaruje jasno natprosečnu cenovnu moć u odnosu na direktnu konkurenciju iz iste industrije, ne samo u odnosu na tržište uopšte.`);
+      } else if (diffPts < -15) {
+        reasons.push(`Bruto marža od ${gm.toFixed(1)}% je ${Math.abs(diffPts).toFixed(0)} procentnih poena ISPOD tipične marže za sektor ${sectorLabel} — čak i ako brojka deluje solidno u apsolutnom smislu, u odnosu na konkurenciju iz iste industrije je slabija.`);
+      } else {
+        reasons.push(`Bruto marža od ${gm.toFixed(1)}% je blizu tipične marže za sektor ${sectorLabel} — nema izražene razlike u cenovnoj moći u odnosu na direktnu konkurenciju.`);
+      }
+    } else if (inputs.grossMargin > 0.6) {
+      reasons.push(`Bruto marža od ${gm.toFixed(1)}% je izuzetno visoka za bilo koju industriju — snažan znak da kupci plaćaju za nešto što konkurencija ne može lako da kopira (brend, patentna zaštita, visoki troškovi prelaska na drugog dobavljača).`);
     } else if (inputs.grossMargin < 0.2) {
-      reasons.push(`Bruto marža od ${gm.toFixed(1)}% je niska — tipično za komoditizovanu industriju (npr. distribucija, sirovine) bez značajne cenovne moći nad kupcima.`);
+      reasons.push(`Bruto marža od ${gm.toFixed(1)}% je niska — tipično za komoditizovanu industriju bez značajne cenovne moći nad kupcima.`);
     } else {
-      reasons.push(`Bruto marža od ${gm.toFixed(1)}% je osrednja — ne ukazuje sama po sebi na izraženu diferencijaciju od konkurencije, ali ni na komoditizovan proizvod.`);
+      reasons.push(`Bruto marža od ${gm.toFixed(1)}% je osrednja (sektor nije prepoznat za poređenje) — ne ukazuje sama po sebi na izraženu diferencijaciju od konkurencije.`);
     }
   }
 
@@ -214,19 +255,29 @@ export function buildMoatNarrative(inputs: MoatNarrativeInputs): MoatNarrative {
     const om = inputs.operatingMargins * 100;
     if (inputs.operatingMargins < 0.05) {
       reasons.push(`Operativna marža od ${om.toFixed(1)}% je niska ili negativna — poslovni model još nije jasno dokazao da može profitabilno da skalira, bez obzira na kvalitet proizvoda.`);
+    } else if (sectorOpMedian != null) {
+      const diffPts = (inputs.operatingMargins - sectorOpMedian) * 100;
+      const sectorLabel = `${inputs.sector} (tipično ~${(sectorOpMedian * 100).toFixed(0)}%)`;
+      if (diffPts > 10) {
+        reasons.push(`Operativna marža od ${om.toFixed(1)}% je ${diffPts.toFixed(0)} p.p. iznad tipične za sektor ${sectorLabel} — fiksni troškovi se razblažuju bolje nego kod direktne konkurencije, klasičan znak skalabilnijeg poslovnog modela.`);
+      } else if (diffPts < -10) {
+        reasons.push(`Operativna marža od ${om.toFixed(1)}% je ${Math.abs(diffPts).toFixed(0)} p.p. ispod tipične za sektor ${sectorLabel} — poslovanje je manje operativno efikasno od proseka iste industrije.`);
+      }
     } else if (inputs.operatingMargins > 0.2) {
-      reasons.push(`Operativna marža od ${om.toFixed(1)}% ukazuje na izraženu ekonomiju obima — fiksni troškovi se razblažuju kako prihod raste, klasičan znak skalabilnog poslovnog modela (npr. softver, mreže, platforme).`);
+      reasons.push(`Operativna marža od ${om.toFixed(1)}% ukazuje na izraženu ekonomiju obima (sektor nije prepoznat za poređenje) — fiksni troškovi se razblažuju kako prihod raste.`);
     }
   }
 
-  if (inputs.roicSpread != null) {
-    const spreadPts = inputs.roicSpread * 100;
-    if (inputs.roicSpread > 0.1) {
-      reasons.push(`Prinos na kapital nadmašuje cenu kapitala za ${spreadPts.toFixed(1)} procentnih poena — ovo je najjači pojedinačni pokazatelj stvarnog ekonomskog jaza: kompanija stvara vrednost daleko iznad onoga što bi tržište kapitala tražilo, a konkurencija očigledno ne uspeva da tu razliku eroduje.`);
-    } else if (inputs.roicSpread >= 0) {
-      reasons.push(`Prinos na kapital je tek blago iznad cene kapitala (${spreadPts.toFixed(1)} p.p.) — granični slučaj, brojevi sami po sebi ne dokazuju ubedljiv jaz.`);
+  if (roicSpread != null && inputs.returnOnEquity != null && inputs.wacc != null) {
+    const roePct = inputs.returnOnEquity * 100;
+    const waccPct = inputs.wacc * 100;
+    const spreadPts = roicSpread * 100;
+    if (roicSpread > 0.1) {
+      reasons.push(`Prinos na kapital (ROE ${roePct.toFixed(1)}%) nadmašuje procenjenu cenu kapitala (WACC ${waccPct.toFixed(1)}%) za ${spreadPts.toFixed(1)} procentnih poena — najjači pojedinačni pokazatelj stvarnog ekonomskog jaza: kompanija stvara vrednost daleko iznad onoga što bi tržište kapitala tražilo, a konkurencija očigledno ne uspeva da tu razliku eroduje.`);
+    } else if (roicSpread >= 0) {
+      reasons.push(`Prinos na kapital (ROE ${roePct.toFixed(1)}%) je tek blago iznad procenjene cene kapitala (WACC ${waccPct.toFixed(1)}%, razlika ${spreadPts.toFixed(1)} p.p.) — granični slučaj, brojevi sami po sebi ne dokazuju ubedljiv jaz.`);
     } else {
-      reasons.push(`Prinos na kapital je ISPOD cene kapitala (${spreadPts.toFixed(1)} p.p.) — kompanija trenutno uništava ekonomsku vrednost umesto da je stvara, jasan signal da konkurentska prednost ili ne postoji ili trenutno ne donosi korist akcionarima.`);
+      reasons.push(`Prinos na kapital (ROE ${roePct.toFixed(1)}%) je ISPOD procenjene cene kapitala (WACC ${waccPct.toFixed(1)}%, razlika ${spreadPts.toFixed(1)} p.p.) — kompanija trenutno uništava ekonomsku vrednost umesto da je stvara.`);
     }
   }
 
@@ -238,6 +289,13 @@ export function buildMoatNarrative(inputs: MoatNarrativeInputs): MoatNarrative {
 
   if (inputs.marketCap != null && inputs.marketCap > 200e9) {
     reasons.push("Tržišna kapitalizacija preko 200 milijardi ukazuje i na prednosti čistog obima (pregovaračka moć sa dobavljačima, kapacitet za istraživanje i razvoj, distribucija) koje manji konkurenti teško mogu da repliciraju.");
+  }
+
+  const dominant = moatFactorContribution(inputs);
+  if (dominant) {
+    reasons.push(
+      `Najveći pojedinačni doprinos ovoj oceni (${dominant.points > 0 ? "u pozitivnom" : "u negativnom"} smeru) dolazi od faktora: ${dominant.factor}.`
+    );
   }
 
   const headline =
@@ -479,6 +537,49 @@ const SECTOR_PE_MEDIANS: Record<string, number> = {
 export function getSectorPeMedian(sector: string | null): number | null {
   if (!sector) return null;
   return SECTOR_PE_MEDIANS[sector] ?? null;
+}
+
+// Orijentacione marže po sektoru — isti princip kao SECTOR_PE_MEDIANS iznad:
+// grubo, dugoročno tipične vrednosti (ne prati cikluse u realnom vremenu),
+// ali daju smisleniji orijentir od jednog fiksnog praga (npr. "60% je
+// odlična marža") koji ignoriše da je 45% bruto marže osrednje za softver, a
+// izuzetno za maloprodaju. Koristi se u buildMoatNarrative da obrazloženje
+// bude specifično za industriju kompanije, ne generičko za sve.
+const SECTOR_GROSS_MARGIN_MEDIANS: Record<string, number> = {
+  Technology: 0.55,
+  "Communication Services": 0.55,
+  "Consumer Cyclical": 0.35,
+  "Consumer Defensive": 0.3,
+  Healthcare: 0.55,
+  Energy: 0.3,
+  Industrials: 0.3,
+  "Basic Materials": 0.25,
+  "Real Estate": 0.4,
+  Utilities: 0.35,
+};
+
+const SECTOR_OPERATING_MARGIN_MEDIANS: Record<string, number> = {
+  Technology: 0.2,
+  "Communication Services": 0.15,
+  "Consumer Cyclical": 0.08,
+  "Consumer Defensive": 0.1,
+  Healthcare: 0.15,
+  "Financial Services": 0.25,
+  Energy: 0.12,
+  Industrials: 0.12,
+  "Basic Materials": 0.1,
+  "Real Estate": 0.3,
+  Utilities: 0.15,
+};
+
+export function getSectorGrossMarginMedian(sector: string | null): number | null {
+  if (!sector) return null;
+  return SECTOR_GROSS_MARGIN_MEDIANS[sector] ?? null;
+}
+
+export function getSectorOperatingMarginMedian(sector: string | null): number | null {
+  if (!sector) return null;
+  return SECTOR_OPERATING_MARGIN_MEDIANS[sector] ?? null;
 }
 
 // ---------- Prompt: Risk Analysis ----------

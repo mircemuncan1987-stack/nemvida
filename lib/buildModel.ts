@@ -1094,9 +1094,11 @@ export function computeModel(data: ModelData, assumptions: Assumptions = DEFAULT
     moatScore: moat.score,
     grossMargin: data.grossMargin,
     operatingMargins: data.operatingMargins,
-    roicSpread: data.returnOnEquity != null ? data.returnOnEquity - wacc : null,
+    returnOnEquity: data.returnOnEquity,
+    wacc,
     direction: computeMoatMarginTrend(data.yearlyRows),
     marketCap: data.marketCap,
+    sector: data.sector,
   });
   const growthPotential = scoreGrowthPotential({
     historicalRevenueCagr: breakdown.revenueCagr,
