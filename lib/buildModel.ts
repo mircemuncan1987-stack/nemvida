@@ -343,7 +343,11 @@ function computeHistoricalMultiple(
         closest = p;
       }
     }
-    if (!closest) return { year: r.label, multiple: null };
+    // Ako je najbliža dostupna cena udaljena više od ~90 dana od kraja te
+    // fiskalne godine (npr. istorija cena ne seže toliko unazad — spinoff,
+    // nedavni IPO), bolje je vratiti null nego tiho upariti pogrešnu godinu
+    // sa pogrešnom cenom — isti princip kao findClosestPoint niže u fajlu.
+    if (!closest || closestDiff > 90 * 86400) return { year: r.label, multiple: null };
     return { year: r.label, multiple: closest.close / perShare };
   });
 }
@@ -511,14 +515,18 @@ function readingVsBenchmark(value: number | null, benchmark: number | null, benc
 }
 
 // Poređenje samo sa sopstvenom istorijom (ili sektorom) ume da bude
-// varljivo kad je i sama istorija/sektor već bila skupa dugi niz godina —
-// akcija onda ispadne "povoljna" samo zato što je JOŠ skuplja bila ranije
-// (npr. P/FCF od 128× kod kompanije čiji je sopstveni prosek 150×). Zato se
-// relativno poređenje kombinuje sa fiksnim apsolutnim pragom: apsolutni prag
-// nikad ne dozvoljava da "skupo" postane "povoljno", niti da izrazito jeftina
-// vrednost ispadne "skupo" samo zato što je iznad sopstvene (niske) istorije.
-const TONE_SEVERITY: Record<MultipleReadingTone, number> = { povoljno: 0, neutralno: 1, skupo: 2, "nedovoljno podataka": -1 };
-
+// varljivo u OBA smera kad je referentna vrednost sama po sebi neobična:
+// - akcija ispadne "povoljna" samo zato što je sopstvena istorija/sektor bila
+//   JOŠ skuplja (npr. P/FCF od 128× kod kompanije čiji je sopstveni prosek
+//   150×) — bez apsolutnog praga ovo je prošlo neopaženo za NVDA;
+// - ili obrnuto: akcija ispadne "skupa" samo zato što je iznad sopstvene
+//   (neobično niske) istorije, iako je apsolutno gledano jeftina (npr. P/E 10×
+//   naspram sopstvenog proseka od 6× u depresiranom ciklusu).
+// Zato apsolutni prag ima poslednju reč u OBA pravca: iznad gornje granice je
+// UVEK "skupo", ispod donje granice je UVEK "povoljno", bez obzira šta kaže
+// relativno poređenje. Samo kad vrednost padne IZMEĐU granica (nije ni
+// očigledno jeftina ni očigledno skupa u apsolutnom smislu) koristi se
+// relativno poređenje kao finija ocena.
 function combineWithAbsoluteFloor(
   relative: { reading: string; tone: MultipleReadingTone },
   value: number | null,
@@ -527,15 +535,15 @@ function combineWithAbsoluteFloor(
   unit: "×" | "%"
 ): { reading: string; tone: MultipleReadingTone } {
   if (value == null) return relative;
-  const absoluteTone: MultipleReadingTone = value < absoluteCheapBelow ? "povoljno" : value > absoluteExpensiveAbove ? "skupo" : "neutralno";
-  if (TONE_SEVERITY[relative.tone] >= TONE_SEVERITY[absoluteTone]) return relative;
   const fmtVal = (v: number) => (unit === "%" ? `${(v * 100).toFixed(1)}%` : `${v.toFixed(1)}×`);
-  const note =
-    absoluteTone === "skupo"
-      ? `Iznad ${fmtVal(absoluteExpensiveAbove)} se smatra skupim bez obzira na istoriju ili sektor.`
-      : `Ispod ${fmtVal(absoluteCheapBelow)} se smatra povoljnim bez obzira na istoriju ili sektor.`;
   const prefix = relative.tone === "nedovoljno podataka" ? "" : `${relative.reading} `;
-  return { reading: `${prefix}${note}`, tone: absoluteTone };
+  if (value > absoluteExpensiveAbove && relative.tone !== "skupo") {
+    return { reading: `${prefix}Iznad ${fmtVal(absoluteExpensiveAbove)} se smatra skupim bez obzira na istoriju ili sektor.`, tone: "skupo" };
+  }
+  if (value < absoluteCheapBelow && relative.tone !== "povoljno") {
+    return { reading: `${prefix}Ispod ${fmtVal(absoluteCheapBelow)} se smatra povoljnim bez obzira na istoriju ili sektor.`, tone: "povoljno" };
+  }
+  return relative;
 }
 
 export function buildMultiplesTable(inputs: {
@@ -969,7 +977,14 @@ export function computeModel(data: ModelData, assumptions: Assumptions = DEFAULT
   const f = data.fundamentals;
   const wacc = estimateWacc(f, assumptions);
   const suggestedGrowth = estimateFcfCagr(f.fcfHistory) ?? (f.revenueGrowth != null ? Math.max(-0.1, Math.min(0.3, f.revenueGrowth)) : assumptions.growthRateY1to5);
-  const valuationAssumptions = { ...assumptions, growthRateY1to5: suggestedGrowth, targetPE: f.trailingPE ?? assumptions.targetPE };
+  // Ciljni P/E za relativnu valuaciju MORA biti nezavisan od trenutnog P/E
+  // akcije (ranije je ovde stajalo f.trailingPE) — u suprotnom je
+  // relativeValue ≈ forwardEps × trailingPE ≈ currentPrice × (forwardEps/
+  // trailingEps), što samo preračunava trenutnu cenu kroz očekivani rast i
+  // NIKAD ne može da pokaže da je akcija precenjena/potcenjena, bez obzira
+  // koliko je njen sopstveni multiplikator ekstreman — cela poenta ove noge
+  // procene je poređenje sa spoljnim orijentirom, ne sa samom sobom.
+  const valuationAssumptions = { ...assumptions, growthRateY1to5: suggestedGrowth, targetPE: getSectorPeMedian(data.sector) ?? assumptions.targetPE };
   const dcf = computeDcf(f, valuationAssumptions, wacc);
   const ddm = computeDdm(f, valuationAssumptions);
   const relative = computeRelativeValuation(f, valuationAssumptions);

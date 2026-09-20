@@ -421,11 +421,15 @@ export function rankRisks(inputs: RiskInputs): RiskItem[] {
 
   if (inputs.debtToEquity != null) {
     const de = inputs.debtToEquity / 100; // Yahoo vraća kao procenat
-    risks.push({
-      label: "Zaduženost (finansijski rizik)",
-      severity: de > 2 ? 5 : de > 1.2 ? 4 : de > 0.6 ? 2 : 1,
-      detail: `Debt/Equity ${de.toFixed(2)}`,
-    });
+    // Negativan Dug/kapital znači negativan knjigovodstveni kapital (čest
+    // slučaj kod kompanija koje agresivno otkupljuju sopstvene akcije, npr.
+    // Starbucks, McDonald's) — to NIJE "nizak dug", nego poseban slučaj koji
+    // sam odnos ne opisuje ispravno, pa se ne sme tiho svrstati u "nizak rizik".
+    risks.push(
+      de < 0
+        ? { label: "Zaduženost (finansijski rizik)", severity: 3, detail: `Negativan knjigovodstveni kapital (Dug/kapital ${de.toFixed(2)}) — odnos nije direktno uporediv, proveriti zaduženost odvojeno.` }
+        : { label: "Zaduženost (finansijski rizik)", severity: de > 2 ? 5 : de > 1.2 ? 4 : de > 0.6 ? 2 : 1, detail: `Debt/Equity ${de.toFixed(2)}` }
+    );
   }
 
   if (inputs.currentRatio != null) {
@@ -589,7 +593,9 @@ export function buildBullBear(inputs: BullBearInputs): BullBearResult {
   }
 
   if (inputs.debtToEquity != null) {
-    if (inputs.debtToEquity < 0.6) bullCandidates.push(`Niska zaduženost (Dug/kapital ${inputs.debtToEquity.toFixed(2)}).`);
+    // Negativan odnos znači negativan knjigovodstveni kapital (agresivan
+    // otkup akcija), ne "nizak dug" — ne prikazuje se kao bikovski argument.
+    if (inputs.debtToEquity >= 0 && inputs.debtToEquity < 0.6) bullCandidates.push(`Niska zaduženost (Dug/kapital ${inputs.debtToEquity.toFixed(2)}).`);
     else if (inputs.debtToEquity > 1.5) bearCandidates.push(`Visoka zaduženost (Dug/kapital ${inputs.debtToEquity.toFixed(2)}).`);
   }
 
@@ -681,8 +687,10 @@ export function rateFundamentals(inputs: FundamentalsRatingInputs): Fundamentals
   }
   if (inputs.debtToEquity != null) {
     signals++;
-    score += inputs.debtToEquity < 0.6 ? 1 : inputs.debtToEquity > 1.5 ? -1 : 0;
-    details.push(`Dug/kapital: ${inputs.debtToEquity.toFixed(2)}`);
+    // Negativan Dug/kapital = negativan knjigovodstveni kapital (agresivan
+    // otkup akcija), ne "nizak dug" — ne boduje se kao pozitivan signal.
+    score += inputs.debtToEquity < 0 ? 0 : inputs.debtToEquity < 0.6 ? 1 : inputs.debtToEquity > 1.5 ? -1 : 0;
+    details.push(`Dug/kapital: ${inputs.debtToEquity.toFixed(2)}${inputs.debtToEquity < 0 ? " (negativan knjigovodstveni kapital)" : ""}`);
   }
   if (inputs.currentRatio != null) {
     signals++;
@@ -730,11 +738,17 @@ export function identifyRedFlags(inputs: RedFlagInputs): string[] {
   if (inputs.debtToEquity != null && inputs.debtToEquity > 2) {
     flags.push(`Veoma visoka zaduženost (Dug/kapital ${inputs.debtToEquity.toFixed(2)}) — finansijski rizik u slučaju pada prihoda ili rasta kamatnih stopa.`);
   }
+  if (inputs.debtToEquity != null && inputs.debtToEquity < 0) {
+    flags.push(`Negativan knjigovodstveni kapital (Dug/kapital ${inputs.debtToEquity.toFixed(2)}) — obično zbog agresivnog otkupa sopstvenih akcija; odnos Dug/kapital nije direktno uporediv, proveriti zaduženost odvojeno.`);
+  }
   if (inputs.currentRatio != null && inputs.currentRatio < 1) {
     flags.push(`Current ratio ispod 1 (${inputs.currentRatio.toFixed(2)}) — kratkoročne obaveze premašuju kratkoročnu imovinu.`);
   }
   if (inputs.payoutRatio != null && inputs.payoutRatio > 1) {
     flags.push(`Payout ratio preko 100% (${(inputs.payoutRatio * 100).toFixed(0)}%) — dividenda se isplaćuje iz više od trenutne dobiti, teško održivo dugoročno.`);
+  }
+  if (inputs.payoutRatio != null && inputs.payoutRatio < 0) {
+    flags.push(`Payout ratio je negativan (${(inputs.payoutRatio * 100).toFixed(0)}%) — dividenda se isplaćuje uprkos gubitku, u potpunosti nepokrivena tekućom dobiti.`);
   }
   if (inputs.insiderNetPercentShares != null && inputs.insiderNetPercentShares < -0.02) {
     flags.push(`Insajderi su u neto prodaji akcija (${(inputs.insiderNetPercentShares * 100).toFixed(2)}%) u poslednjem periodu.`);
