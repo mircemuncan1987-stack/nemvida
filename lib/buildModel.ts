@@ -29,6 +29,7 @@ import {
   scoreGrowthPotential,
   scoreManagementQuality,
   scoreMoat,
+  type FilterCheck,
   type FinalVerdict,
   type YearlyFinancials,
 } from "@/lib/model";
@@ -72,6 +73,9 @@ export interface ModelData {
   insiderNetPercentShares: number | null;
   shortPercentOfFloat: number | null;
   marketCap: number | null;
+  revenueTtm: number | null;
+  exchangeName: string | null;
+  earningsBeats: { beat: boolean; surprisePercent: number | null }[] | null;
   businessSummary: string | null;
   sector: string | null;
   industry: string | null;
@@ -109,6 +113,7 @@ export function extractModelData(fullData: any, symbol: string): ModelData {
   const netSharePurchaseActivity = result.netSharePurchaseActivity || {};
   const recTrend = result.recommendationTrend?.trend?.[0] || null;
   const calendarEvents = result.calendarEvents || {};
+  const earningsHistory = result.earningsHistory?.history || [];
 
   const country: string | null = assetProfile.country || null;
   const currency: string | null = price.currency || null;
@@ -247,6 +252,15 @@ export function extractModelData(fullData: any, symbol: string): ModelData {
     insiderNetPercentShares: netSharePurchaseActivity.netPercentInsiderShares?.raw ?? null,
     shortPercentOfFloat: keyStats.shortPercentOfFloat?.raw ?? null,
     marketCap: price.marketCap?.raw ?? null,
+    revenueTtm: financialData.totalRevenue?.raw ?? null,
+    exchangeName: price.exchangeName ?? price.fullExchangeName ?? null,
+    earningsBeats: earningsHistory.length
+      ? // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        earningsHistory.map((h: any) => ({
+          beat: (h.epsDifference?.raw ?? 0) > 0,
+          surprisePercent: h.surprisePercent?.raw != null ? h.surprisePercent.raw * 100 : null,
+        }))
+      : null,
     businessSummary: assetProfile.longBusinessSummary ?? null,
     sector: assetProfile.sector ?? null,
     industry: assetProfile.industry ?? null,
@@ -768,6 +782,148 @@ export function compareToBenchmark(
     const outperformance = stockReturn - benchmarkReturn;
     return { years, stockReturn, benchmarkReturn, outperformance, verdict: outperformance > 0 ? "Nadmašuje SPY" : "Ispod SPY" };
   });
+}
+
+// ---------- Sažete ocene 1-5 za prikaz kao "kartica na jednoj strani" (vidi /pregled) ----------
+//
+// Nije novi model — samo diskretna preslikavanja (1-5) već izračunatih,
+// dokumentovanih rezultata iz computeModel (moat.score, growthPotential.tier,
+// management.verdict, rizik, multiplesVerdict) da bi se moglo prikazati kao
+// kompaktna traka ocena, kao na uzoru koji je korisnik poslao. Ne uvodi nijedan
+// nov subjektivan sud — samo drugačiji prikaz istih pravila.
+
+export interface DashboardScore {
+  score: number | null; // 1-5, veće je bolje
+  label: string;
+}
+
+export interface MoatDirectionScore extends DashboardScore {
+  direction: "širi se" | "stabilan" | "sužava se" | "nepoznato";
+}
+
+export interface DashboardScores {
+  business: DashboardScore;
+  moat: DashboardScore;
+  moatDirection: MoatDirectionScore;
+  growth: DashboardScore;
+  management: DashboardScore;
+  risk: DashboardScore;
+  valuation: DashboardScore;
+  composite: number | null;
+}
+
+function clamp15(n: number): number {
+  return Math.max(1, Math.min(5, Math.round(n)));
+}
+
+export function buildDashboardScores(
+  model: ComputedModel,
+  qualityChecks: FilterCheck[],
+  multiplesVerdict: MultiplesVerdict
+): DashboardScores {
+  const { moat, growthPotential, management, risks, data } = model;
+
+  const applicable = qualityChecks.filter((c) => c.pass != null);
+  const business: DashboardScore = applicable.length
+    ? { score: clamp15(1 + (applicable.filter((c) => c.pass).length / applicable.length) * 4), label: `${applicable.filter((c) => c.pass).length}/${applicable.length} provera zadovoljeno` }
+    : { score: null, label: "Nedovoljno podataka" };
+
+  const moatScore: DashboardScore = {
+    score: clamp15(moat.score / 2),
+    label: moat.score >= 6 ? "Širok jaz" : moat.score <= 3 ? "Slab jaz" : "Umeren jaz",
+  };
+
+  // Pravac konkurentske prednosti: trend operativne marže kroz dostupne
+  // godišnje izveštaje (operatingIncome/revenue) — jedino merljivo
+  // približenje "širenja/sužavanja jaza" iz finansijskih izveštaja, bez
+  // pripovedanja o brendu ili tržišnoj poziciji.
+  const margins = data.yearlyRows
+    .map((r) => (r.revenue && r.operatingIncome != null && r.revenue !== 0 ? r.operatingIncome / r.revenue : null))
+    .filter((v): v is number => v != null);
+  let direction: MoatDirectionScore["direction"] = "nepoznato";
+  if (margins.length >= 2) {
+    const first = margins[0];
+    const last = margins[margins.length - 1];
+    direction = last > first + 0.02 ? "širi se" : last < first - 0.02 ? "sužava se" : "stabilan";
+  }
+  const moatDirection: MoatDirectionScore = {
+    score: direction === "širi se" ? 5 : direction === "stabilan" ? 3 : direction === "sužava se" ? 1 : null,
+    label: direction === "nepoznato" ? "Nedovoljno godišnjih izveštaja" : `Operativna marža ${direction}`,
+    direction,
+  };
+
+  const growth: DashboardScore = {
+    score:
+      growthPotential.tier === "visok" ? 5 : growthPotential.tier === "umeren" ? 4 : growthPotential.tier === "nizak" ? 2 : growthPotential.tier === "upitan" ? 1 : null,
+    label: growthPotential.label,
+  };
+
+  const managementScore: DashboardScore = {
+    score: management.verdict === "izgleda pouzdano" ? 5 : management.verdict === "mešovito" ? 3 : management.verdict === "izgleda rizično" ? 1 : null,
+    label: management.verdict === "nedovoljno podataka" ? "Nedovoljno podataka" : management.verdict,
+  };
+
+  const maxSeverity = risks[0]?.severity ?? null;
+  const riskScore: DashboardScore = {
+    score: maxSeverity != null ? clamp15(6 - maxSeverity) : null,
+    label: maxSeverity != null ? (maxSeverity <= 2 ? "Nizak rizik" : maxSeverity === 3 ? "Umeren rizik" : "Visok rizik") : "Nedovoljno podataka",
+  };
+
+  const valuationScore: DashboardScore = {
+    score:
+      multiplesVerdict.verdict === "Izgleda jeftino" ? 5 : multiplesVerdict.verdict === "Mešovito — nema jasnog signala" ? 3 : multiplesVerdict.verdict === "Izgleda skupo" ? 1 : null,
+    label: multiplesVerdict.verdict,
+  };
+
+  const scores = [business.score, moatScore.score, growth.score, managementScore.score, riskScore.score, valuationScore.score].filter(
+    (v): v is number => v != null
+  );
+  const composite = scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : null;
+
+  return { business, moat: moatScore, moatDirection, growth, management: managementScore, risk: riskScore, valuation: valuationScore, composite };
+}
+
+// ---------- Faza poslovnog ciklusa (1-5) ----------
+//
+// Aproksimacija petostepenog okvira (osnivanje → hiper-rast → operativna
+// poluga → povraćaj kapitala → opadanje) iz fiksnih, dokumentovanih pragova
+// nad merljivim podacima (rast prihoda, operativna marža, isplata
+// dividende) — ne iz subjektivne procene "gde je kompanija u svom životnom
+// ciklusu", jer ta ocena obično zahteva kvalitativni uvid koji finansijski
+// izveštaji sami po sebi ne daju. Kad rast nije poznat, faza se ne pogađa.
+export interface BusinessPhase {
+  phase: 1 | 2 | 3 | 4 | 5 | null;
+  label: string;
+  detail: string;
+}
+
+export function classifyBusinessPhase(inputs: {
+  revenueGrowthTtm: number | null;
+  revenueCagr: number | null;
+  operatingMargins: number | null;
+  dividendPaidConsistently: boolean | null;
+}): BusinessPhase {
+  const growth = inputs.revenueGrowthTtm ?? inputs.revenueCagr;
+
+  if (inputs.operatingMargins != null && inputs.operatingMargins < 0) {
+    return { phase: 1, label: "1 · Osnivanje", detail: "Operativna marža je negativna — poslovanje još nije operativno profitabilno." };
+  }
+  if (growth == null) {
+    return { phase: null, label: "Nepoznato", detail: "Nedovoljno podataka o rastu prihoda za procenu faze." };
+  }
+  if (growth > 0.2) {
+    return { phase: 2, label: "2 · Hiper-rast", detail: `Rast prihoda ${(growth * 100).toFixed(1)}% godišnje — iznad 20%.` };
+  }
+  if (growth > 0.05) {
+    return { phase: 3, label: "3 · Operativna poluga", detail: `Rast prihoda ${(growth * 100).toFixed(1)}% godišnje — umeren, tipično za skaliranje poslovanja.` };
+  }
+  if (inputs.dividendPaidConsistently) {
+    return { phase: 4, label: "4 · Povraćaj kapitala", detail: "Spor rast prihoda uz doslednu isplatu dividende — zrelo poslovanje koje vraća kapital akcionarima." };
+  }
+  if (growth <= 0) {
+    return { phase: 5, label: "5 · Opadanje", detail: `Rast prihoda ${(growth * 100).toFixed(1)}% godišnje — stagnacija ili pad.` };
+  }
+  return { phase: 3, label: "3 · Operativna poluga", detail: `Rast prihoda ${(growth * 100).toFixed(1)}% godišnje — spor, ali pozitivan.` };
 }
 
 export function computeModel(data: ModelData, assumptions: Assumptions = DEFAULT_ASSUMPTIONS): ComputedModel {
