@@ -6,6 +6,7 @@ import {
   buildDashboardScores,
   buildMultiplesTable,
   classifyBusinessPhase,
+  BUSINESS_PHASE_DEFINITIONS,
   computeGrowthHorizons,
   computeHistoricalPE,
   computeHistoricalPFcf,
@@ -218,7 +219,7 @@ export default function OverviewCard() {
   let content: React.ReactNode = null;
 
   if (result) {
-    const { data, breakdown, growthFilter, growthPotential, moat, management, risks, bullBear, finalVerdict, redFlags, avgIntrinsicValue } = result;
+    const { data, breakdown, growthFilter, growthPotential, moat, moatNarrative, management, risks, bullBear, finalVerdict, redFlags, avgIntrinsicValue } = result;
     const resolvedFcf = resolveFcfForYield(data) ?? fallbackFcf;
     const currentPFcf =
       resolvedFcf != null && resolvedFcf > 0 && data.fundamentals.sharesOutstanding
@@ -390,9 +391,25 @@ export default function OverviewCard() {
               <span>Opadanje</span>
             </div>
             <div className="text-sm font-semibold">{phase.label}</div>
-            <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">{phase.detail}</p>
+            <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1 mb-3">{phase.detail}</p>
+            <table className="w-full text-[11px] border-collapse">
+              <tbody>
+                {BUSINESS_PHASE_DEFINITIONS.map((d) => {
+                  const active = d.phase === phase.phase;
+                  return (
+                    <tr key={d.phase} className={active ? "bg-blue-50 dark:bg-blue-900/20" : ""}>
+                      <td className={`py-1 pr-2 align-top ${active ? "font-bold" : "text-zinc-500 dark:text-zinc-400"}`}>
+                        {active && "→ "}
+                        {d.phase} · {d.name}
+                      </td>
+                      <td className="py-1 text-zinc-500 dark:text-zinc-400 align-top">{d.meaning}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
             <p className="text-[11px] text-zinc-400 mt-2 italic">
-              Aproksimacija iz rasta prihoda, operativne marže i doslednosti dividende — fiksni pragovi, ne kvalitativna procena.
+              Aproksimacija iz rasta prihoda, operativne marže i doslednosti dividende — fiksni pragovi (vidi kriterijum svake faze iznad), ne kvalitativna procena.
             </p>
           </Box>
 
@@ -403,12 +420,19 @@ export default function OverviewCard() {
                 <div className={scoreColor(scores.moat.score) + " h-full"} style={{ width: `${moat.score * 10}%` }} />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs mb-2">
-              <KeyVal label="Izvor (proxy)" value="Marže + ROE−WACC" />
-              <KeyVal label="Veličina" value={scores.moat.label} />
-              <KeyVal label="Pravac" value={scores.moatDirection.direction} />
-            </div>
-            <p className="text-xs text-zinc-500 dark:text-zinc-400">{moat.detail}</p>
+            <div className="text-sm font-semibold mb-2">{moatNarrative.headline}</div>
+            <ul className="space-y-1.5 mb-2">
+              {moatNarrative.reasons.map((r) => (
+                <li key={r} className="text-xs text-zinc-600 dark:text-zinc-300 flex gap-1.5">
+                  <span className="text-zinc-400 shrink-0">•</span>
+                  <span>{r}</span>
+                </li>
+              ))}
+            </ul>
+            <p className="text-[11px] text-zinc-400 italic">
+              Obrazloženje je izvedeno iz istih fiksnih pragova koji daju i ocenu {moat.score}/10 (marže i prinos na kapital naspram cene kapitala) —
+              ne meri direktno brend ili distribuciju, jer to finansijski izveštaji sami po sebi ne pokazuju.
+            </p>
           </Box>
 
           {/* Menadžment */}

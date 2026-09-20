@@ -175,7 +175,7 @@ export default function ModelAnalysis() {
   let content: React.ReactNode = null;
 
   if (result) {
-    const { data, breakdown, growthFilter, valuationFilter, moat, growthPotential, risks, management, bullBear, finalVerdict, shortTermUpside, fundamentalsRating, redFlags } = result;
+    const { data, breakdown, growthFilter, valuationFilter, moat, moatNarrative, growthPotential, risks, management, bullBear, finalVerdict, shortTermUpside, fundamentalsRating, redFlags } = result;
     const debtEquityHistory = computeDebtEquityHistory(breakdown.rows);
     const { fundamentals } = data;
     const resolvedFcf = resolveFcfForYield(data) ?? fallbackFcf;
@@ -489,8 +489,21 @@ export default function ModelAnalysis() {
         </Section>
 
         <Section title="5. Konkurentska prednost (objektivni proxy)">
-          <p className="text-sm">Ocena: <b>{moat.score}/10</b></p>
-          <p className="text-sm text-zinc-600 dark:text-zinc-400 mt-1">{moat.detail}</p>
+          <p className="text-sm">
+            Ocena: <b>{moat.score}/10</b> — {moatNarrative.headline}
+          </p>
+          <ul className="mt-2 space-y-1.5">
+            {moatNarrative.reasons.map((r) => (
+              <li key={r} className="text-sm text-zinc-600 dark:text-zinc-400 flex gap-2">
+                <span className="text-zinc-400 shrink-0">•</span>
+                <span>{r}</span>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-400 italic">
+            Obrazloženje je izvedeno iz istih fiksnih pragova (marže i prinos na kapital naspram cene kapitala) koji daju i ocenu {moat.score}/10 —
+            ne meri direktno brend, distribuciju ili troškove prelaska, jer ti podaci nisu merljivi iz finansijskih izveštaja.
+          </p>
         </Section>
 
         <Section title="6. Analiza rizika (rangirano od najopasnijeg)">

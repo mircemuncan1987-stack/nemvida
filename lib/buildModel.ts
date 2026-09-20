@@ -29,6 +29,7 @@ import {
   scoreGrowthPotential,
   scoreManagementQuality,
   scoreMoat,
+  buildMoatNarrative,
   type FilterCheck,
   type FinalVerdict,
   type YearlyFinancials,
@@ -295,6 +296,7 @@ export interface ComputedModel {
   growthFilter: ReturnType<typeof runGrowthFilter>;
   valuationFilter: ReturnType<typeof runValuationFilter>;
   moat: ReturnType<typeof scoreMoat>;
+  moatNarrative: ReturnType<typeof buildMoatNarrative>;
   growthPotential: ReturnType<typeof scoreGrowthPotential>;
   risks: ReturnType<typeof rankRisks>;
   management: ReturnType<typeof scoreManagementQuality>;
@@ -863,6 +865,23 @@ function clamp15(n: number): number {
   return Math.max(1, Math.min(5, Math.round(n)));
 }
 
+// Pravac konkurentske prednosti: trend operativne marže kroz dostupne
+// godišnje izveštaje (operatingIncome/revenue) — jedino merljivo
+// približenje "širenja/sužavanja jaza" iz finansijskih izveštaja, bez
+// pripovedanja o brendu ili tržišnoj poziciji. Deljeno između
+// buildDashboardScores (za /pregled) i computeModel (za obrazloženje moat
+// ocene) da se isti pravac ne računa na dva mesta sa mogućnošću da se
+// razmimoiđe.
+function computeMoatMarginTrend(yearlyRows: YearlyFinancials[]): MoatDirectionScore["direction"] {
+  const margins = yearlyRows
+    .map((r) => (r.revenue && r.operatingIncome != null && r.revenue !== 0 ? r.operatingIncome / r.revenue : null))
+    .filter((v): v is number => v != null);
+  if (margins.length < 2) return "nepoznato";
+  const first = margins[0];
+  const last = margins[margins.length - 1];
+  return last > first + 0.02 ? "širi se" : last < first - 0.02 ? "sužava se" : "stabilan";
+}
+
 export function buildDashboardScores(
   model: ComputedModel,
   qualityChecks: FilterCheck[],
@@ -880,19 +899,7 @@ export function buildDashboardScores(
     label: moat.score >= 6 ? "Širok jaz" : moat.score <= 3 ? "Slab jaz" : "Umeren jaz",
   };
 
-  // Pravac konkurentske prednosti: trend operativne marže kroz dostupne
-  // godišnje izveštaje (operatingIncome/revenue) — jedino merljivo
-  // približenje "širenja/sužavanja jaza" iz finansijskih izveštaja, bez
-  // pripovedanja o brendu ili tržišnoj poziciji.
-  const margins = data.yearlyRows
-    .map((r) => (r.revenue && r.operatingIncome != null && r.revenue !== 0 ? r.operatingIncome / r.revenue : null))
-    .filter((v): v is number => v != null);
-  let direction: MoatDirectionScore["direction"] = "nepoznato";
-  if (margins.length >= 2) {
-    const first = margins[0];
-    const last = margins[margins.length - 1];
-    direction = last > first + 0.02 ? "širi se" : last < first - 0.02 ? "sužava se" : "stabilan";
-  }
+  const direction = computeMoatMarginTrend(data.yearlyRows);
   const moatDirection: MoatDirectionScore = {
     score: direction === "širi se" ? 5 : direction === "stabilan" ? 3 : direction === "sužava se" ? 1 : null,
     label: direction === "nepoznato" ? "Nedovoljno godišnjih izveštaja" : `Operativna marža ${direction}`,
@@ -944,6 +951,50 @@ export interface BusinessPhase {
   detail: string;
 }
 
+// Vidljiva definicija svih 5 faza (isti princip kao VERDICT_RULES u
+// lib/model.ts) — UI prikazuje CEO ovu tabelu sa istaknutim redom, umesto da
+// korisnik vidi samo jednu rečenicu za trenutnu kompaniju bez konteksta šta
+// znače ostale faze i zašto baš ova nije primenjena.
+export interface BusinessPhaseDefinition {
+  phase: 1 | 2 | 3 | 4 | 5;
+  name: string;
+  criterion: string;
+  meaning: string;
+}
+
+export const BUSINESS_PHASE_DEFINITIONS: BusinessPhaseDefinition[] = [
+  {
+    phase: 1,
+    name: "Osnivanje",
+    criterion: "Operativna marža je negativna (bez obzira na rast prihoda)",
+    meaning: "Poslovni model još nije dokazao da može profitabilno da posluje na operativnom nivou — prioritet je rast korisničke baze, ne profit.",
+  },
+  {
+    phase: 2,
+    name: "Hiper-rast",
+    criterion: "Pozitivna operativna marža i rast prihoda preko 20% godišnje",
+    meaning: "Kompanija brzo osvaja tržišni udeo; tipično reinvestira veći deo gotovine nazad u rast umesto da je vraća akcionarima.",
+  },
+  {
+    phase: 3,
+    name: "Operativna poluga",
+    criterion: "Rast prihoda između 0% i 20% godišnje (bez doslednih dividendi)",
+    meaning: "Poslovanje skalira — marže obično rastu brže od prihoda kako se fiksni troškovi razblažuju na veću bazu prihoda.",
+  },
+  {
+    phase: 4,
+    name: "Povraćaj kapitala",
+    criterion: "Spor rast prihoda (0–5% godišnje) uz doslednu isplatu dividende",
+    meaning: "Zrelo poslovanje sa ograničenim prostorom za dalji rast — kapital se vraća akcionarima (dividenda) umesto da se reinvestira.",
+  },
+  {
+    phase: 5,
+    name: "Opadanje",
+    criterion: "Rast prihoda je nula ili negativan, bez doslednih dividendi",
+    meaning: "Prihodi stagniraju ili opadaju bez znaka da se kapital sistematski vraća akcionarima — najrizičnija faza za ulaganje u rast.",
+  },
+];
+
 export function classifyBusinessPhase(inputs: {
   revenueGrowthTtm: number | null;
   revenueCagr: number | null;
@@ -951,26 +1002,51 @@ export function classifyBusinessPhase(inputs: {
   dividendPaidConsistently: boolean | null;
 }): BusinessPhase {
   const growth = inputs.revenueGrowthTtm ?? inputs.revenueCagr;
+  const growthSource = inputs.revenueGrowthTtm != null ? "rast prihoda u poslednjih 12 meseci" : "istorijski CAGR prihoda";
 
   if (inputs.operatingMargins != null && inputs.operatingMargins < 0) {
-    return { phase: 1, label: "1 · Osnivanje", detail: "Operativna marža je negativna — poslovanje još nije operativno profitabilno." };
+    return {
+      phase: 1,
+      label: "1 · Osnivanje",
+      detail: `Operativna marža je negativna (${(inputs.operatingMargins * 100).toFixed(1)}%) — poslovanje trenutno gubi novac na samom jezgru delatnosti, ne samo zbog jednokratnih troškova. Dok se to ne promeni, rast prihoda sam po sebi ne dokazuje održiv poslovni model.`,
+    };
   }
   if (growth == null) {
-    return { phase: null, label: "Nepoznato", detail: "Nedovoljno podataka o rastu prihoda za procenu faze." };
+    return { phase: null, label: "Nepoznato", detail: "Nedovoljno podataka o rastu prihoda (ni g/g ni istorijski CAGR) za procenu faze." };
   }
   if (growth > 0.2) {
-    return { phase: 2, label: "2 · Hiper-rast", detail: `Rast prihoda ${(growth * 100).toFixed(1)}% godišnje — iznad 20%.` };
+    return {
+      phase: 2,
+      label: "2 · Hiper-rast",
+      detail: `${growthSource[0].toUpperCase()}${growthSource.slice(1)} je ${(growth * 100).toFixed(1)}% — iznad praga od 20% koji ovde deli "brzo osvajanje tržišta" od običnog skaliranja. Ovakav rast obično znači da se gotovina agresivno reinvestira, pa dividenda ili visok FCF prinos nisu očekivani u ovoj fazi.`,
+    };
   }
   if (growth > 0.05) {
-    return { phase: 3, label: "3 · Operativna poluga", detail: `Rast prihoda ${(growth * 100).toFixed(1)}% godišnje — umeren, tipično za skaliranje poslovanja.` };
+    return {
+      phase: 3,
+      label: "3 · Operativna poluga",
+      detail: `${growthSource[0].toUpperCase()}${growthSource.slice(1)} je ${(growth * 100).toFixed(1)}% — umereno (između 5% i 20%), tipično za kompaniju koja već ima uspostavljeno tržište i sad skalira postojeće poslovanje umesto da ga tek gradi.`,
+    };
   }
   if (inputs.dividendPaidConsistently) {
-    return { phase: 4, label: "4 · Povraćaj kapitala", detail: "Spor rast prihoda uz doslednu isplatu dividende — zrelo poslovanje koje vraća kapital akcionarima." };
+    return {
+      phase: 4,
+      label: "4 · Povraćaj kapitala",
+      detail: `${growthSource[0].toUpperCase()}${growthSource.slice(1)} je spor (${(growth * 100).toFixed(1)}%), ali kompanija dosledno isplaćuje dividendu — kombinacija tipična za zrelo poslovanje koje više nema dovoljno prilika da reinvestira sav kapital uz dobar prinos, pa deo vraća akcionarima.`,
+    };
   }
   if (growth <= 0) {
-    return { phase: 5, label: "5 · Opadanje", detail: `Rast prihoda ${(growth * 100).toFixed(1)}% godišnje — stagnacija ili pad.` };
+    return {
+      phase: 5,
+      label: "5 · Opadanje",
+      detail: `${growthSource[0].toUpperCase()}${growthSource.slice(1)} je ${(growth * 100).toFixed(1)}% — stagnacija ili pad, bez doslednih dividendi koje bi ukazale na svesnu strategiju vraćanja kapitala. Ovo je faza koja zahteva najviše opreza.`,
+    };
   }
-  return { phase: 3, label: "3 · Operativna poluga", detail: `Rast prihoda ${(growth * 100).toFixed(1)}% godišnje — spor, ali pozitivan.` };
+  return {
+    phase: 3,
+    label: "3 · Operativna poluga",
+    detail: `${growthSource[0].toUpperCase()}${growthSource.slice(1)} je ${(growth * 100).toFixed(1)}% — spor, ali pozitivan i bez doslednih dividendi, pa se ne svrstava ni u agresivan rast ni u zrelu fazu povraćaja kapitala.`,
+  };
 }
 
 export function computeModel(data: ModelData, assumptions: Assumptions = DEFAULT_ASSUMPTIONS): ComputedModel {
@@ -1012,6 +1088,14 @@ export function computeModel(data: ModelData, assumptions: Assumptions = DEFAULT
     operatingMargins: data.operatingMargins,
     returnOnInvestedCapitalProxy: data.returnOnEquity,
     wacc,
+    marketCap: data.marketCap,
+  });
+  const moatNarrative = buildMoatNarrative({
+    moatScore: moat.score,
+    grossMargin: data.grossMargin,
+    operatingMargins: data.operatingMargins,
+    roicSpread: data.returnOnEquity != null ? data.returnOnEquity - wacc : null,
+    direction: computeMoatMarginTrend(data.yearlyRows),
     marketCap: data.marketCap,
   });
   const growthPotential = scoreGrowthPotential({
@@ -1094,5 +1178,5 @@ export function computeModel(data: ModelData, assumptions: Assumptions = DEFAULT
     redFlagCount: redFlags.length,
   });
 
-  return { data, wacc, avgIntrinsicValue, lynchValue, shortTermUpside, valuationUpside, breakdown, growthFilter, valuationFilter, moat, growthPotential, risks, management, bullBear, finalVerdict, fundamentalsRating, redFlags };
+  return { data, wacc, avgIntrinsicValue, lynchValue, shortTermUpside, valuationUpside, breakdown, growthFilter, valuationFilter, moat, moatNarrative, growthPotential, risks, management, bullBear, finalVerdict, fundamentalsRating, redFlags };
 }

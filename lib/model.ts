@@ -172,6 +172,88 @@ export function scoreMoat(inputs: MoatInputs): MoatResult {
   };
 }
 
+// ---------- Stručno obrazloženje moat ocene (isti pragovi kao scoreMoat, samo prevedeni u poslovni jezik) ----------
+//
+// scoreMoat gore daje BROJ (1-10) iz zbira bodova — ova funkcija taj isti
+// broj objašnjava rečenicama koje imenuju VRSTU ekonomske prednosti na koju
+// svaki merljivi signal ukazuje (cenovna moć, ekonomija obima, prinos iznad
+// cene kapitala, pravac kretanja) — umesto da samo ispiše "bruto marža X%,
+// WACC Y%". I dalje su to fiksni, dokumentovani pragovi nad merljivim
+// podacima, ne slobodna subjektivna procena — samo čitljivije formulisano.
+export interface MoatNarrativeInputs {
+  moatScore: number; // 1-10, iz scoreMoat
+  grossMargin: number | null;
+  operatingMargins: number | null;
+  roicSpread: number | null; // returnOnInvestedCapitalProxy − wacc
+  direction: "širi se" | "stabilan" | "sužava se" | "nepoznato";
+  marketCap: number | null;
+}
+
+export interface MoatNarrative {
+  headline: string;
+  reasons: string[];
+}
+
+export function buildMoatNarrative(inputs: MoatNarrativeInputs): MoatNarrative {
+  const reasons: string[] = [];
+
+  if (inputs.grossMargin != null) {
+    const gm = inputs.grossMargin * 100;
+    if (inputs.grossMargin > 0.6) {
+      reasons.push(`Bruto marža od ${gm.toFixed(1)}% je izuzetno visoka za bilo koju industriju — snažan znak da kupci plaćaju za nešto što konkurencija ne može lako da kopira (brend, patentna zaštita, visoki troškovi prelaska na drugog dobavljača), a ne za sam proizvod po tržišnoj ceni koštanja.`);
+    } else if (inputs.grossMargin > 0.4) {
+      reasons.push(`Bruto marža od ${gm.toFixed(1)}% je iznad proseka realnog sektora — kompanija ima merljivu cenovnu moć, verovatno kroz diferencijaciju proizvoda ili brend.`);
+    } else if (inputs.grossMargin < 0.2) {
+      reasons.push(`Bruto marža od ${gm.toFixed(1)}% je niska — tipično za komoditizovanu industriju (npr. distribucija, sirovine) bez značajne cenovne moći nad kupcima.`);
+    } else {
+      reasons.push(`Bruto marža od ${gm.toFixed(1)}% je osrednja — ne ukazuje sama po sebi na izraženu diferencijaciju od konkurencije, ali ni na komoditizovan proizvod.`);
+    }
+  }
+
+  if (inputs.operatingMargins != null) {
+    const om = inputs.operatingMargins * 100;
+    if (inputs.operatingMargins < 0.05) {
+      reasons.push(`Operativna marža od ${om.toFixed(1)}% je niska ili negativna — poslovni model još nije jasno dokazao da može profitabilno da skalira, bez obzira na kvalitet proizvoda.`);
+    } else if (inputs.operatingMargins > 0.2) {
+      reasons.push(`Operativna marža od ${om.toFixed(1)}% ukazuje na izraženu ekonomiju obima — fiksni troškovi se razblažuju kako prihod raste, klasičan znak skalabilnog poslovnog modela (npr. softver, mreže, platforme).`);
+    }
+  }
+
+  if (inputs.roicSpread != null) {
+    const spreadPts = inputs.roicSpread * 100;
+    if (inputs.roicSpread > 0.1) {
+      reasons.push(`Prinos na kapital nadmašuje cenu kapitala za ${spreadPts.toFixed(1)} procentnih poena — ovo je najjači pojedinačni pokazatelj stvarnog ekonomskog jaza: kompanija stvara vrednost daleko iznad onoga što bi tržište kapitala tražilo, a konkurencija očigledno ne uspeva da tu razliku eroduje.`);
+    } else if (inputs.roicSpread >= 0) {
+      reasons.push(`Prinos na kapital je tek blago iznad cene kapitala (${spreadPts.toFixed(1)} p.p.) — granični slučaj, brojevi sami po sebi ne dokazuju ubedljiv jaz.`);
+    } else {
+      reasons.push(`Prinos na kapital je ISPOD cene kapitala (${spreadPts.toFixed(1)} p.p.) — kompanija trenutno uništava ekonomsku vrednost umesto da je stvara, jasan signal da konkurentska prednost ili ne postoji ili trenutno ne donosi korist akcionarima.`);
+    }
+  }
+
+  if (inputs.direction === "širi se") {
+    reasons.push("Operativna marža se širi kroz dostupne godišnje izveštaje — jaz tokom vremena JAČA, ne slabi, što je povoljniji signal od same trenutne visine marže.");
+  } else if (inputs.direction === "sužava se") {
+    reasons.push("Upozorenje: operativna marža se sužava kroz dostupne godišnje izveštaje — konkurencija verovatno erodira prednost, čak i ako je trenutni nivo marži još uvek relativno visok.");
+  }
+
+  if (inputs.marketCap != null && inputs.marketCap > 200e9) {
+    reasons.push("Tržišna kapitalizacija preko 200 milijardi ukazuje i na prednosti čistog obima (pregovaračka moć sa dobavljačima, kapacitet za istraživanje i razvoj, distribucija) koje manji konkurenti teško mogu da repliciraju.");
+  }
+
+  const headline =
+    inputs.moatScore >= 9
+      ? "Dominantan i redak ekonomski jaz"
+      : inputs.moatScore >= 7
+        ? "Širok ekonomski jaz"
+        : inputs.moatScore >= 5
+          ? "Umeren ekonomski jaz"
+          : inputs.moatScore >= 3
+            ? "Slab ili neizvestan jaz"
+            : "Jaz nije vidljiv u podacima";
+
+  return { headline, reasons: reasons.length ? reasons : ["Nedovoljno podataka (marže, ROE ili WACC) za detaljnije obrazloženje."] };
+}
+
 // ---------- Prompt: Growth Filter (kvantitativni skrining) ----------
 
 export interface GrowthFilterInputs {
