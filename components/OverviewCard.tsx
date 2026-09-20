@@ -1,6 +1,7 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   analyzeHistoricalMultiples,
   buildDashboardScores,
@@ -132,12 +133,16 @@ function StatTile({ label, value }: { label: string; value: string }) {
   );
 }
 
+// Samostalan red (ne oslanja se na roditeljski grid da uparuje labelu i
+// vrednost) — ranije je u nekim kutijama roditeljski div bio obično
+// naslagan (bez grid/flex klase), pa su labela i broj završavali jedno
+// ispod drugog umesto u istom redu.
 function KeyVal({ label, value }: { label: string; value: string }) {
   return (
-    <>
-      <div className="text-zinc-500 dark:text-zinc-400">{label}</div>
-      <div className="text-right font-medium">{value}</div>
-    </>
+    <div className="flex justify-between items-baseline gap-3 py-0.5">
+      <span className="text-zinc-500 dark:text-zinc-400">{label}</span>
+      <span className="text-right font-medium shrink-0">{value}</span>
+    </div>
   );
 }
 
@@ -155,6 +160,7 @@ export default function OverviewCard() {
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [now] = useState(() => Date.now());
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const searchParams = useSearchParams();
 
   async function runAnalysis(sym: string) {
     if (!sym) return;
@@ -195,6 +201,17 @@ export default function OverviewCard() {
     setShowSuggestions(false);
     runAnalysis(s.symbol);
   }
+
+  useEffect(() => {
+    const fromUrl = searchParams.get("ticker");
+    if (fromUrl) {
+      const sym = fromUrl.trim().toUpperCase();
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- inicijalno popunjavanje iz URL parametra
+      setTicker(sym);
+      runAnalysis(sym);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function handleTickerChange(value: string) {
     setTicker(value);
@@ -448,7 +465,7 @@ export default function OverviewCard() {
             >
               {management.verdict === "izgleda pouzdano" ? "Izgleda pouzdano" : management.verdict === "izgleda rizično" ? "Izgleda rizično" : management.verdict === "mešovito" ? "Mešoviti signali" : "Nedovoljno podataka"}
             </div>
-            <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+            <div className="text-xs">
               <KeyVal label="Vlasništvo insajdera" value={fmtPct(data.heldPercentInsiders, 1)} />
               <KeyVal label="Institucionalni investitori" value={fmtPct(data.heldPercentInstitutions, 1)} />
               <KeyVal label="Prinos na kapital (ROE, proxy za ROIC)" value={fmtPct(data.returnOnEquity, 1)} />
@@ -617,10 +634,9 @@ export default function OverviewCard() {
   return (
     <div className="max-w-4xl mx-auto px-4 pb-16">
       <div className="mt-4 mb-5 text-sm leading-relaxed rounded-xl border border-amber-300/60 dark:border-amber-700/50 bg-amber-50 dark:bg-amber-900/15 text-amber-800 dark:text-amber-300 p-4">
-        <b>⚠ Ovo NIJE finansijski savet.</b> Isti podaci i pragovi kao{" "}
-        <a href="/model" className="underline">sveobuhvatni model</a>, prikazani na jednoj strani u formatu sličnom &quot;one-page&quot; analizama. Stavke koje
-        finansijski izveštaji ne mere direktno (raspodela prihoda po segmentima, procena pretnje od disrupcije i sl.) su jasno označene kao takve,
-        umesto da se izmišljaju. Samo američke i evropske akcije.
+        <b>⚠ Ovo NIJE finansijski savet.</b> Sve ocene dolaze iz fiksnih, dokumentovanih pragova nad merljivim podacima — bez
+        subjektivnih procena. Stavke koje finansijski izveštaji ne mere direktno (raspodela prihoda po segmentima, procena
+        pretnje od disrupcije i sl.) su jasno označene kao takve, umesto da se izmišljaju. Samo američke i evropske akcije.
       </div>
 
       <form onSubmit={handleSubmit} className="flex flex-wrap gap-2 items-end border border-zinc-200 dark:border-zinc-800 bg-white/70 dark:bg-zinc-900/50 rounded-xl p-4">

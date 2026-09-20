@@ -203,7 +203,7 @@ export default function PortfolioAnalysis() {
       <div className="mt-4 mb-5 text-sm leading-relaxed rounded-xl border border-amber-300/60 dark:border-amber-700/50 bg-amber-50 dark:bg-amber-900/15 text-amber-800 dark:text-amber-300 p-4">
         <b>⚠ Ovo NIJE finansijski savet.</b> Vrednosti pozicija su iz tvog poslednjeg izveštaja brokera (možeš ih ručno
         ažurirati) — cena, sud, fundamenti i tehnički pregled po akciji se preuzimaju uživo iz istog sveobuhvatnog
-        modela kao na <a href="/model" className="underline">/model</a> i <a href="/lista" className="underline">/lista</a>.
+        modela kao na <a href="/pregled" className="underline">/pregled</a> i <a href="/lista" className="underline">/lista</a>.
         Fondovi (bez pojedinačnog tikera) i gotovina se ne analiziraju pojedinačno, samo se broje u ukupnu vrednost i
         udele.
       </div>
@@ -320,7 +320,7 @@ export default function PortfolioAnalysis() {
                     return (
                       <tr key={h.id}>
                         <td className="py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800">
-                          <a href={`/model?ticker=${h.ticker}`} className="hover:underline font-medium">{h.name}</a>
+                          <a href={`/pregled?ticker=${h.ticker}`} className="hover:underline font-medium">{h.name}</a>
                         </td>
                         <td className="py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800 text-right tabular-nums">{total > 0 ? `${((h.marketValueNok / total) * 100).toFixed(1)}%` : "—"}</td>
                         {r?.error ? (

@@ -257,7 +257,7 @@ export default function Sp500Screener() {
         <b>⚠ Ovo NIJE finansijski savet.</b> Sud je izveden iz istog sveobuhvatnog modela (rast poslovanja + disciplina
         valuacije) sa podrazumevanim pretpostavkama (nisu ručno prilagođene po kompaniji) — za detaljniju analizu
         pojedinačne akcije koristi{" "}
-        <a href="/model" className="underline">sveobuhvatni model</a>. Liste tikera po indeksima su
+        <a href="/pregled" className="underline">pregled kompanije</a>. Liste tikera po indeksima su
         snimci iz opšteg znanja i mogu odstupati od trenutnog zvaničnog sastava (kompozicije se povremeno menjaju).
         &quot;Osveženo&quot; znači vreme poslednjeg preuzimanja podataka (keširano lokalno do 12h), ne doslovno live
         tik-po-tik cena. &quot;Fundamenti&quot; je objektivna ocena poslovanja (rast, marže, zaduženost, konkurentska
@@ -388,7 +388,7 @@ function ScreenerTable({ rows }: { rows: Row[] }) {
         {rows.map((r) => (
           <tr key={r.ticker}>
             <td className="py-2 px-3 border-b border-zinc-200 dark:border-zinc-800 font-semibold">
-              <a href={`/model?ticker=${r.ticker}`} className="hover:underline">{r.ticker}</a>
+              <a href={`/pregled?ticker=${r.ticker}`} className="hover:underline">{r.ticker}</a>
             </td>
             <td className="py-2 px-3 border-b border-zinc-200 dark:border-zinc-800 text-zinc-600 dark:text-zinc-400">{r.companyName}</td>
             <td className="py-2 px-3 border-b border-zinc-200 dark:border-zinc-800 text-right tabular-nums">{fmtMoney(r.currentPrice, r.currency)}</td>
