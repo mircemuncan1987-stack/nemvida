@@ -510,6 +510,34 @@ function readingVsBenchmark(value: number | null, benchmark: number | null, benc
   return { reading: `Blizu ${benchmarkLabel} (${fmtVal(benchmark)}).`, tone };
 }
 
+// Poređenje samo sa sopstvenom istorijom (ili sektorom) ume da bude
+// varljivo kad je i sama istorija/sektor već bila skupa dugi niz godina —
+// akcija onda ispadne "povoljna" samo zato što je JOŠ skuplja bila ranije
+// (npr. P/FCF od 128× kod kompanije čiji je sopstveni prosek 150×). Zato se
+// relativno poređenje kombinuje sa fiksnim apsolutnim pragom: apsolutni prag
+// nikad ne dozvoljava da "skupo" postane "povoljno", niti da izrazito jeftina
+// vrednost ispadne "skupo" samo zato što je iznad sopstvene (niske) istorije.
+const TONE_SEVERITY: Record<MultipleReadingTone, number> = { povoljno: 0, neutralno: 1, skupo: 2, "nedovoljno podataka": -1 };
+
+function combineWithAbsoluteFloor(
+  relative: { reading: string; tone: MultipleReadingTone },
+  value: number | null,
+  absoluteCheapBelow: number,
+  absoluteExpensiveAbove: number,
+  unit: "×" | "%"
+): { reading: string; tone: MultipleReadingTone } {
+  if (value == null) return relative;
+  const absoluteTone: MultipleReadingTone = value < absoluteCheapBelow ? "povoljno" : value > absoluteExpensiveAbove ? "skupo" : "neutralno";
+  if (TONE_SEVERITY[relative.tone] >= TONE_SEVERITY[absoluteTone]) return relative;
+  const fmtVal = (v: number) => (unit === "%" ? `${(v * 100).toFixed(1)}%` : `${v.toFixed(1)}×`);
+  const note =
+    absoluteTone === "skupo"
+      ? `Iznad ${fmtVal(absoluteExpensiveAbove)} se smatra skupim bez obzira na istoriju ili sektor.`
+      : `Ispod ${fmtVal(absoluteCheapBelow)} se smatra povoljnim bez obzira na istoriju ili sektor.`;
+  const prefix = relative.tone === "nedovoljno podataka" ? "" : `${relative.reading} `;
+  return { reading: `${prefix}${note}`, tone: absoluteTone };
+}
+
 export function buildMultiplesTable(inputs: {
   peRatio: number | null;
   pegRatio: number | null;
@@ -528,10 +556,12 @@ export function buildMultiplesTable(inputs: {
   const sectorLabel = `medijane sektora${inputs.sector ? ` (${inputs.sector})` : ""}`;
 
   // P/E — prvo poređenje sa sektorom (relevantnije za "da li je skupo u odnosu na slične kompanije"), a ako sektor nije poznat, sa sopstvenom istorijom.
+  // Apsolutni prag (15×/40×) sprečava da P/E ispadne "povoljan" samo zato što
+  // je sopstvena istorija ili sektor bila i sama preskupa.
   {
     const benchmark = inputs.sectorPeMedian ?? inputs.ownHistoricalPeAvg;
     const benchmarkLabel = inputs.sectorPeMedian != null ? sectorLabel : "sopstvenog istorijskog proseka";
-    const { reading, tone } = readingVsBenchmark(inputs.peRatio, benchmark, benchmarkLabel, "×");
+    const { reading, tone } = combineWithAbsoluteFloor(readingVsBenchmark(inputs.peRatio, benchmark, benchmarkLabel, "×"), inputs.peRatio, 15, 40, "×");
     rows.push({
       metric: "P/E (cena/zarada)",
       value: inputs.peRatio,
@@ -580,8 +610,17 @@ export function buildMultiplesTable(inputs: {
   }
 
   // P/FCF — poređenje samo sa sopstvenom istorijom (nema sektorske medijane za ovaj pokazatelj).
+  // Isti apsolutni prag (15×/40×) kao kod P/E — bez njega je ranije NVDA-i
+  // (P/FCF ~128×) ispadalo "povoljno" samo zato što joj je i sopstvena
+  // istorija bila slično preskupa, što je zbunjujuće i pogrešno kao zaključak.
   {
-    const { reading, tone } = readingVsBenchmark(inputs.currentPFcf, inputs.ownHistoricalPFcfAvg, "sopstvenog istorijskog proseka", "×");
+    const { reading, tone } = combineWithAbsoluteFloor(
+      readingVsBenchmark(inputs.currentPFcf, inputs.ownHistoricalPFcfAvg, "sopstvenog istorijskog proseka", "×"),
+      inputs.currentPFcf,
+      15,
+      40,
+      "×"
+    );
     rows.push({
       metric: "P/FCF (cena/slobodan novčani tok)",
       value: inputs.currentPFcf,
