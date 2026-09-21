@@ -66,7 +66,13 @@ async function fetchTimeseries(symbol: string) {
   try {
     const period2 = Math.floor(Date.now() / 1000);
     const period1 = period2 - 6 * 365 * 24 * 60 * 60;
-    const types = ["annualFreeCashFlow", "annualTotalDebt", "annualStockholdersEquity"].join(",");
+    const types = [
+      "annualFreeCashFlow",
+      "annualTotalDebt",
+      "annualStockholdersEquity",
+      "annualOrdinarySharesNumber",
+      "annualStockBasedCompensation",
+    ].join(",");
     const auth = await fetchYahooAuth();
     const res = await fetch(
       `https://query2.finance.yahoo.com/ws/fundamentals-timeseries/v1/finance/timeseries/${encodeURIComponent(
@@ -100,7 +106,7 @@ export async function GET(request: NextRequest) {
   try {
     if (type === "valuation") {
       const modules =
-        "price,summaryDetail,defaultKeyStatistics,financialData,cashflowStatementHistory,incomeStatementHistory,balanceSheetHistory,recommendationTrend,assetProfile,earningsTrend,earningsHistory,netSharePurchaseActivity,calendarEvents";
+        "price,summaryDetail,defaultKeyStatistics,financialData,cashflowStatementHistory,incomeStatementHistory,incomeStatementHistoryQuarterly,balanceSheetHistory,recommendationTrend,assetProfile,earningsTrend,earningsHistory,netSharePurchaseActivity,insiderTransactions,calendarEvents";
       const [data, timeseries] = await Promise.all([
         fetchUpstream(
           (crumb) =>
@@ -120,11 +126,15 @@ export async function GET(request: NextRequest) {
       // duža istorija) — jednostavnije je zatražiti celu dostupnu istoriju
       // jednom nego praviti dva različita poziva.
       const range = request.nextUrl.searchParams.get("range") || "max";
+      // "interval" je podesiv (podrazumevano mesečno) — dnevni razmak (1d) se
+      // koristi samo za procenu reakcije cene na izveštaje o rezultatima, gde
+      // je mesečna rezolucija prégruba da uhvati kretanje oko jednog datuma.
+      const interval = request.nextUrl.searchParams.get("interval") || "1mo";
       const data = await fetchUpstream(
         (crumb) =>
           `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(
             symbol
-          )}?range=${encodeURIComponent(range)}&interval=1mo&crumb=${encodeURIComponent(crumb)}`
+          )}?range=${encodeURIComponent(range)}&interval=${encodeURIComponent(interval)}&crumb=${encodeURIComponent(crumb)}`
       );
       return NextResponse.json(data);
     }

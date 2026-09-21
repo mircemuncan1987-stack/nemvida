@@ -8,18 +8,24 @@ import {
   buildMultiplesTable,
   classifyBusinessPhase,
   BUSINESS_PHASE_DEFINITIONS,
+  computeEarningsReactions,
+  computeFcfYieldPremium,
   computeGrowthHorizons,
   computeHistoricalPE,
   computeHistoricalPFcf,
+  computeHistoricalVolatility,
   computeModel,
+  DEFAULT_ASSUMPTIONS,
   extractModelData,
   resolveFcfForYield,
   summarizeMultiplesTable,
   type ComputedModel,
+  type EarningsReaction,
+  type HistoricalPricePoint,
   type MultipleReadingTone,
 } from "@/lib/buildModel";
 import { getSectorPeMedian, type FilterCheck } from "@/lib/model";
-import { fetchPriceHistory, fetchStockAnalysisFcf, searchSymbols, translateToSerbian, type SearchResult } from "@/lib/clientData";
+import { fetchDailyPriceHistory, fetchPriceHistory, fetchStockAnalysisFcf, searchSymbols, translateToSerbian, type SearchResult } from "@/lib/clientData";
 
 const fmtMoney = (x: number | null | undefined, currency: string) =>
   x === null || x === undefined || Number.isNaN(x) ? "—" : `${x.toLocaleString("en-US", { maximumFractionDigits: 2 })} ${currency}`;
@@ -71,6 +77,47 @@ function severityColor(severity: number): string {
   if (severity >= 4) return "bg-red-500";
   if (severity === 3) return "bg-amber-500";
   return "bg-emerald-500";
+}
+
+type Tone = "good" | "neutral" | "bad" | "unknown";
+
+function toneClass(tone: Tone): string {
+  if (tone === "good") return "text-emerald-600 dark:text-emerald-400";
+  if (tone === "bad") return "text-red-600 dark:text-red-400";
+  if (tone === "neutral") return "text-amber-600 dark:text-amber-400";
+  return "text-zinc-400";
+}
+
+// Pragovi su fiksni i dokumentovani uz svaki poziv — nema slobodne procene.
+function toneForNetDebtToEbitda(x: number | null): Tone {
+  if (x == null) return "unknown";
+  if (x < 1) return "good";
+  if (x < 3) return "neutral";
+  return "bad";
+}
+function toneForSbcPercent(x: number | null): Tone {
+  if (x == null) return "unknown";
+  if (x < 0.03) return "good";
+  if (x < 0.08) return "neutral";
+  return "bad";
+}
+function toneForVolatility(x: number | null): Tone {
+  if (x == null) return "unknown";
+  if (x < 0.25) return "good";
+  if (x < 0.45) return "neutral";
+  return "bad";
+}
+function toneForSigned(x: number | null): Tone {
+  if (x == null) return "unknown";
+  if (x > 0.001) return "good";
+  if (x < -0.001) return "bad";
+  return "neutral";
+}
+function toneForStreak(x: number | null): Tone {
+  if (x == null) return "unknown";
+  if (x >= 3) return "good";
+  if (x >= 1) return "neutral";
+  return "bad";
 }
 
 // Pet tačkica (dot meter) — vizuelni ekvivalent trake ocene 1-5 sa uzora,
@@ -156,6 +203,8 @@ export default function OverviewCard() {
   const [translatedSummary, setTranslatedSummary] = useState<string | null>(null);
   const [translatingSummary, setTranslatingSummary] = useState(false);
   const [fallbackFcf, setFallbackFcf] = useState<number | null>(null);
+  const [monthlyPriceHistory, setMonthlyPriceHistory] = useState<HistoricalPricePoint[]>([]);
+  const [earningsReactions, setEarningsReactions] = useState<EarningsReaction[]>([]);
   const [suggestions, setSuggestions] = useState<SearchResult[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [now] = useState(() => Date.now());
@@ -170,17 +219,28 @@ export default function OverviewCard() {
     setOwnAvg(null);
     setTranslatedSummary(null);
     setFallbackFcf(null);
+    setMonthlyPriceHistory([]);
+    setEarningsReactions([]);
     setAnalyzedTicker(sym.toUpperCase());
     try {
       const r = await fetchModelResult(sym);
       setResult(r);
       const priceHistory = await fetchPriceHistory(sym);
+      setMonthlyPriceHistory(priceHistory);
       const shares = r.data.fundamentals.sharesOutstanding;
       const historicalPE = computeHistoricalPE(r.breakdown.rows, priceHistory, shares);
       const historicalPFcf = computeHistoricalPFcf(r.breakdown.rows, priceHistory, shares);
       setOwnAvg(analyzeHistoricalMultiples(historicalPE, historicalPFcf));
       if (resolveFcfForYield(r.data) == null) {
         fetchStockAnalysisFcf(sym).then(setFallbackFcf);
+      }
+      // Aproksimacija reakcije cene na izveštaje — vidi napomenu u
+      // computeEarningsReactions o ograničenjima (Yahoo daje datum kraja
+      // kvartala, ne datum objave rezultata).
+      if (r.data.earningsBeats?.some((b) => b.date != null)) {
+        fetchDailyPriceHistory(sym).then((daily) => {
+          setEarningsReactions(computeEarningsReactions(r.data.earningsBeats, daily));
+        });
       }
       if (r.data.businessSummary) {
         setTranslatingSummary(true);
@@ -236,7 +296,29 @@ export default function OverviewCard() {
   let content: React.ReactNode = null;
 
   if (result) {
-    const { data, breakdown, growthFilter, growthPotential, moat, moatNarrative, management, risks, bullBear, finalVerdict, redFlags, avgIntrinsicValue } = result;
+    const {
+      data,
+      breakdown,
+      growthFilter,
+      growthPotential,
+      moat,
+      moatNarrative,
+      management,
+      risks,
+      bullBear,
+      finalVerdict,
+      redFlags,
+      avgIntrinsicValue,
+      fcfStability,
+      consecutiveRevenueQuarters,
+      consecutiveEarningsQuarters,
+      qualityOfEarnings,
+      altmanZScore,
+      shareCountTrend,
+      shareholderYield,
+      netDebtToEbitda,
+      sbcPercent,
+    } = result;
     const resolvedFcf = resolveFcfForYield(data) ?? fallbackFcf;
     const currentPFcf =
       resolvedFcf != null && resolvedFcf > 0 && data.fundamentals.sharesOutstanding
@@ -319,6 +401,10 @@ export default function OverviewCard() {
     const pricePosition = band && bandMin != null && bandMax != null && bandMax > bandMin ? ((data.currentPrice - bandMin) / (bandMax - bandMin)) * 100 : null;
 
     const beatsCount = data.earningsBeats ? data.earningsBeats.filter((b) => b.beat).length : null;
+    const daysToEarnings = data.nextEarningsDate != null ? Math.round((data.nextEarningsDate * 1000 - now) / 86400000) : null;
+    const historicalVolatility = computeHistoricalVolatility(monthlyPriceHistory);
+    const fcfYieldValue = multiplesTable.find((m) => m.metric === "FCF prinos")?.value ?? null;
+    const fcfYieldPremium = computeFcfYieldPremium(fcfYieldValue, DEFAULT_ASSUMPTIONS.riskFreeRate);
 
     content = (
       <div className="mt-6 space-y-4">
@@ -350,6 +436,12 @@ export default function OverviewCard() {
               <div className="text-xs text-zinc-500 dark:text-zinc-400">
                 {revenueTtmLabel} {fmtMarketCap(revenueTtmOrLatest, data.currency)}
               </div>
+              {data.nextEarningsDate != null && (
+                <div className="text-xs text-zinc-500 dark:text-zinc-400">
+                  Sledeći izveštaj: {new Date(data.nextEarningsDate * 1000).toLocaleDateString("sr-RS")}
+                  {daysToEarnings != null && daysToEarnings >= 0 ? ` (za ${daysToEarnings} d.)` : ""}
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -475,7 +567,57 @@ export default function OverviewCard() {
                 label="Zarada naspram procena (poslednja 4 kv.)"
                 value={beatsCount != null && data.earningsBeats ? `${beatsCount}/${data.earningsBeats.length} premašilo` : "Nije dostupno"}
               />
+              <div className="flex justify-between items-baseline gap-3 py-0.5">
+                <span className="text-zinc-500 dark:text-zinc-400">Trend broja akcija u opticaju</span>
+                <span className={`text-right font-medium shrink-0 ${toneClass(shareCountTrend.direction === "opada (otkup)" || shareCountTrend.direction === "stabilno" ? "good" : shareCountTrend.direction === "raste (dilucija)" ? "neutral" : "unknown")}`}>
+                  {shareCountTrend.direction === "nepoznato" ? "—" : shareCountTrend.direction}
+                </span>
+              </div>
+              <div className="flex justify-between items-baseline gap-3 py-0.5">
+                <span className="text-zinc-500 dark:text-zinc-400">Ukupni prinos akcionarima (div. + otkup)</span>
+                <span className={`text-right font-medium shrink-0 ${toneClass(toneForSigned(shareholderYield))}`}>{fmtPct(shareholderYield, 2)}</span>
+              </div>
             </div>
+            <p className="text-[11px] text-zinc-400 mt-2 italic">{shareCountTrend.detail}</p>
+
+            {data.insiderTransactions && data.insiderTransactions.length > 0 && (
+              <div className="mt-3 pt-2 border-t border-zinc-100 dark:border-zinc-800">
+                <div className="text-[10px] uppercase text-zinc-400 mb-1">Poslednje insajderske transakcije</div>
+                <table className="w-full text-[11px]">
+                  <tbody>
+                    {data.insiderTransactions.slice(0, 5).map((t, i) => (
+                      <tr key={i} className="border-t border-zinc-100 dark:border-zinc-800">
+                        <td className="py-1 text-zinc-500 dark:text-zinc-400">{t.date != null ? new Date(t.date * 1000).toLocaleDateString("sr-RS") : "—"}</td>
+                        <td className="py-1 text-zinc-500 dark:text-zinc-400 truncate max-w-[110px]">{t.filerName ?? "—"}</td>
+                        <td className={`py-1 text-right font-medium ${t.type === "kupovina" ? "text-emerald-600 dark:text-emerald-400" : t.type === "prodaja" ? "text-red-600 dark:text-red-400" : "text-zinc-400"}`}>
+                          {t.type} {t.shares != null ? `(${t.shares.toLocaleString("en-US")})` : ""}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {earningsReactions.length > 0 && (
+              <div className="mt-3 pt-2 border-t border-zinc-100 dark:border-zinc-800">
+                <div className="text-[10px] uppercase text-zinc-400 mb-1">Reakcija cene posle izveštaja (aproksimacija)</div>
+                <table className="w-full text-[11px]">
+                  <tbody>
+                    {earningsReactions.map((e) => (
+                      <tr key={e.date} className="border-t border-zinc-100 dark:border-zinc-800">
+                        <td className="py-1 text-zinc-500 dark:text-zinc-400">{new Date(e.date * 1000).toLocaleDateString("sr-RS")}</td>
+                        <td className={`py-1 ${e.beat ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>{e.beat ? "Premašilo" : "Promašilo"}</td>
+                        <td className={`py-1 text-right font-medium ${toneClass(toneForSigned(e.reactionPercent))}`}>{fmtPct(e.reactionPercent, 1)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <p className="text-[11px] text-zinc-400 mt-1 italic">
+                  Približna promena cene u ~2 meseca nakon kraja kvartala — Yahoo ne daje tačan datum objave rezultata, pa ovo NIJE precizna reakcija na dan objave.
+                </p>
+              </div>
+            )}
           </Box>
 
           {/* Rast */}
@@ -488,9 +630,15 @@ export default function OverviewCard() {
               <StatTile label="Dobit 3G" value={fmtPct(earningsGrowth.threeYear)} />
               <StatTile label="Dobit 5G" value={fmtPct(earningsGrowth.fiveYear)} />
             </div>
-            <div className="text-xs text-zinc-600 dark:text-zinc-400">
+            <div className="text-xs text-zinc-600 dark:text-zinc-400 mb-2">
               Procena analitičara za budući rast: <span className="font-semibold">{growthPotential.estimateRange}</span>
             </div>
+            <div className="text-xs text-zinc-600 dark:text-zinc-400">
+              Uzastopni kvartali rasta: prihod{" "}
+              <span className={`font-semibold ${toneClass(toneForStreak(consecutiveRevenueQuarters))}`}>{consecutiveRevenueQuarters ?? "—"}</span>, dobit{" "}
+              <span className={`font-semibold ${toneClass(toneForStreak(consecutiveEarningsQuarters))}`}>{consecutiveEarningsQuarters ?? "—"}</span>
+            </div>
+            <p className="text-[11px] text-zinc-400 mt-1 italic">Sekvencijalno kvartal-na-kvartal (ne godina-na-godinu) — Yahoo obično vraća samo poslednja 4 kvartala.</p>
           </Box>
 
           {/* Ključni pokazatelji — namerno BEZ rasta prihoda/dobiti (već su u kutiji "Rast")
@@ -513,15 +661,55 @@ export default function OverviewCard() {
                 <div className="text-[10px] uppercase text-zinc-400 mb-0.5">Bilans stanja</div>
                 <KeyVal label="Gotovina" value={fmtMarketCap(data.fundamentals.totalCash, data.currency)} />
                 <KeyVal label="Dug" value={fmtMarketCap(data.fundamentals.totalDebt, data.currency)} />
+                <div className="flex justify-between items-baseline gap-3 py-0.5">
+                  <span className="text-zinc-500 dark:text-zinc-400">Neto dug/EBITDA (proxy)</span>
+                  <span className={`text-right font-medium shrink-0 ${toneClass(toneForNetDebtToEbitda(netDebtToEbitda))}`}>{fmtRatio(netDebtToEbitda)}</span>
+                </div>
+              </div>
+            </div>
+            <div className="mt-3 pt-2 border-t border-zinc-100 dark:border-zinc-800 text-xs">
+              <div className="flex justify-between items-baseline gap-3 py-0.5">
+                <span className="text-zinc-500 dark:text-zinc-400">Kvalitet zarade (neto/operativna dobit)</span>
+                <span className={`text-right font-medium shrink-0 ${toneClass(qualityOfEarnings.label === "Uredno" ? "good" : qualityOfEarnings.label === "Proveriti jednokratne stavke" ? "bad" : "unknown")}`}>
+                  {qualityOfEarnings.label}
+                </span>
+              </div>
+              <div className="flex justify-between items-baseline gap-3 py-0.5">
+                <span className="text-zinc-500 dark:text-zinc-400">Stabilnost FCF-a (koef. varijacije)</span>
+                <span
+                  className={`text-right font-medium shrink-0 ${toneClass(fcfStability.label === "Stabilan" ? "good" : fcfStability.label === "Umereno stabilan" ? "neutral" : fcfStability.label === "Nestabilan" ? "bad" : "unknown")}`}
+                >
+                  {fcfStability.label}
+                  {fcfStability.coefficientOfVariation != null ? ` (${fcfStability.coefficientOfVariation.toFixed(2)})` : ""}
+                </span>
+              </div>
+              <div className="flex justify-between items-baseline gap-3 py-0.5">
+                <span className="text-zinc-500 dark:text-zinc-400">Akcijska kompenzacija (SBC) / prihod</span>
+                <span className={`text-right font-medium shrink-0 ${toneClass(toneForSbcPercent(sbcPercent))}`}>{fmtPct(sbcPercent, 1)}</span>
               </div>
             </div>
             <p className="text-[11px] text-zinc-400 mt-2 italic">
-              Rast prihoda/dobiti je u kutiji &quot;Rast&quot;, a ROE i dividenda u kutiji &quot;Menadžment&quot; — ovde su samo marže i gotovina, da se isti broj ne ponavlja pod dva imena.
+              {qualityOfEarnings.detail} {fcfStability.detail}
+            </p>
+            <p className="text-[11px] text-zinc-400 mt-1 italic">
+              Rast prihoda/dobiti je u kutiji &quot;Rast&quot;, a ROE i dividenda u kutiji &quot;Menadžment&quot; — ovde su samo marže, gotovina i kvalitet zarade, da se isti broj ne ponavlja pod dva imena.
             </p>
           </Box>
 
           {/* Rizik */}
           <Box title="Rizik" badge={<span className={`text-xs font-bold ${scoreTextColor(scores.risk.score)}`}>{scores.risk.label}</span>}>
+            <div className="flex justify-between items-baseline gap-3 py-1 mb-1">
+              <span className="text-xs text-zinc-500 dark:text-zinc-400">Altman Z-score (rizik bankrotstva)</span>
+              <span
+                className={`text-xs text-right font-semibold shrink-0 ${toneClass(altmanZScore.zone === "Sigurna zona" ? "good" : altmanZScore.zone === "Siva zona" ? "neutral" : altmanZScore.zone === "Zona rizika" ? "bad" : "unknown")}`}
+              >
+                {altmanZScore.z != null ? `${altmanZScore.z.toFixed(2)} — ${altmanZScore.zone}` : altmanZScore.zone}
+              </span>
+            </div>
+            <div className="flex justify-between items-baseline gap-3 py-1 mb-2">
+              <span className="text-xs text-zinc-500 dark:text-zinc-400">Istorijska volatilnost cene (anualizovana)</span>
+              <span className={`text-xs text-right font-semibold shrink-0 ${toneClass(toneForVolatility(historicalVolatility))}`}>{fmtPct(historicalVolatility, 0)}</span>
+            </div>
             <CheckRow c={financialHealthCheck} />
             <CheckRow
               c={{ label: "Diversifikovani prihodi (segmenti/geografija)", pass: null, detail: "Nije merljivo — Yahoo Finance ne pruža podelu prihoda po segmentima za većinu tikera." }}
@@ -543,6 +731,7 @@ export default function OverviewCard() {
                 ))}
               </div>
             )}
+            <p className="text-[11px] text-zinc-400 mt-3 italic">{altmanZScore.detail}</p>
           </Box>
 
           {/* Valuacija */}
@@ -563,8 +752,15 @@ export default function OverviewCard() {
               <p className="text-xs italic text-zinc-500 dark:text-zinc-400 mb-3">Nedovoljno podataka za procenu unutrašnje vrednosti.</p>
             )}
             {rangePosition != null && (
-              <div className="mb-3 text-[11px] text-zinc-500 dark:text-zinc-400">
-                52-nedeljni raspon: {fmtMoney(data.fiftyTwoWeekLow, data.currency)} – {fmtMoney(data.fiftyTwoWeekHigh, data.currency)} (trenutno na {rangePosition.toFixed(0)}%)
+              <div className="mb-3">
+                <div className="relative h-2 rounded-full bg-zinc-200 dark:bg-zinc-800">
+                  <div className="absolute top-0 h-2 w-1 bg-blue-600" style={{ left: `${Math.min(100, Math.max(0, rangePosition))}%` }} />
+                </div>
+                <div className="flex justify-between text-[11px] text-zinc-500 dark:text-zinc-400 mt-1">
+                  <span>52-ned. min {fmtMoney(data.fiftyTwoWeekLow, data.currency)}</span>
+                  <span>({rangePosition.toFixed(0)}%)</span>
+                  <span>52-ned. maks {fmtMoney(data.fiftyTwoWeekHigh, data.currency)}</span>
+                </div>
               </div>
             )}
             <div className="grid grid-cols-2 gap-2 mb-3">
@@ -581,6 +777,10 @@ export default function OverviewCard() {
                     <td className={`py-1 text-right font-medium ${TONE_COLORS[m.tone]}`}>{m.unit === "%" ? fmtPct(m.value, 1) : fmtRatio(m.value)}</td>
                   </tr>
                 ))}
+                <tr className="border-t border-zinc-100 dark:border-zinc-800">
+                  <td className="py-1 text-zinc-500 dark:text-zinc-400">FCF prinos − bezrizična stopa ({(DEFAULT_ASSUMPTIONS.riskFreeRate * 100).toFixed(1)}%)</td>
+                  <td className={`py-1 text-right font-medium ${toneClass(toneForSigned(fcfYieldPremium))}`}>{fmtPct(fcfYieldPremium, 1)}</td>
+                </tr>
               </tbody>
             </table>
             <div
@@ -635,7 +835,9 @@ export default function OverviewCard() {
       <div className="mt-4 mb-5 text-sm leading-relaxed rounded-xl border border-amber-300/60 dark:border-amber-700/50 bg-amber-50 dark:bg-amber-900/15 text-amber-800 dark:text-amber-300 p-4">
         <b>⚠ Ovo NIJE finansijski savet.</b> Sve ocene dolaze iz fiksnih, dokumentovanih pragova nad merljivim podacima — bez
         subjektivnih procena. Stavke koje finansijski izveštaji ne mere direktno (raspodela prihoda po segmentima, procena
-        pretnje od disrupcije i sl.) su jasno označene kao takve, umesto da se izmišljaju. Samo američke i evropske akcije.
+        pretnje od disrupcije i sl.) su jasno označene kao takve, umesto da se izmišljaju. Altman Z-score je klasična formula
+        za proizvodna preduzeća (manje pouzdana za banke i nekretnine), a reakcija cene na izveštaje je gruba aproksimacija jer
+        Yahoo ne daje tačan datum objave rezultata, samo kraj fiskalnog kvartala. Samo američke i evropske akcije.
       </div>
 
       <form onSubmit={handleSubmit} className="flex flex-wrap gap-2 items-end border border-zinc-200 dark:border-zinc-800 bg-white/70 dark:bg-zinc-900/50 rounded-xl p-4">

@@ -4,9 +4,12 @@
 
 import type { HistoricalPricePoint } from "@/lib/buildModel";
 
-export async function fetchPriceHistory(symbol: string): Promise<HistoricalPricePoint[]> {
+export async function fetchPriceHistory(symbol: string, options?: { range?: string; interval?: string }): Promise<HistoricalPricePoint[]> {
   try {
-    const res = await fetch(`/api/stock?symbol=${encodeURIComponent(symbol)}&type=history`, { cache: "no-store" });
+    const params = new URLSearchParams({ symbol, type: "history" });
+    if (options?.range) params.set("range", options.range);
+    if (options?.interval) params.set("interval", options.interval);
+    const res = await fetch(`/api/stock?${params.toString()}`, { cache: "no-store" });
     if (!res.ok) return [];
     const data = await res.json();
     const chartResult = data?.chart?.result?.[0];
@@ -25,6 +28,13 @@ export async function fetchPriceHistory(symbol: string): Promise<HistoricalPrice
   } catch {
     return [];
   }
+}
+
+// Dnevna cenovna istorija (samo poslednje 2 godine) — koristi se isključivo
+// za aproksimaciju reakcije cene na izveštaje o rezultatima, gde je mesečna
+// rezolucija (podrazumevana u fetchPriceHistory) prégruba.
+export function fetchDailyPriceHistory(symbol: string): Promise<HistoricalPricePoint[]> {
+  return fetchPriceHistory(symbol, { range: "2y", interval: "1d" });
 }
 
 // SPY istorija je ista za svaku analizu u ovoj sesiji — kešira se u memoriji

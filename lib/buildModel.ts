@@ -76,7 +76,7 @@ export interface ModelData {
   marketCap: number | null;
   revenueTtm: number | null;
   exchangeName: string | null;
-  earningsBeats: { beat: boolean; surprisePercent: number | null }[] | null;
+  earningsBeats: { beat: boolean; surprisePercent: number | null; date: number | null }[] | null;
   businessSummary: string | null;
   sector: string | null;
   industry: string | null;
@@ -95,6 +95,27 @@ export interface ModelData {
     sell: number;
     strongSell: number;
   } | null;
+  // Za Altman Z-score proxy — samo poslednja dostupna godina (dovoljno za
+  // trenutni "snapshot" rizika, ne treba istorija).
+  totalAssets: number | null;
+  totalLiabilities: number | null;
+  totalCurrentAssets: number | null;
+  totalCurrentLiabilities: number | null;
+  retainedEarnings: number | null;
+  latestDepreciation: number | null; // za EBITDA proxy (operatingIncome + depreciation)
+  latestStockBasedCompensation: number | null;
+  quarterlyRevenue: number[]; // hronološki rastuće, koliko god kvartala Yahoo vrati (obično poslednja 4)
+  quarterlyNetIncome: number[];
+  sharesOutstandingHistory: { year: string; shares: number }[]; // hronološki rastuće
+  insiderTransactions: { date: number | null; filerName: string | null; type: "kupovina" | "prodaja" | "ostalo"; shares: number | null }[] | null;
+}
+
+function classifyInsiderTransaction(text: string | undefined | null): "kupovina" | "prodaja" | "ostalo" {
+  if (!text) return "ostalo";
+  const t = text.toLowerCase();
+  if (t.includes("sale")) return "prodaja";
+  if (t.includes("purchase") || t.includes("buy")) return "kupovina";
+  return "ostalo";
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -115,6 +136,8 @@ export function extractModelData(fullData: any, symbol: string): ModelData {
   const recTrend = result.recommendationTrend?.trend?.[0] || null;
   const calendarEvents = result.calendarEvents || {};
   const earningsHistory = result.earningsHistory?.history || [];
+  const quarterlyIncomeStatements = (result.incomeStatementHistoryQuarterly?.incomeStatementHistory || []).slice().reverse();
+  const insiderTransactionsRaw = result.insiderTransactions?.transactions || [];
 
   const country: string | null = assetProfile.country || null;
   const currency: string | null = price.currency || null;
@@ -196,6 +219,42 @@ export function extractModelData(fullData: any, symbol: string): ModelData {
   const fcfByYear = timeseriesByYear("annualFreeCashFlow");
   const debtByYear = timeseriesByYear("annualTotalDebt");
   const equityByYear = timeseriesByYear("annualStockholdersEquity");
+  const sharesByYear = timeseriesByYear("annualOrdinarySharesNumber");
+  const sbcByYear = timeseriesByYear("annualStockBasedCompensation");
+  const sharesOutstandingHistory = Array.from(sharesByYear.entries())
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([year, shares]) => ({ year, shares }));
+  const latestSbcYear = Array.from(sbcByYear.keys()).sort().pop();
+  const latestStockBasedCompensation = latestSbcYear != null ? sbcByYear.get(latestSbcYear) ?? null : null;
+
+  // Poslednja dostupna godina bilansa stanja — balanceSheets je gore
+  // reverse-ovan u hronološki rastući redosled, pa je poslednji element
+  // najnovija godina (ne prvi).
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const latestBalanceSheet: any = balanceSheets[balanceSheets.length - 1] || {};
+  const latestDepreciation = reversedCashflows[reversedCashflows.length - 1]?.depreciation?.raw ?? null;
+
+  const quarterlyRevenue: number[] = quarterlyIncomeStatements
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .map((s: any) => s.totalRevenue?.raw)
+    .filter((v: number | undefined): v is number => v != null);
+  const quarterlyNetIncome: number[] = quarterlyIncomeStatements
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .map((s: any) => s.netIncome?.raw)
+    .filter((v: number | undefined): v is number => v != null);
+
+  const insiderTransactions =
+    insiderTransactionsRaw.length > 0
+      ? insiderTransactionsRaw
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          .map((t: any) => ({
+            date: t.startDate?.raw ?? null,
+            filerName: t.filerName ?? null,
+            type: classifyInsiderTransaction(t.transactionText),
+            shares: t.shares?.raw ?? null,
+          }))
+          .slice(0, 8)
+      : null;
 
   const yearlyRows: YearlyFinancials[] = incomeStatements.map(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -260,6 +319,7 @@ export function extractModelData(fullData: any, symbol: string): ModelData {
         earningsHistory.map((h: any) => ({
           beat: (h.epsDifference?.raw ?? 0) > 0,
           surprisePercent: h.surprisePercent?.raw != null ? h.surprisePercent.raw * 100 : null,
+          date: h.quarter?.raw ?? null,
         }))
       : null,
     businessSummary: assetProfile.longBusinessSummary ?? null,
@@ -282,6 +342,17 @@ export function extractModelData(fullData: any, symbol: string): ModelData {
           strongSell: recTrend.strongSell ?? 0,
         }
       : null,
+    totalAssets: latestBalanceSheet.totalAssets?.raw ?? null,
+    totalLiabilities: latestBalanceSheet.totalLiab?.raw ?? null,
+    totalCurrentAssets: latestBalanceSheet.totalCurrentAssets?.raw ?? null,
+    totalCurrentLiabilities: latestBalanceSheet.totalCurrentLiabilities?.raw ?? null,
+    retainedEarnings: latestBalanceSheet.retainedEarnings?.raw ?? null,
+    latestDepreciation,
+    latestStockBasedCompensation,
+    quarterlyRevenue,
+    quarterlyNetIncome,
+    sharesOutstandingHistory,
+    insiderTransactions,
   };
 }
 
@@ -304,6 +375,15 @@ export interface ComputedModel {
   finalVerdict: FinalVerdict;
   fundamentalsRating: ReturnType<typeof rateFundamentals>;
   redFlags: string[];
+  fcfStability: ReturnType<typeof computeFcfStability>;
+  consecutiveRevenueQuarters: number | null;
+  consecutiveEarningsQuarters: number | null;
+  qualityOfEarnings: QualityOfEarnings;
+  altmanZScore: AltmanZScore;
+  shareCountTrend: ShareCountTrend;
+  shareholderYield: number | null;
+  netDebtToEbitda: number | null;
+  sbcPercent: number | null;
 }
 
 export interface HistoricalPricePoint {
@@ -431,6 +511,66 @@ export function computeDebtEquityHistory(yearlyRows: YearlyFinancials[]): DebtEq
     year: r.label,
     ratio: r.totalDebt != null && r.totalEquity != null && r.totalEquity !== 0 ? r.totalDebt / r.totalEquity : null,
   }));
+}
+
+// ---------- Stabilnost slobodnog novčanog toka ----------
+//
+// Koeficijent varijacije (standardna devijacija / prosek) kroz dostupne
+// godišnje izveštaje — koliko je FCF predvidljiv iz godine u godinu, ne
+// samo kolika mu je trenutna marža ili nivo. Kad je bar jedna godina bila
+// negativna, CV kao odnos gubi smisao (deljenje sa prosekom blizu nule ili
+// promena znaka čine broj varljivim — ista vrsta greške koju smo ranije
+// ispravljali kod P/E i P/FCF) — takav slučaj se direktno označava kao
+// "Nestabilan" bez računanja CV broja.
+export interface FcfStability {
+  coefficientOfVariation: number | null;
+  years: number;
+  label: "Stabilan" | "Umereno stabilan" | "Nestabilan" | "Nedovoljno podataka";
+  detail: string;
+}
+
+export function computeFcfStability(yearlyRows: YearlyFinancials[]): FcfStability {
+  const fcfs = yearlyRows.map((r) => r.fcf).filter((v): v is number => v != null);
+  if (fcfs.length < 3) {
+    return {
+      coefficientOfVariation: null,
+      years: fcfs.length,
+      label: "Nedovoljno podataka",
+      detail: "Potrebno je bar 3 godine slobodnog novčanog toka da bi procena stabilnosti imala smisla.",
+    };
+  }
+
+  const hasNegativeYear = fcfs.some((v) => v < 0);
+  const mean = fcfs.reduce((a, b) => a + b, 0) / fcfs.length;
+  const variance = fcfs.reduce((sum, v) => sum + (v - mean) ** 2, 0) / fcfs.length;
+  const stdDev = Math.sqrt(variance);
+  const cv = mean > 0 ? stdDev / mean : null;
+
+  if (hasNegativeYear) {
+    return {
+      coefficientOfVariation: cv,
+      years: fcfs.length,
+      label: "Nestabilan",
+      detail: `Bar jedna od poslednjih ${fcfs.length} godina imala je negativan slobodan novčani tok — bez obzira na koeficijent varijacije, promena znaka sama po sebi znači nepredvidljivu gotovinu.`,
+    };
+  }
+  if (cv == null) {
+    return { coefficientOfVariation: null, years: fcfs.length, label: "Nedovoljno podataka", detail: "Prosečan FCF je nula ili nedostaje — koeficijent varijacije nije izračunljiv." };
+  }
+
+  const label: FcfStability["label"] = cv < 0.3 ? "Stabilan" : cv < 0.6 ? "Umereno stabilan" : "Nestabilan";
+  const interpretation =
+    label === "Stabilan"
+      ? "godišnji FCF se drži blizu proseka — predvidljiva gotovina."
+      : label === "Umereno stabilan"
+        ? "primetna su kolebanja iz godine u godinu, ali bez promene znaka."
+        : "velika kolebanja iz godine u godinu — teško je osloniti se na prosek kao vodič za budućnost.";
+  return {
+    coefficientOfVariation: cv,
+    years: fcfs.length,
+    label,
+    detail: `Koeficijent varijacije ${cv.toFixed(2)} kroz ${fcfs.length} godina (standardna devijacija/prosek) — ${interpretation}`,
+  };
 }
 
 export type MultipleTrend = "rastao" | "opadao" | "stabilan";
@@ -1049,6 +1189,208 @@ export function classifyBusinessPhase(inputs: {
   };
 }
 
+// ---------- Uzastopni kvartali rasta (prihod i neto dobit) ----------
+//
+// Yahoo-ov kvartalni modul obično vraća samo poslednja 4 kvartala, pa je
+// ovo sekvencijalni (kvartal-na-kvartal) niz, ne godina-na-godinu — jasno
+// obeleženo u UI da bi se izbegla zabuna sa sezonskim poređenjima.
+export function computeConsecutiveGrowthStreak(values: number[]): number | null {
+  if (values.length < 2) return null;
+  let streak = 0;
+  for (let i = values.length - 1; i > 0; i--) {
+    if (values[i] > values[i - 1]) streak++;
+    else break;
+  }
+  return streak;
+}
+
+// ---------- Kvalitet zarade: operativna naspram neto dobiti ----------
+//
+// Kad je neto dobit neuobičajeno daleko od operativne dobiti (van otprilike
+// 50-110%, grubo nakon poreza i kamata), to je znak da jednokratne stavke
+// (otpisi, dobici od prodaje imovine, poreske olakšice) menjaju sliku —
+// upozorenje da treba pogledati "ispod" krajnjeg broja, ne konačan sud.
+export interface QualityOfEarnings {
+  ratio: number | null;
+  label: "Uredno" | "Proveriti jednokratne stavke" | "Nedovoljno podataka";
+  detail: string;
+}
+
+export function computeQualityOfEarnings(yearlyRows: YearlyFinancials[]): QualityOfEarnings {
+  const last = yearlyRows[yearlyRows.length - 1];
+  if (!last || last.operatingIncome == null || last.netIncome == null || last.operatingIncome <= 0) {
+    return { ratio: null, label: "Nedovoljno podataka", detail: "Nedostaje operativna ili neto dobit za poslednju godinu, ili je operativna dobit negativna." };
+  }
+  const ratio = last.netIncome / last.operatingIncome;
+  const inRange = ratio >= 0.5 && ratio <= 1.1;
+  return {
+    ratio,
+    label: inRange ? "Uredno" : "Proveriti jednokratne stavke",
+    detail: inRange
+      ? `Neto dobit je ${(ratio * 100).toFixed(0)}% operativne dobiti za poslednju godinu — u očekivanom rasponu nakon poreza i kamata.`
+      : `Neto dobit je ${(ratio * 100).toFixed(0)}% operativne dobiti za poslednju godinu — neuobičajeno ${ratio > 1.1 ? "visoko" : "nisko"}, moguće je da jednokratne stavke (otpisi, dobici od prodaje imovine, poreske olakšice) znatno menjaju sliku u odnosu na osnovno poslovanje.`,
+  };
+}
+
+// ---------- Pojednostavljen Altman Z-score ----------
+//
+// Klasična formula (Altman, 1968) za javna proizvodna preduzeća. Namerno
+// nije prilagođavana po sektoru (postoje posebne varijante za privatne i
+// uslužne kompanije) — umesto toga se sektorima gde formula poznato slabo
+// radi (finansije, nekretnine — bilans banke ili REIT-a nije uporediv sa
+// proizvodnim preduzećem) dodaje eksplicitna napomena, da rezultat ne bi
+// izgledao pouzdaniji nego što jeste.
+export interface AltmanZScore {
+  z: number | null;
+  zone: "Sigurna zona" | "Siva zona" | "Zona rizika" | "Nedovoljno podataka";
+  detail: string;
+}
+
+export function buildAltmanZScore(inputs: {
+  totalAssets: number | null;
+  totalLiabilities: number | null;
+  totalCurrentAssets: number | null;
+  totalCurrentLiabilities: number | null;
+  retainedEarnings: number | null;
+  operatingIncome: number | null;
+  marketCap: number | null;
+  revenue: number | null;
+  sector: string | null;
+}): AltmanZScore {
+  const { totalAssets, totalLiabilities, totalCurrentAssets, totalCurrentLiabilities, retainedEarnings, operatingIncome, marketCap, revenue, sector } = inputs;
+  if (
+    totalAssets == null ||
+    totalAssets <= 0 ||
+    totalLiabilities == null ||
+    totalCurrentAssets == null ||
+    totalCurrentLiabilities == null ||
+    retainedEarnings == null ||
+    operatingIncome == null ||
+    marketCap == null ||
+    revenue == null
+  ) {
+    return { z: null, zone: "Nedovoljno podataka", detail: "Nedostaje bar jedna od pet komponenti formule (obrtni kapital, zadržana dobit, EBIT, tržišna vrednost/obaveze, promet/imovina)." };
+  }
+  const workingCapital = totalCurrentAssets - totalCurrentLiabilities;
+  const a = workingCapital / totalAssets;
+  const b = retainedEarnings / totalAssets;
+  const c = operatingIncome / totalAssets;
+  const d = totalLiabilities > 0 ? marketCap / totalLiabilities : 0;
+  const e = revenue / totalAssets;
+  const z = 1.2 * a + 1.4 * b + 3.3 * c + 0.6 * d + 1.0 * e;
+  const zone: AltmanZScore["zone"] = z > 2.99 ? "Sigurna zona" : z > 1.81 ? "Siva zona" : "Zona rizika";
+  const sectorCaveat = sector === "Financial Services" || sector === "Real Estate" ? ` Napomena: formula je manje pouzdana za sektor ${sector} jer struktura bilansa (depoziti, nekretnine) nije uporediva sa proizvodnim preduzećem za koje je formula izvorno razvijena.` : "";
+  return {
+    z,
+    zone,
+    detail: `Z-score ${z.toFixed(2)} — preko 2,99 sigurna zona, 1,81–2,99 siva zona, ispod 1,81 zona rizika od bankrotstva (klasična Altman formula iz 1968. za javna proizvodna preduzeća).${sectorCaveat}`,
+  };
+}
+
+// ---------- Trend broja akcija u opticaju (dilucija naspram otkupa) ----------
+export interface ShareCountTrend {
+  cagr: number | null;
+  direction: "opada (otkup)" | "raste (dilucija)" | "stabilno" | "nepoznato";
+  years: number;
+  detail: string;
+}
+
+export function computeShareCountTrend(history: { year: string; shares: number }[]): ShareCountTrend {
+  if (history.length < 2) {
+    return { cagr: null, direction: "nepoznato", years: history.length, detail: "Nedovoljno godina istorije broja akcija u opticaju." };
+  }
+  const first = history[0].shares;
+  const last = history[history.length - 1].shares;
+  const years = history.length - 1;
+  if (first == null || last == null || first <= 0 || last <= 0 || years <= 0) {
+    return { cagr: null, direction: "nepoznato", years, detail: "Neispravni podaci o broju akcija u opticaju." };
+  }
+  const cagr = Math.pow(last / first, 1 / years) - 1;
+  const direction: ShareCountTrend["direction"] = cagr < -0.005 ? "opada (otkup)" : cagr > 0.005 ? "raste (dilucija)" : "stabilno";
+  const explain =
+    direction === "opada (otkup)"
+      ? "kompanija smanjuje broj akcija u opticaju (otkup) — povećava učešće postojećih akcionara u budućoj dobiti."
+      : direction === "raste (dilucija)"
+        ? "broj akcija u opticaju raste (dilucija) — obično zbog emisije novih akcija ili akcijske kompenzacije zaposlenima."
+        : "broj akcija u opticaju je stabilan.";
+  return { cagr, direction, years, detail: `Broj akcija se menjao po stopi od ${(cagr * 100).toFixed(1)}% godišnje kroz ${years} godina — ${explain}` };
+}
+
+// ---------- Ukupni prinos akcionarima (dividenda + otkup) ----------
+export function computeShareholderYield(dividendYield: number | null, shareCountCagr: number | null): number | null {
+  if (dividendYield == null && shareCountCagr == null) return null;
+  const buybackYield = shareCountCagr != null ? -shareCountCagr : 0;
+  return (dividendYield ?? 0) + buybackYield;
+}
+
+// ---------- FCF prinos naspram bezrizične stope ----------
+export function computeFcfYieldPremium(fcfYield: number | null, riskFreeRate: number): number | null {
+  if (fcfYield == null) return null;
+  return fcfYield - riskFreeRate;
+}
+
+// ---------- Istorijska volatilnost cene (anualizovana, iz mesečnih prinosa) ----------
+export function computeHistoricalVolatility(priceHistory: HistoricalPricePoint[]): number | null {
+  if (priceHistory.length < 13) return null;
+  const returns: number[] = [];
+  for (let i = 1; i < priceHistory.length; i++) {
+    const prev = priceHistory[i - 1].close;
+    const cur = priceHistory[i].close;
+    if (prev > 0) returns.push(cur / prev - 1);
+  }
+  if (returns.length < 12) return null;
+  const mean = returns.reduce((a, b) => a + b, 0) / returns.length;
+  const variance = returns.reduce((sum, r) => sum + (r - mean) ** 2, 0) / returns.length;
+  return Math.sqrt(variance) * Math.sqrt(12); // anualizovano iz mesečne standardne devijacije
+}
+
+// ---------- Neto dug / EBITDA ----------
+//
+// EBITDA je proxy (operativna dobit + amortizacija iz novčanog toka), ne
+// tačna knjigovodstvena EBITDA — dovoljno za grubu ocenu zaduženosti.
+export function computeNetDebtToEbitda(totalDebt: number | null, totalCash: number | null, operatingIncome: number | null, depreciation: number | null): number | null {
+  if (totalDebt == null || totalCash == null || operatingIncome == null) return null;
+  const ebitda = operatingIncome + (depreciation ?? 0);
+  if (ebitda <= 0) return null;
+  return (totalDebt - totalCash) / ebitda;
+}
+
+// ---------- Akcijska kompenzacija (SBC) kao % prihoda ----------
+export function computeSbcPercent(sbc: number | null, revenue: number | null): number | null {
+  if (sbc == null || revenue == null || revenue <= 0) return null;
+  return sbc / revenue;
+}
+
+// ---------- Istorijska reakcija cene na izveštaje o rezultatima (aproksimacija) ----------
+//
+// VAŽNA NAPOMENA O TAČNOSTI: Yahoo-ov earningsHistory modul daje datum
+// KRAJA FISKALNOG KVARTALA, ne datum OBJAVE rezultata — stvarna objava je
+// obično 3-6 nedelja kasnije. Zato se ovde ne meri reakcija "na dan objave"
+// (to bi zahtevalo tačan datum objave, koji ovaj izvor ne daje), nego
+// promena cene u širokom prozoru od ~2 meseca posle kraja kvartala, koji bi
+// trebalo da OBUHVATI datum objave za većinu kompanija. Ovo je gruba
+// aproksimacija — prikazuje se sa jasnom napomenom, ne kao precizan broj.
+export interface EarningsReaction {
+  date: number;
+  beat: boolean;
+  reactionPercent: number | null;
+}
+
+export function computeEarningsReactions(
+  earningsBeats: { beat: boolean; date: number | null }[] | null,
+  dailyPriceHistory: HistoricalPricePoint[]
+): EarningsReaction[] {
+  if (!earningsBeats || !dailyPriceHistory.length) return [];
+  return earningsBeats
+    .filter((e): e is { beat: boolean; date: number } => e.date != null)
+    .map((e) => {
+      const before = findClosestPoint(dailyPriceHistory, e.date, 10);
+      const after = findClosestPoint(dailyPriceHistory, e.date + 60 * 86400, 15);
+      const reactionPercent = before && after && before.close > 0 ? after.close / before.close - 1 : null;
+      return { date: e.date, beat: e.beat, reactionPercent };
+    });
+}
+
 export function computeModel(data: ModelData, assumptions: Assumptions = DEFAULT_ASSUMPTIONS): ComputedModel {
   const f = data.fundamentals;
   const wacc = estimateWacc(f, assumptions);
@@ -1163,6 +1505,26 @@ export function computeModel(data: ModelData, assumptions: Assumptions = DEFAULT
     revenueGrowthTtm: data.revenueGrowthTtm,
     analystDispersionPercent,
   });
+  const fcfStability = computeFcfStability(data.yearlyRows);
+  const consecutiveRevenueQuarters = computeConsecutiveGrowthStreak(data.quarterlyRevenue);
+  const consecutiveEarningsQuarters = computeConsecutiveGrowthStreak(data.quarterlyNetIncome);
+  const qualityOfEarnings = computeQualityOfEarnings(data.yearlyRows);
+  const lastRowForZ = data.yearlyRows[data.yearlyRows.length - 1];
+  const altmanZScore = buildAltmanZScore({
+    totalAssets: data.totalAssets,
+    totalLiabilities: data.totalLiabilities,
+    totalCurrentAssets: data.totalCurrentAssets,
+    totalCurrentLiabilities: data.totalCurrentLiabilities,
+    retainedEarnings: data.retainedEarnings,
+    operatingIncome: lastRowForZ?.operatingIncome ?? null,
+    marketCap: data.marketCap,
+    revenue: lastRowForZ?.revenue ?? null,
+    sector: data.sector,
+  });
+  const shareCountTrend = computeShareCountTrend(data.sharesOutstandingHistory);
+  const shareholderYield = computeShareholderYield(data.dividendYield, shareCountTrend.cagr);
+  const netDebtToEbitda = computeNetDebtToEbitda(data.fundamentals.totalDebt, data.fundamentals.totalCash, lastRowForZ?.operatingIncome ?? null, data.latestDepreciation);
+  const sbcPercent = computeSbcPercent(data.latestStockBasedCompensation, lastRowForZ?.revenue ?? data.revenueTtm);
 
   const bullBear = buildBullBear({
     financialTrendVerdict: breakdown.verdict,
@@ -1180,5 +1542,33 @@ export function computeModel(data: ModelData, assumptions: Assumptions = DEFAULT
     redFlagCount: redFlags.length,
   });
 
-  return { data, wacc, avgIntrinsicValue, lynchValue, shortTermUpside, valuationUpside, breakdown, growthFilter, valuationFilter, moat, moatNarrative, growthPotential, risks, management, bullBear, finalVerdict, fundamentalsRating, redFlags };
+  return {
+    data,
+    wacc,
+    avgIntrinsicValue,
+    lynchValue,
+    shortTermUpside,
+    valuationUpside,
+    breakdown,
+    growthFilter,
+    valuationFilter,
+    moat,
+    moatNarrative,
+    growthPotential,
+    risks,
+    management,
+    bullBear,
+    finalVerdict,
+    fundamentalsRating,
+    redFlags,
+    fcfStability,
+    consecutiveRevenueQuarters,
+    consecutiveEarningsQuarters,
+    qualityOfEarnings,
+    altmanZScore,
+    shareCountTrend,
+    shareholderYield,
+    netDebtToEbitda,
+    sbcPercent,
+  };
 }
