@@ -308,7 +308,7 @@ export default function OverviewCard() {
       bullBear,
       finalVerdict,
       redFlags,
-      avgIntrinsicValue,
+      shortTermUpside,
       fcfStability,
       consecutiveRevenueQuarters,
       consecutiveEarningsQuarters,
@@ -392,13 +392,18 @@ export default function OverviewCard() {
         ? ((data.currentPrice - data.fiftyTwoWeekLow) / (data.fiftyTwoWeekHigh - data.fiftyTwoWeekLow)) * 100
         : null;
 
-    // Traka "jeftino/pošteno/skupo" u odnosu na prosečnu procenjenu unutrašnju
-    // vrednost (prosek DCF/DDM/relativne valuacije/Lynch formule) — ±15% je
-    // fiksna margina, ista za svaku kompaniju.
-    const band = avgIntrinsicValue != null ? { cheap: avgIntrinsicValue * 0.85, fair: avgIntrinsicValue, expensive: avgIntrinsicValue * 1.15 } : null;
-    const bandMin = band ? band.cheap * 0.85 : null;
-    const bandMax = band ? band.expensive * 1.15 : null;
-    const pricePosition = band && bandMin != null && bandMax != null && bandMax > bandMin ? ((data.currentPrice - bandMin) / (bandMax - bandMin)) * 100 : null;
+    // Traka niska/prosečna/visoka ciljna cena analitičara (konsenzus, ne naš
+    // model) — direktno sa Yahoo Finance-a (targetLowPrice/Mean/HighPrice).
+    const targetBand =
+      data.targetLowPrice != null && data.targetMeanPrice != null && data.targetHighPrice != null && data.targetHighPrice > data.targetLowPrice
+        ? { low: data.targetLowPrice, mean: data.targetMeanPrice, high: data.targetHighPrice }
+        : null;
+    const targetBandMin = targetBand ? Math.min(targetBand.low, data.currentPrice) * 0.95 : null;
+    const targetBandMax = targetBand ? Math.max(targetBand.high, data.currentPrice) * 1.05 : null;
+    const targetPricePosition =
+      targetBand && targetBandMin != null && targetBandMax != null && targetBandMax > targetBandMin
+        ? ((data.currentPrice - targetBandMin) / (targetBandMax - targetBandMin)) * 100
+        : null;
 
     const beatsCount = data.earningsBeats ? data.earningsBeats.filter((b) => b.beat).length : null;
     const daysToEarnings = data.nextEarningsDate != null ? Math.round((data.nextEarningsDate * 1000 - now) / 86400000) : null;
@@ -736,20 +741,24 @@ export default function OverviewCard() {
 
           {/* Valuacija */}
           <Box title="Valuacija" badge={<span className={`text-xs font-bold ${scoreTextColor(scores.valuation.score)}`}>{scores.valuation.score ?? "—"}/5</span>}>
-            {band && bandMin != null && bandMax != null && pricePosition != null ? (
+            {targetBand && targetBandMin != null && targetBandMax != null && targetPricePosition != null ? (
               <div className="mb-3">
-                <div className="relative h-2 rounded-full bg-gradient-to-r from-emerald-400 via-amber-400 to-red-400">
-                  <div className="absolute top-0 h-2 w-1 bg-black dark:bg-white" style={{ left: `${Math.min(100, Math.max(0, pricePosition))}%` }} />
+                <div className="relative h-2 rounded-full bg-gradient-to-r from-red-400 via-amber-400 to-emerald-400">
+                  <div className="absolute top-0 h-2 w-1 bg-black dark:bg-white" style={{ left: `${Math.min(100, Math.max(0, targetPricePosition))}%` }} />
                 </div>
                 <div className="flex justify-between text-[11px] text-zinc-500 dark:text-zinc-400 mt-1">
-                  <span>Jeftino {fmtMoney(band.cheap, data.currency)}</span>
-                  <span>Pošteno {fmtMoney(band.fair, data.currency)}</span>
-                  <span>Skupo {fmtMoney(band.expensive, data.currency)}</span>
+                  <span>Nisko {fmtMoney(targetBand.low, data.currency)}</span>
+                  <span>Prosek {fmtMoney(targetBand.mean, data.currency)}</span>
+                  <span>Visoko {fmtMoney(targetBand.high, data.currency)}</span>
                 </div>
-                <div className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-1">Sada: {fmtMoney(data.currentPrice, data.currency)}</div>
+                <div className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-1">
+                  Sada: {fmtMoney(data.currentPrice, data.currency)}
+                  {shortTermUpside != null ? ` (${fmtPct(shortTermUpside, 1)} do prosečne ciljne cene)` : ""}
+                </div>
+                <p className="text-[11px] text-zinc-400 mt-1 italic">Konsenzus ciljnih cena analitičara (Yahoo Finance) — nije naša procena vrednosti, već tuđe mišljenje o budućoj ceni.</p>
               </div>
             ) : (
-              <p className="text-xs italic text-zinc-500 dark:text-zinc-400 mb-3">Nedovoljno podataka za procenu unutrašnje vrednosti.</p>
+              <p className="text-xs italic text-zinc-500 dark:text-zinc-400 mb-3">Nema dovoljno pokrivenosti analitičara (ciljne cene) za ovaj tiker.</p>
             )}
             {rangePosition != null && (
               <div className="mb-3">
