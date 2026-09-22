@@ -65,6 +65,8 @@ interface Candidate {
   redFlagCount: number;
   fcfYield: number | null;
   evToEbitda: number | null;
+  revenueCagr: number | null; // istorijski godišnji rast prihoda (CAGR) — proxy za "svake godine ~X%"
+  moatScore: number; // 1-10, iz scoreMoat — širok jaz (wide moat) je >=6, isti prag kao na /pregled
   error?: string;
 }
 
@@ -104,6 +106,8 @@ async function scoreCandidate(ticker: string): Promise<Candidate> {
     redFlagCount: computed.redFlags.length,
     fcfYield: computeFcfYield(fcf, modelData.marketCap),
     evToEbitda: modelData.evToEbitda,
+    revenueCagr: computed.breakdown.revenueCagr,
+    moatScore: computed.moat.score,
   };
 }
 
@@ -121,6 +125,8 @@ function fitLabelFor(weight: number): Recommendation["fitLabel"] {
 
 export default function RecommendationsScreener() {
   const [indexKey, setIndexKey] = useState<IndexKey>("sp500");
+  const [minGrowthPercent, setMinGrowthPercent] = useState(15);
+  const [requireWideMoat, setRequireWideMoat] = useState(true);
   const [holdings, setHoldings] = useState<PortfolioHolding[] | null>(null);
   const [sectorWeights, setSectorWeights] = useState<Map<string, number> | null>(null);
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
@@ -192,6 +198,8 @@ export default function RecommendationsScreener() {
         if (c.verdictLabel !== "Kupovina") return;
         if (c.fundamentalsRating !== "Jaki") return;
         if (c.redFlagCount > 0) return;
+        if (c.revenueCagr == null || c.revenueCagr < minGrowthPercent / 100) return;
+        if (requireWideMoat && c.moatScore < 6) return;
 
         const sectorKey = c.sector || "Nepoznat sektor";
         const existingSectorWeight = sectorWeightMap.get(sectorKey) || 0;
@@ -223,12 +231,15 @@ export default function RecommendationsScreener() {
       <div className="mt-4 mb-5 text-sm leading-relaxed rounded-xl border border-amber-300/60 dark:border-amber-700/50 bg-amber-50 dark:bg-amber-900/15 text-amber-800 dark:text-amber-300 p-4">
         <b>⚠ Ovo NIJE finansijski savet.</b> Prikazane su kompanije iz izabranog indeksa koje (1) ispunjavaju uslove
         istog sveobuhvatnog modela kao <a href="/pregled" className="underline">pregled kompanije</a> (sud
-        &quot;Kupovina&quot;, fundamenti &quot;Jaki&quot;, nula crvenih zastavica), (2) još nisu u tvom{" "}
-        <a href="/portfolio" className="underline">portfelju</a>, i (3) rangirane su po tome koliko dobro popunjavaju
+        &quot;Kupovina&quot;, fundamenti &quot;Jaki&quot;, nula crvenih zastavica), (2) imaju istorijski godišnji rast
+        prihoda (CAGR) najmanje onoliko koliko si podesio ispod i, ako je uključeno, širok jaz (moat skor ≥ 6/10 — isti
+        prag kao oznaka &quot;Širok jaz&quot; na pregledu kompanije), (3) još nisu u tvom{" "}
+        <a href="/portfolio" className="underline">portfelju</a>, i (4) rangirane su po tome koliko dobro popunjavaju
         sektorsku prazninu u portfelju — kompanija iz sektora kojeg uopšte nemaš (ili ga imaš malo) rangira se više od
-        kompanije iz sektora u kom si već koncentrisan, čak i ako je pojedinačno &quot;jača&quot; po modelu. Ovo je
-        pojednostavljena mera diverzifikacije (samo sektorska koncentracija) — ne uzima u obzir korelaciju cena,
-        valutnu izloženost ili tvoje lične ciljeve.
+        kompanije iz sektora u kom si već koncentrisan, čak i ako je pojedinačno &quot;jača&quot; po modelu. &quot;Rast
+        prihoda (CAGR)&quot; je istorijski prosečan godišnji rast (iz dostupnih godišnjih izveštaja), ne garancija da će
+        se ponoviti svake godine unapred. Uklapanje u portfelj je pojednostavljena mera diverzifikacije (samo sektorska
+        koncentracija) — ne uzima u obzir korelaciju cena, valutnu izloženost ili tvoje lične ciljeve.
       </div>
 
       <div className="border border-zinc-200 dark:border-zinc-800 bg-white/70 dark:bg-zinc-900/50 rounded-xl p-4 mb-4 flex flex-wrap gap-3 items-center">
@@ -244,6 +255,29 @@ export default function RecommendationsScreener() {
             </option>
           ))}
         </select>
+        <label className="flex items-center gap-1.5 text-sm">
+          Min. rast prihoda (CAGR):
+          <input
+            type="number"
+            min={0}
+            max={100}
+            step={1}
+            value={minGrowthPercent}
+            onChange={(e) => !running && setMinGrowthPercent(Math.max(0, parseFloat(e.target.value) || 0))}
+            disabled={running}
+            className="w-16 px-2 py-1 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-transparent text-sm text-right tabular-nums"
+          />
+          %/god.
+        </label>
+        <label className="flex items-center gap-1.5 text-sm">
+          <input
+            type="checkbox"
+            checked={requireWideMoat}
+            onChange={(e) => !running && setRequireWideMoat(e.target.checked)}
+            disabled={running}
+          />
+          Samo širok jaz (moat ≥ 6/10)
+        </label>
         {!running ? (
           <button onClick={runAnalysis} className="bg-blue-600 text-white font-semibold px-5 py-2 rounded-lg text-sm">
             {recommendations.length || phase === "done" ? "Osveži preporuke" : "Pronađi preporuke"}
@@ -287,6 +321,8 @@ export default function RecommendationsScreener() {
                   <th className="text-left text-xs uppercase text-zinc-500 dark:text-zinc-400 py-2 px-3 border-b border-zinc-200 dark:border-zinc-800">Sektor</th>
                   <th className="text-right text-xs uppercase text-zinc-500 dark:text-zinc-400 py-2 px-3 border-b border-zinc-200 dark:border-zinc-800">Tvoj udeo u sektoru</th>
                   <th className="text-left text-xs uppercase text-zinc-500 dark:text-zinc-400 py-2 px-3 border-b border-zinc-200 dark:border-zinc-800">Uklapanje u portfelj</th>
+                  <th className="text-right text-xs uppercase text-zinc-500 dark:text-zinc-400 py-2 px-3 border-b border-zinc-200 dark:border-zinc-800">Rast prihoda (CAGR)</th>
+                  <th className="text-right text-xs uppercase text-zinc-500 dark:text-zinc-400 py-2 px-3 border-b border-zinc-200 dark:border-zinc-800">Moat</th>
                   <th className="text-right text-xs uppercase text-zinc-500 dark:text-zinc-400 py-2 px-3 border-b border-zinc-200 dark:border-zinc-800">Cena</th>
                   <th className="text-right text-xs uppercase text-zinc-500 dark:text-zinc-400 py-2 px-3 border-b border-zinc-200 dark:border-zinc-800">Tržišna kap.</th>
                   <th className="text-right text-xs uppercase text-zinc-500 dark:text-zinc-400 py-2 px-3 border-b border-zinc-200 dark:border-zinc-800">FCF prinos</th>
@@ -313,6 +349,8 @@ export default function RecommendationsScreener() {
                     >
                       {r.fitLabel}
                     </td>
+                    <td className="py-2 px-3 border-b border-zinc-200 dark:border-zinc-800 text-right tabular-nums text-emerald-600 dark:text-emerald-400">{fmtPct(r.revenueCagr)}</td>
+                    <td className="py-2 px-3 border-b border-zinc-200 dark:border-zinc-800 text-right tabular-nums text-emerald-600 dark:text-emerald-400">{r.moatScore}/10</td>
                     <td className="py-2 px-3 border-b border-zinc-200 dark:border-zinc-800 text-right tabular-nums">{fmtMoney(r.currentPrice, r.currency)}</td>
                     <td className="py-2 px-3 border-b border-zinc-200 dark:border-zinc-800 text-right tabular-nums">{fmtMarketCap(r.marketCap, r.currency)}</td>
                     <td
@@ -339,8 +377,9 @@ export default function RecommendationsScreener() {
 
       {phase === "done" && recommendations.length === 0 && (
         <p className="text-sm text-zinc-500 dark:text-zinc-400">
-          Nijedna kompanija iz {INDEXES[indexKey].label} trenutno ne ispunjava sva tri uslova (Kupovina + jaki
-          fundamenti + nula crvenih zastavica) i istovremeno nije već u tvom portfelju. Probaj drugi indeks.
+          Nijedna kompanija iz {INDEXES[indexKey].label} trenutno ne ispunjava sve uslove (Kupovina + jaki fundamenti +
+          nula crvenih zastavica + rast prihoda ≥{minGrowthPercent}%/god.{requireWideMoat ? " + širok jaz" : ""}) i
+          istovremeno nije već u tvom portfelju. Probaj drugi indeks ili spusti prag rasta.
         </p>
       )}
 
