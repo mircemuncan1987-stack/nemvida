@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { SP500_TICKERS } from "@/lib/sp500";
 import { DOW30_TICKERS } from "@/lib/dow30";
 import { NASDAQ100_TICKERS } from "@/lib/nasdaq100";
@@ -21,7 +21,25 @@ import { fetchStockAnalysisFcf } from "@/lib/clientData";
 import { analyzeConcentration, DEFAULT_HOLDINGS, type PortfolioHolding } from "@/lib/portfolio";
 
 const STORAGE_KEY = "nemvida_portfolio_v1";
+const EXCLUDED_STORAGE_KEY = "nemvida_recs_excluded_v1";
 const CONCURRENCY = 6;
+
+// Tikeri koje korisnik ne želi da vidi u preporukama (npr. već je posedovao i
+// svesno prodao) — VICI je startna vrednost jer je korisnik naveo da ga je
+// posedovao i prodao. Lista se čuva lokalno i može se ručno menjati ispod.
+const DEFAULT_EXCLUDED_TICKERS = ["VICI"];
+
+function loadExcludedTickers(): string[] {
+  try {
+    const raw = localStorage.getItem(EXCLUDED_STORAGE_KEY);
+    if (!raw) return DEFAULT_EXCLUDED_TICKERS;
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) return parsed;
+    return DEFAULT_EXCLUDED_TICKERS;
+  } catch {
+    return DEFAULT_EXCLUDED_TICKERS;
+  }
+}
 
 type IndexKey = "all" | "sp500" | "dow30" | "nasdaq100" | "dax40" | "cac40" | "ibex35" | "ftse100" | "aex" | "obx" | "omxs30" | "ftsemib" | "wig20" | "smi";
 
@@ -138,6 +156,10 @@ export default function RecommendationsScreener() {
   const [indexKey, setIndexKey] = useState<IndexKey>("all");
   const [minGrowthPercent, setMinGrowthPercent] = useState(15);
   const [requireWideMoat, setRequireWideMoat] = useState(true);
+  const [excludeReits, setExcludeReits] = useState(true);
+  const [excludedTickers, setExcludedTickers] = useState<string[]>(DEFAULT_EXCLUDED_TICKERS);
+  const [excludedInput, setExcludedInput] = useState("");
+  const [excludedLoaded, setExcludedLoaded] = useState(false);
   const [holdings, setHoldings] = useState<PortfolioHolding[] | null>(null);
   const [sectorWeights, setSectorWeights] = useState<Map<string, number> | null>(null);
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
@@ -147,6 +169,32 @@ export default function RecommendationsScreener() {
   const [progress, setProgress] = useState(0);
   const [failedCount, setFailedCount] = useState(0);
   const stopRef = useRef(false);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- jednokratno učitavanje iz localStorage pri montiranju
+    setExcludedTickers(loadExcludedTickers());
+    setExcludedLoaded(true);
+  }, []);
+
+  useEffect(() => {
+    if (!excludedLoaded) return;
+    try {
+      localStorage.setItem(EXCLUDED_STORAGE_KEY, JSON.stringify(excludedTickers));
+    } catch {
+      /* nije kritično ako localStorage nije dostupan */
+    }
+  }, [excludedTickers, excludedLoaded]);
+
+  function addExcludedTicker() {
+    const ticker = excludedInput.trim().toUpperCase();
+    if (!ticker) return;
+    setExcludedTickers((prev) => (prev.includes(ticker) ? prev : [...prev, ticker]));
+    setExcludedInput("");
+  }
+
+  function removeExcludedTicker(ticker: string) {
+    setExcludedTickers((prev) => prev.filter((t) => t !== ticker));
+  }
 
   async function runAnalysis() {
     setRunning(true);
@@ -184,6 +232,7 @@ export default function RecommendationsScreener() {
     const sectorWeightMap = new Map<string, number>(concentration.sectorWeights.map((r) => [r.label, r.weight]));
     setSectorWeights(sectorWeightMap);
     const heldTickers = new Set(portfolioTickers.map((t) => t.toUpperCase()));
+    const excludedSet = new Set(excludedTickers.map((t) => t.toUpperCase()));
 
     // Korak 2: skeniraj izabrani indeks istim modelom kao /pregled i /lista, i
     // zadrži samo kompanije koje ispunjavaju uslove ("Kupovina", jaki fundamenti,
@@ -206,6 +255,8 @@ export default function RecommendationsScreener() {
         }
         const c = s.value;
         if (heldTickers.has(batch[idx].toUpperCase())) return; // već u portfelju
+        if (excludedSet.has(batch[idx].toUpperCase())) return; // ručno isključeno (npr. već posedovano i prodato)
+        if (excludeReits && c.sector === "Real Estate") return; // REIT-ovi — nizak FCF prinos po dizajnu (velika distribucija, ne rast)
         if (c.verdictLabel !== "Kupovina") return;
         if (c.fundamentalsRating !== "Jaki") return;
         if (c.redFlagCount > 0) return;
@@ -245,12 +296,18 @@ export default function RecommendationsScreener() {
         &quot;Kupovina&quot;, fundamenti &quot;Jaki&quot;, nula crvenih zastavica), (2) imaju istorijski godišnji rast
         prihoda (CAGR) najmanje onoliko koliko si podesio ispod i, ako je uključeno, širok jaz (moat skor ≥ 6/10 — isti
         prag kao oznaka &quot;Širok jaz&quot; na pregledu kompanije), (3) još nisu u tvom{" "}
-        <a href="/portfolio" className="underline">portfelju</a>, i (4) rangirane su po tome koliko dobro popunjavaju
+        <a href="/portfolio" className="underline">portfelju</a> i nisu na tvojoj listi ručno isključenih (ispod), i
+        (4) rangirane su po tome koliko dobro popunjavaju
         sektorsku prazninu u portfelju — kompanija iz sektora kojeg uopšte nemaš (ili ga imaš malo) rangira se više od
         kompanije iz sektora u kom si već koncentrisan, čak i ako je pojedinačno &quot;jača&quot; po modelu. &quot;Rast
         prihoda (CAGR)&quot; je istorijski prosečan godišnji rast (iz dostupnih godišnjih izveštaja), ne garancija da će
         se ponoviti svake godine unapred. Uklapanje u portfelj je pojednostavljena mera diverzifikacije (samo sektorska
-        koncentracija) — ne uzima u obzir korelaciju cena, valutnu izloženost ili tvoje lične ciljeve.
+        koncentracija) — ne uzima u obzir korelaciju cena, valutnu izloženost ili tvoje lične ciljeve. Dividenda se
+        nigde ne koristi kao pozitivan kriterijum za preporuku — model gleda rast, moat, fundamente i FCF prinos, ne
+        da li kompanija isplaćuje dividendu. Kad je uključeno &quot;Isključi REIT-ove&quot;, sektor &quot;Real
+        Estate&quot; (Yahoo klasifikacija) se u potpunosti preskače — REIT-ovi po zakonu isplaćuju veći deo dobiti kao
+        dividendu, pa im slobodan novčani tok posle isplata (i FCF prinos u ovom modelu) tipično ispada nizak čak i
+        kad je poslovanje zdravo.
       </div>
 
       <div className="border border-zinc-200 dark:border-zinc-800 bg-white/70 dark:bg-zinc-900/50 rounded-xl p-4 mb-4 flex flex-wrap gap-3 items-center">
@@ -289,6 +346,15 @@ export default function RecommendationsScreener() {
           />
           Samo širok jaz (moat ≥ 6/10)
         </label>
+        <label className="flex items-center gap-1.5 text-sm">
+          <input
+            type="checkbox"
+            checked={excludeReits}
+            onChange={(e) => !running && setExcludeReits(e.target.checked)}
+            disabled={running}
+          />
+          Isključi REIT-ove (sektor Nekretnine)
+        </label>
         {!running ? (
           <button onClick={runAnalysis} className="bg-blue-600 text-white font-semibold px-5 py-2 rounded-lg text-sm">
             {recommendations.length || phase === "done" ? "Osveži preporuke" : "Pronađi preporuke"}
@@ -307,6 +373,37 @@ export default function RecommendationsScreener() {
             {failedCount > 0 ? ` — ${failedCount} preskočeno` : ""}
           </span>
         )}
+      </div>
+
+      <div className="border border-zinc-200 dark:border-zinc-800 bg-white/70 dark:bg-zinc-900/50 rounded-xl p-4 mb-4">
+        <h4 className="text-xs font-semibold uppercase text-zinc-500 dark:text-zinc-400 mb-2">
+          Ručno isključene kompanije (npr. već posedovano i prodato)
+        </h4>
+        <div className="flex flex-wrap gap-2 mb-2">
+          {excludedTickers.length === 0 && <span className="text-xs text-zinc-400">Nema isključenih tikera.</span>}
+          {excludedTickers.map((t) => (
+            <span
+              key={t}
+              className="inline-flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-full bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300"
+            >
+              {t}
+              <button onClick={() => removeExcludedTicker(t)} className="text-zinc-500 hover:text-red-600 dark:hover:text-red-400">✕</button>
+            </span>
+          ))}
+        </div>
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={excludedInput}
+            onChange={(e) => setExcludedInput(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && addExcludedTicker()}
+            placeholder="Ticker (npr. VICI)"
+            className="w-40 px-2 py-1 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-transparent text-sm"
+          />
+          <button onClick={addExcludedTicker} className="text-sm px-3 py-1 rounded-lg border border-zinc-300 dark:border-zinc-700">
+            + Dodaj
+          </button>
+        </div>
       </div>
 
       {running && (
