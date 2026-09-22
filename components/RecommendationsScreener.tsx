@@ -23,9 +23,9 @@ import { analyzeConcentration, DEFAULT_HOLDINGS, type PortfolioHolding } from "@
 const STORAGE_KEY = "nemvida_portfolio_v1";
 const CONCURRENCY = 6;
 
-type IndexKey = "sp500" | "dow30" | "nasdaq100" | "dax40" | "cac40" | "ibex35" | "ftse100" | "aex" | "obx" | "omxs30" | "ftsemib" | "wig20" | "smi";
+type IndexKey = "all" | "sp500" | "dow30" | "nasdaq100" | "dax40" | "cac40" | "ibex35" | "ftse100" | "aex" | "obx" | "omxs30" | "ftsemib" | "wig20" | "smi";
 
-const INDEXES: Record<IndexKey, { label: string; tickers: string[] }> = {
+const SINGLE_INDEXES: Record<Exclude<IndexKey, "all">, { label: string; tickers: string[] }> = {
   sp500: { label: "S&P 500", tickers: SP500_TICKERS },
   dow30: { label: "Dow Jones (30)", tickers: DOW30_TICKERS },
   nasdaq100: { label: "Nasdaq-100", tickers: NASDAQ100_TICKERS },
@@ -39,6 +39,17 @@ const INDEXES: Record<IndexKey, { label: string; tickers: string[] }> = {
   ftsemib: { label: "FTSE MIB (Rim/Milano)", tickers: FTSEMIB_TICKERS },
   wig20: { label: "WIG20 (Varšava)", tickers: WIG20_TICKERS },
   smi: { label: "SMI (Cirih)", tickers: SMI_TICKERS },
+};
+
+// "Svi indeksi" spaja tikere iz svih pojedinačnih indeksa (SAD + Evropa) —
+// dedupliciran skup, da preporuke ne budu ograničene samo na S&P 500, već
+// pokrivaju i Dow/Nasdaq-100 kompanije van S&P 500 (retko, ali moguće za
+// neke ADR-ove) i sve evropske indekse odjednom.
+const ALL_TICKERS = Array.from(new Set(Object.values(SINGLE_INDEXES).flatMap((idx) => idx.tickers)));
+
+const INDEXES: Record<IndexKey, { label: string; tickers: string[] }> = {
+  all: { label: `Svi indeksi (globalno, ${ALL_TICKERS.length})`, tickers: ALL_TICKERS },
+  ...SINGLE_INDEXES,
 };
 
 function loadHoldings(): PortfolioHolding[] {
@@ -124,7 +135,7 @@ function fitLabelFor(weight: number): Recommendation["fitLabel"] {
 }
 
 export default function RecommendationsScreener() {
-  const [indexKey, setIndexKey] = useState<IndexKey>("sp500");
+  const [indexKey, setIndexKey] = useState<IndexKey>("all");
   const [minGrowthPercent, setMinGrowthPercent] = useState(15);
   const [requireWideMoat, setRequireWideMoat] = useState(true);
   const [holdings, setHoldings] = useState<PortfolioHolding[] | null>(null);
