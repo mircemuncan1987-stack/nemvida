@@ -14,10 +14,17 @@ import { OMXS30_TICKERS } from "@/lib/omxs30";
 import { FTSEMIB_TICKERS } from "@/lib/ftsemib";
 import { WIG20_TICKERS } from "@/lib/wig20";
 import { SMI_TICKERS } from "@/lib/smi";
-import { DEFAULT_ASSUMPTIONS, computeModel, extractModelData, resolveFcfForYield } from "@/lib/buildModel";
+import {
+  DEFAULT_ASSUMPTIONS,
+  computeModel,
+  computeOverviewScores,
+  computeOwnHistoricalAverages,
+  extractModelData,
+  resolveFcfForYield,
+} from "@/lib/buildModel";
 import { computeFcfYield } from "@/lib/valuation";
 import type { FundamentalsRating, Verdict4 } from "@/lib/model";
-import { fetchStockAnalysisFcf } from "@/lib/clientData";
+import { fetchPriceHistory, fetchStockAnalysisFcf } from "@/lib/clientData";
 import { analyzeConcentration, DEFAULT_HOLDINGS, type PortfolioHolding } from "@/lib/portfolio";
 
 const STORAGE_KEY = "nemvida_portfolio_v1";
@@ -96,6 +103,8 @@ interface Candidate {
   evToEbitda: number | null;
   revenueCagr: number | null; // istorijski godišnji rast prihoda (CAGR) — proxy za "svake godine ~X%"
   moatScore: number; // 1-10, iz scoreMoat — širok jaz (wide moat) je >=6, isti prag kao na /pregled
+  compositeScore: number | null; // 1-5, identičan kompozitnom skoru na /pregled (računa se samo u drugom prolazu)
+  fallbackFcf: number | null;
   error?: string;
 }
 
@@ -112,16 +121,29 @@ function fmtMarketCap(x: number | null, currency: string): string {
   return `${x.toLocaleString("en-US")} ${currency}`;
 }
 
-async function scoreCandidate(ticker: string): Promise<Candidate> {
-  const res = await fetch(`/api/stock?symbol=${encodeURIComponent(ticker)}&type=valuation`, { cache: "no-store" });
+// full=false: brzi prvi prolaz (bez istorije FCF/duga po godini) za jeftine
+// filtere na celom indeksu. full=true + istorija cena: isti podaci kao na
+// /pregled, da kompozitni skor bude identičan onom koji korisnik tamo vidi.
+async function scoreCandidate(ticker: string, full: boolean, knownFallbackFcf?: number | null): Promise<Candidate> {
+  const res = await fetch(`/api/stock?symbol=${encodeURIComponent(ticker)}&type=valuation${full ? "&full=1" : ""}`, { cache: "no-store" });
   const data = await res.json();
   if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
 
   const modelData = extractModelData(data, ticker);
   const computed = computeModel(modelData, DEFAULT_ASSUMPTIONS);
 
-  let fcf = resolveFcfForYield(modelData);
-  if (fcf == null) fcf = await fetchStockAnalysisFcf(ticker);
+  let fallbackFcf: number | null = null;
+  if (resolveFcfForYield(modelData) == null) {
+    fallbackFcf = knownFallbackFcf !== undefined ? knownFallbackFcf : await fetchStockAnalysisFcf(ticker);
+  }
+  const fcf = resolveFcfForYield(modelData) ?? fallbackFcf;
+
+  let compositeScore: number | null = null;
+  if (full) {
+    const priceHistory = await fetchPriceHistory(ticker);
+    const ownAvg = computeOwnHistoricalAverages(computed, priceHistory);
+    compositeScore = computeOverviewScores(computed, ownAvg, fallbackFcf).scores.composite;
+  }
 
   return {
     ticker,
@@ -137,6 +159,8 @@ async function scoreCandidate(ticker: string): Promise<Candidate> {
     evToEbitda: modelData.evToEbitda,
     revenueCagr: computed.breakdown.revenueCagr,
     moatScore: computed.moat.score,
+    compositeScore,
+    fallbackFcf,
   };
 }
 
@@ -156,6 +180,7 @@ export default function RecommendationsScreener() {
   const [indexKey, setIndexKey] = useState<IndexKey>("all");
   const [minGrowthPercent, setMinGrowthPercent] = useState(15);
   const [requireWideMoat, setRequireWideMoat] = useState(true);
+  const [minComposite, setMinComposite] = useState(4);
   const [excludeReits, setExcludeReits] = useState(true);
   const [excludedTickers, setExcludedTickers] = useState<string[]>(DEFAULT_EXCLUDED_TICKERS);
   const [excludedInput, setExcludedInput] = useState("");
@@ -243,25 +268,45 @@ export default function RecommendationsScreener() {
     let failed = 0;
     let done = 0;
 
+    const passesBaseFilters = (c: Candidate) =>
+      !(excludeReits && c.sector === "Real Estate") && // REIT-ovi — nizak FCF prinos po dizajnu (velika distribucija, ne rast)
+      c.verdictLabel === "Kupovina" &&
+      c.fundamentalsRating === "Jaki" &&
+      c.redFlagCount === 0 &&
+      c.revenueCagr != null &&
+      c.revenueCagr >= minGrowthPercent / 100 &&
+      (!requireWideMoat || c.moatScore >= 6);
+
     for (let i = 0; i < tickers.length; i += CONCURRENCY) {
       if (stopRef.current) break;
-      const batch = tickers.slice(i, i + CONCURRENCY);
-      const settled = await Promise.allSettled(batch.map((t) => scoreCandidate(t)));
-      settled.forEach((s, idx) => {
-        done++;
+      const batch = tickers
+        .slice(i, i + CONCURRENCY)
+        .filter((t) => !heldTickers.has(t.toUpperCase()) && !excludedSet.has(t.toUpperCase())); // već u portfelju / ručno isključeno
+      done += Math.min(CONCURRENCY, tickers.length - i);
+
+      // Prvi prolaz: brzi podaci za ceo indeks, samo jeftini filteri.
+      const firstPass = await Promise.allSettled(batch.map((t) => scoreCandidate(t, false)));
+      const survivors: { ticker: string; fallbackFcf: number | null }[] = [];
+      firstPass.forEach((s, idx) => {
+        if (s.status !== "fulfilled") {
+          failed++;
+          return;
+        }
+        if (passesBaseFilters(s.value)) survivors.push({ ticker: batch[idx], fallbackFcf: s.value.fallbackFcf });
+      });
+
+      // Drugi prolaz: samo za preživele — puni podaci kao na /pregled, filteri
+      // se ponovo primenjuju na njima, plus kompozitni skor.
+      const secondPass = await Promise.allSettled(survivors.map((sv) => scoreCandidate(sv.ticker, true, sv.fallbackFcf)));
+      secondPass.forEach((s) => {
         if (s.status !== "fulfilled") {
           failed++;
           return;
         }
         const c = s.value;
-        if (heldTickers.has(batch[idx].toUpperCase())) return; // već u portfelju
-        if (excludedSet.has(batch[idx].toUpperCase())) return; // ručno isključeno (npr. već posedovano i prodato)
-        if (excludeReits && c.sector === "Real Estate") return; // REIT-ovi — nizak FCF prinos po dizajnu (velika distribucija, ne rast)
-        if (c.verdictLabel !== "Kupovina") return;
-        if (c.fundamentalsRating !== "Jaki") return;
-        if (c.redFlagCount > 0) return;
-        if (c.revenueCagr == null || c.revenueCagr < minGrowthPercent / 100) return;
-        if (requireWideMoat && c.moatScore < 6) return;
+        if (!passesBaseFilters(c)) return;
+        // Poredi se zaokruženo na 1 decimalu, kao što ga /pregled prikazuje.
+        if (c.compositeScore == null || Math.round(c.compositeScore * 10) / 10 < minComposite) return;
 
         const sectorKey = c.sector || "Nepoznat sektor";
         const existingSectorWeight = sectorWeightMap.get(sectorKey) || 0;
@@ -274,7 +319,7 @@ export default function RecommendationsScreener() {
       });
       setScanned(done);
       setFailedCount(failed);
-      found.sort((a, b) => b.fitScore - a.fitScore || (b.fcfYield ?? -1) - (a.fcfYield ?? -1));
+      found.sort((a, b) => b.fitScore - a.fitScore || (b.compositeScore ?? 0) - (a.compositeScore ?? 0) || (b.fcfYield ?? -1) - (a.fcfYield ?? -1));
       setRecommendations([...found]);
       setProgress(Math.min(100, Math.round((done / tickers.length) * 100)));
     }
@@ -295,7 +340,8 @@ export default function RecommendationsScreener() {
         istog sveobuhvatnog modela kao <a href="/pregled" className="underline">pregled kompanije</a> (sud
         &quot;Kupovina&quot;, fundamenti &quot;Jaki&quot;, nula crvenih zastavica), (2) imaju istorijski godišnji rast
         prihoda (CAGR) najmanje onoliko koliko si podesio ispod i, ako je uključeno, širok jaz (moat skor ≥ 6/10 — isti
-        prag kao oznaka &quot;Širok jaz&quot; na pregledu kompanije), (3) još nisu u tvom{" "}
+        prag kao oznaka &quot;Širok jaz&quot; na pregledu kompanije) i kompozitni skor najmanje onoliko koliko si podesio
+        (podrazumevano 4/5 — isti broj koji vidiš u zaglavlju pregleda kompanije, računat istom funkcijom), (3) još nisu u tvom{" "}
         <a href="/portfolio" className="underline">portfelju</a> i nisu na tvojoj listi ručno isključenih (ispod), i
         (4) rangirane su po tome koliko dobro popunjavaju
         sektorsku prazninu u portfelju — kompanija iz sektora kojeg uopšte nemaš (ili ga imaš malo) rangira se više od
@@ -345,6 +391,20 @@ export default function RecommendationsScreener() {
             disabled={running}
           />
           Samo širok jaz (moat ≥ 6/10)
+        </label>
+        <label className="flex items-center gap-1.5 text-sm">
+          Min. kompozitni skor:
+          <input
+            type="number"
+            min={1}
+            max={5}
+            step={0.1}
+            value={minComposite}
+            onChange={(e) => !running && setMinComposite(Math.min(5, Math.max(1, parseFloat(e.target.value) || 1)))}
+            disabled={running}
+            className="w-16 px-2 py-1 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-transparent text-sm text-right tabular-nums"
+          />
+          /5
         </label>
         <label className="flex items-center gap-1.5 text-sm">
           <input
@@ -429,6 +489,7 @@ export default function RecommendationsScreener() {
                   <th className="text-left text-xs uppercase text-zinc-500 dark:text-zinc-400 py-2 px-3 border-b border-zinc-200 dark:border-zinc-800">Sektor</th>
                   <th className="text-right text-xs uppercase text-zinc-500 dark:text-zinc-400 py-2 px-3 border-b border-zinc-200 dark:border-zinc-800">Tvoj udeo u sektoru</th>
                   <th className="text-left text-xs uppercase text-zinc-500 dark:text-zinc-400 py-2 px-3 border-b border-zinc-200 dark:border-zinc-800">Uklapanje u portfelj</th>
+                  <th className="text-right text-xs uppercase text-zinc-500 dark:text-zinc-400 py-2 px-3 border-b border-zinc-200 dark:border-zinc-800">Kompozitni skor</th>
                   <th className="text-right text-xs uppercase text-zinc-500 dark:text-zinc-400 py-2 px-3 border-b border-zinc-200 dark:border-zinc-800">Rast prihoda (CAGR)</th>
                   <th className="text-right text-xs uppercase text-zinc-500 dark:text-zinc-400 py-2 px-3 border-b border-zinc-200 dark:border-zinc-800">Moat</th>
                   <th className="text-right text-xs uppercase text-zinc-500 dark:text-zinc-400 py-2 px-3 border-b border-zinc-200 dark:border-zinc-800">Cena</th>
@@ -456,6 +517,9 @@ export default function RecommendationsScreener() {
                       }`}
                     >
                       {r.fitLabel}
+                    </td>
+                    <td className="py-2 px-3 border-b border-zinc-200 dark:border-zinc-800 text-right tabular-nums font-semibold text-emerald-600 dark:text-emerald-400">
+                      {r.compositeScore != null ? `${r.compositeScore.toFixed(1)}/5` : "—"}
                     </td>
                     <td className="py-2 px-3 border-b border-zinc-200 dark:border-zinc-800 text-right tabular-nums text-emerald-600 dark:text-emerald-400">{fmtPct(r.revenueCagr)}</td>
                     <td className="py-2 px-3 border-b border-zinc-200 dark:border-zinc-800 text-right tabular-nums text-emerald-600 dark:text-emerald-400">{r.moatScore}/10</td>
@@ -486,7 +550,8 @@ export default function RecommendationsScreener() {
       {phase === "done" && recommendations.length === 0 && (
         <p className="text-sm text-zinc-500 dark:text-zinc-400">
           Nijedna kompanija iz {INDEXES[indexKey].label} trenutno ne ispunjava sve uslove (Kupovina + jaki fundamenti +
-          nula crvenih zastavica + rast prihoda ≥{minGrowthPercent}%/god.{requireWideMoat ? " + širok jaz" : ""}) i
+          nula crvenih zastavica + rast prihoda ≥{minGrowthPercent}%/god.{requireWideMoat ? " + širok jaz" : ""} +
+          kompozitni skor ≥{minComposite}) i
           istovremeno nije već u tvom portfelju. Probaj drugi indeks ili spusti prag rasta.
         </p>
       )}
@@ -494,7 +559,8 @@ export default function RecommendationsScreener() {
       {!running && phase === "idle" && (
         <p className="text-sm text-zinc-500 dark:text-zinc-400">
           Klikni &quot;Pronađi preporuke&quot; — prvo se analizira sastav tvog portfelja (sektor po poziciji), zatim se
-          skenira {INDEXES[indexKey].tickers.length} kompanija iz izabranog indeksa. Traje otprilike 2-4 minuta.
+          skenira {INDEXES[indexKey].tickers.length} kompanija iz izabranog indeksa (kompanije koje prođu osnovne filtere se zatim
+          analiziraju punim modelom sa pregleda radi kompozitnog skora). Za &quot;Svi indeksi&quot; može trajati 10+ minuta.
         </p>
       )}
     </div>

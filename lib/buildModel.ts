@@ -1077,6 +1077,66 @@ export function buildDashboardScores(
   return { business, moat: moatScore, moatDirection, growth, management: managementScore, risk: riskScore, valuation: valuationScore, composite };
 }
 
+// Zajednički put do ocena sa /pregled (uključujući kompozitni skor) — koriste
+// ga i /pregled i /preporuke, da filter "kompozitni skor ≥ X" na preporukama
+// daje tačno isti broj koji korisnik vidi kad otvori kompaniju na pregledu.
+export function computeOwnHistoricalAverages(model: ComputedModel, monthlyPriceHistory: HistoricalPricePoint[]) {
+  const shares = model.data.fundamentals.sharesOutstanding;
+  return analyzeHistoricalMultiples(
+    computeHistoricalPE(model.breakdown.rows, monthlyPriceHistory, shares),
+    computeHistoricalPFcf(model.breakdown.rows, monthlyPriceHistory, shares)
+  );
+}
+
+export function computeOverviewScores(
+  model: ComputedModel,
+  ownAvg: ReturnType<typeof analyzeHistoricalMultiples> | null,
+  fallbackFcf: number | null
+) {
+  const { data, moat, growthFilter } = model;
+  const resolvedFcf = resolveFcfForYield(data) ?? fallbackFcf;
+  const currentPFcf =
+    resolvedFcf != null && resolvedFcf > 0 && data.fundamentals.sharesOutstanding
+      ? data.currentPrice / (resolvedFcf / data.fundamentals.sharesOutstanding)
+      : null;
+  const sectorPeMedian = getSectorPeMedian(data.sector);
+  const multiplesTable = buildMultiplesTable({
+    peRatio: data.peRatio,
+    pegRatio: data.pegRatio,
+    evToEbitda: data.evToEbitda,
+    currentPFcf,
+    freeCashflowTtm: resolvedFcf,
+    marketCap: data.marketCap,
+    ownHistoricalPeAvg: ownAvg?.peAvg ?? null,
+    ownHistoricalPFcfAvg: ownAvg?.pFcfAvg ?? null,
+    peTrend: ownAvg?.peTrend ?? null,
+    pFcfTrend: ownAvg?.pFcfTrend ?? null,
+    sectorPeMedian,
+    sector: data.sector,
+  });
+  const multiplesVerdict = summarizeMultiplesTable(multiplesTable);
+
+  const pricingPowerCheck: FilterCheck = {
+    label: "Može da diže cene (bruto marža preko 40%)",
+    pass: data.grossMargin == null ? null : data.grossMargin > 0.4,
+    detail: data.grossMargin != null ? `Bruto marža ${(data.grossMargin * 100).toFixed(1)}%` : "Bruto marža nije dostupna.",
+  };
+  const recessionCheck: FilterCheck = {
+    label: "Otporna na tržišne padove (beta ispod 1)",
+    pass: data.beta == null ? null : data.beta < 1,
+    detail: data.beta != null ? `Beta ${data.beta.toFixed(2)} — koliko akcija u proseku prati kretanje tržišta.` : "Beta nije dostupna.",
+  };
+  const competitivePositionCheck: FilterCheck = {
+    label: "Dominantna konkurentska pozicija (moat proxy 6+/10)",
+    pass: moat.score >= 6 ? true : moat.score <= 3 ? false : null,
+    detail: `Moat proxy skor ${moat.score}/10 (marže i prinos na kapital naspram cene kapitala).`,
+  };
+  const qualityChecks = [growthFilter.checks[0], pricingPowerCheck, recessionCheck, competitivePositionCheck].filter((c): c is FilterCheck => !!c);
+  const scores = buildDashboardScores(model, qualityChecks, multiplesVerdict);
+
+  return { resolvedFcf, currentPFcf, sectorPeMedian, multiplesTable, multiplesVerdict, qualityChecks, scores };
+}
+
 // ---------- Faza poslovnog ciklusa (1-5) ----------
 //
 // Aproksimacija petostepenog okvira (osnivanje → hiper-rast → operativna

@@ -4,27 +4,24 @@ import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import {
   analyzeHistoricalMultiples,
-  buildDashboardScores,
-  buildMultiplesTable,
   classifyBusinessPhase,
+  computeOverviewScores,
+  computeOwnHistoricalAverages,
   BUSINESS_PHASE_DEFINITIONS,
   computeEarningsReactions,
   computeFcfYieldPremium,
   computeGrowthHorizons,
-  computeHistoricalPE,
-  computeHistoricalPFcf,
   computeHistoricalVolatility,
   computeModel,
   DEFAULT_ASSUMPTIONS,
   extractModelData,
   resolveFcfForYield,
-  summarizeMultiplesTable,
   type ComputedModel,
   type EarningsReaction,
   type HistoricalPricePoint,
   type MultipleReadingTone,
 } from "@/lib/buildModel";
-import { getSectorPeMedian, type FilterCheck } from "@/lib/model";
+import { type FilterCheck } from "@/lib/model";
 import { fetchDailyPriceHistory, fetchPriceHistory, fetchStockAnalysisFcf, searchSymbols, translateToSerbian, type SearchResult } from "@/lib/clientData";
 
 const fmtMoney = (x: number | null | undefined, currency: string) =>
@@ -227,10 +224,7 @@ export default function OverviewCard() {
       setResult(r);
       const priceHistory = await fetchPriceHistory(sym);
       setMonthlyPriceHistory(priceHistory);
-      const shares = r.data.fundamentals.sharesOutstanding;
-      const historicalPE = computeHistoricalPE(r.breakdown.rows, priceHistory, shares);
-      const historicalPFcf = computeHistoricalPFcf(r.breakdown.rows, priceHistory, shares);
-      setOwnAvg(analyzeHistoricalMultiples(historicalPE, historicalPFcf));
+      setOwnAvg(computeOwnHistoricalAverages(r, priceHistory));
       if (resolveFcfForYield(r.data) == null) {
         fetchStockAnalysisFcf(sym).then(setFallbackFcf);
       }
@@ -299,7 +293,6 @@ export default function OverviewCard() {
     const {
       data,
       breakdown,
-      growthFilter,
       growthPotential,
       moat,
       moatNarrative,
@@ -319,27 +312,11 @@ export default function OverviewCard() {
       netDebtToEbitda,
       sbcPercent,
     } = result;
-    const resolvedFcf = resolveFcfForYield(data) ?? fallbackFcf;
-    const currentPFcf =
-      resolvedFcf != null && resolvedFcf > 0 && data.fundamentals.sharesOutstanding
-        ? data.currentPrice / (resolvedFcf / data.fundamentals.sharesOutstanding)
-        : null;
-    const sectorPeMedian = getSectorPeMedian(data.sector);
-    const multiplesTable = buildMultiplesTable({
-      peRatio: data.peRatio,
-      pegRatio: data.pegRatio,
-      evToEbitda: data.evToEbitda,
-      currentPFcf,
-      freeCashflowTtm: resolvedFcf,
-      marketCap: data.marketCap,
-      ownHistoricalPeAvg: ownAvg?.peAvg ?? null,
-      ownHistoricalPFcfAvg: ownAvg?.pFcfAvg ?? null,
-      peTrend: ownAvg?.peTrend ?? null,
-      pFcfTrend: ownAvg?.pFcfTrend ?? null,
-      sectorPeMedian,
-      sector: data.sector,
-    });
-    const multiplesVerdict = summarizeMultiplesTable(multiplesTable);
+    const { currentPFcf, multiplesTable, multiplesVerdict, qualityChecks, scores } = computeOverviewScores(
+      result,
+      ownAvg,
+      fallbackFcf
+    );
 
     const revenueGrowth = computeGrowthHorizons(breakdown.rows, (r) => r.revenue);
     const earningsGrowth = computeGrowthHorizons(breakdown.rows, (r) => r.netIncome);
@@ -352,21 +329,6 @@ export default function OverviewCard() {
     const revenueTtmLabel = data.revenueTtm != null ? "Prihod (TTM)" : "Prihod (poslednja FG)";
     const priceToSales = data.marketCap != null && revenueTtmOrLatest ? data.marketCap / revenueTtmOrLatest : null;
 
-    const pricingPowerCheck: FilterCheck = {
-      label: "Može da diže cene (bruto marža preko 40%)",
-      pass: data.grossMargin == null ? null : data.grossMargin > 0.4,
-      detail: data.grossMargin != null ? `Bruto marža ${(data.grossMargin * 100).toFixed(1)}%` : "Bruto marža nije dostupna.",
-    };
-    const recessionCheck: FilterCheck = {
-      label: "Otporna na tržišne padove (beta ispod 1)",
-      pass: data.beta == null ? null : data.beta < 1,
-      detail: data.beta != null ? `Beta ${data.beta.toFixed(2)} — koliko akcija u proseku prati kretanje tržišta.` : "Beta nije dostupna.",
-    };
-    const competitivePositionCheck: FilterCheck = {
-      label: "Dominantna konkurentska pozicija (moat proxy 6+/10)",
-      pass: moat.score >= 6 ? true : moat.score <= 3 ? false : null,
-      detail: `Moat proxy skor ${moat.score}/10 (marže i prinos na kapital naspram cene kapitala).`,
-    };
     const financialHealthCheck: FilterCheck = {
       label: "Finansijski zdrava (likvidnost + zaduženost)",
       pass:
@@ -378,8 +340,6 @@ export default function OverviewCard() {
           ? `Current ratio ${data.currentRatio.toFixed(2)}, Dug/kapital ${(data.debtToEquity / 100).toFixed(2)}`
           : "Nedostaje current ratio ili dug/kapital.",
     };
-    const qualityChecks = [growthFilter.checks[0], pricingPowerCheck, recessionCheck, competitivePositionCheck].filter((c): c is FilterCheck => !!c);
-    const scores = buildDashboardScores(result, qualityChecks, multiplesVerdict);
     const phase = classifyBusinessPhase({
       revenueGrowthTtm: data.revenueGrowthTtm,
       revenueCagr: breakdown.revenueCagr,
