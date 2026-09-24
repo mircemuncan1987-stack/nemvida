@@ -14,7 +14,15 @@ import { OMXS30_TICKERS } from "@/lib/omxs30";
 import { FTSEMIB_TICKERS } from "@/lib/ftsemib";
 import { WIG20_TICKERS } from "@/lib/wig20";
 import { SMI_TICKERS } from "@/lib/smi";
-import { DEFAULT_ASSUMPTIONS, compareToBenchmark, computeModel, extractModelData, resolveFcfForYield } from "@/lib/buildModel";
+import {
+  DEFAULT_ASSUMPTIONS,
+  compareToBenchmark,
+  computeModel,
+  computeOverviewScores,
+  computeOwnHistoricalAverages,
+  extractModelData,
+  resolveFcfForYield,
+} from "@/lib/buildModel";
 import { computeFcfYield } from "@/lib/valuation";
 import type { FundamentalsRating } from "@/lib/model";
 import { fetchPriceHistory, fetchSpyHistory, fetchStockAnalysisFcf } from "@/lib/clientData";
@@ -53,11 +61,20 @@ interface Row {
   marketCap: number | null;
   fcfYield: number | null;
   evToEbitda: number | null;
+  compositeScore: number | null; // 1-5, isti kao na /pregled (computeOverviewScores)
   error?: string;
 }
 
 const fmtPct = (x: number | null, digits = 1) => (x == null ? "—" : `${(x * 100).toFixed(digits)}%`);
 const fmtRatio = (x: number | null) => (x == null ? "—" : `${x.toFixed(1)}×`);
+
+function compositeColor(x: number | null): string {
+  if (x == null) return "text-zinc-400";
+  const r = Math.round(x * 10) / 10;
+  if (r >= 4) return "text-emerald-600 dark:text-emerald-400";
+  if (r >= 3) return "text-amber-600 dark:text-amber-400";
+  return "text-red-600 dark:text-red-400";
+}
 
 function fmtMarketCap(x: number | null, currency: string): string {
   if (x == null) return "—";
@@ -106,7 +123,7 @@ const VERDICT_ORDER: Record<string, number> = {
 const fmtMoney = (x: number, currency: string) => `${x.toLocaleString("en-US", { maximumFractionDigits: 2 })} ${currency}`;
 
 async function fetchAndScore(ticker: string, nowSeconds: number): Promise<Row> {
-  const res = await fetch(`/api/stock?symbol=${encodeURIComponent(ticker)}&type=valuation`, { cache: "no-store" });
+  const res = await fetch(`/api/stock?symbol=${encodeURIComponent(ticker)}&type=valuation&full=1`, { cache: "no-store" });
   const data = await res.json();
   if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
 
@@ -122,8 +139,10 @@ async function fetchAndScore(ticker: string, nowSeconds: number): Promise<Row> {
 
   // Kad Yahoo nema FCF ni za TTM ni za poslednju godinu, proba se
   // stockanalysis.com kao poslednja rezerva (samo za američke tikere).
-  let fcf = resolveFcfForYield(modelData);
-  if (fcf == null) fcf = await fetchStockAnalysisFcf(ticker);
+  const yahooFcf = resolveFcfForYield(modelData);
+  const fallbackFcf = yahooFcf == null ? await fetchStockAnalysisFcf(ticker) : null;
+  const fcf = yahooFcf ?? fallbackFcf;
+  const compositeScore = computeOverviewScores(computed, computeOwnHistoricalAverages(computed, priceHistory), fallbackFcf).scores.composite;
 
   return {
     ticker,
@@ -138,6 +157,7 @@ async function fetchAndScore(ticker: string, nowSeconds: number): Promise<Row> {
     marketCap: modelData.marketCap,
     fcfYield: computeFcfYield(fcf, modelData.marketCap),
     evToEbitda: modelData.evToEbitda,
+    compositeScore,
   };
 }
 
@@ -147,12 +167,12 @@ export default function Sp500Screener() {
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState(0);
   const [search, setSearch] = useState("");
-  const [sortKey, setSortKey] = useState<"verdict" | "ticker" | "sector">("verdict");
+  const [sortKey, setSortKey] = useState<"verdict" | "composite" | "ticker" | "sector">("verdict");
   const [lastUpdated, setLastUpdated] = useState<number | null>(null);
   const stopRef = useRef(false);
 
-  // v7: dodat evToEbitda — stariji keš nema to polje, pa se verzija menja da se osveži.
-  const cacheKeyFor = (idx: IndexKey) => `nemvida_screener_v7_${idx}`;
+  // v8: dodat compositeScore — stariji keš nema to polje, pa se verzija menja da se osveži.
+  const cacheKeyFor = (idx: IndexKey) => `nemvida_screener_v8_${idx}`;
 
   function loadFromCache(idx: IndexKey): boolean {
     try {
@@ -221,6 +241,7 @@ export default function Sp500Screener() {
             marketCap: null,
             fcfYield: null,
             evToEbitda: null,
+            compositeScore: null,
             error: s.reason instanceof Error ? s.reason.message : "Greška",
           });
         }
@@ -243,6 +264,7 @@ export default function Sp500Screener() {
     .filter((r) => !search || r.ticker.includes(search.toUpperCase()) || r.companyName.toUpperCase().includes(search.toUpperCase()))
     .sort((a, b) => {
       if (sortKey === "ticker") return a.ticker.localeCompare(b.ticker);
+      if (sortKey === "composite") return (b.compositeScore ?? -1) - (a.compositeScore ?? -1);
       if (sortKey === "sector") return (b.marketCap ?? 0) - (a.marketCap ?? 0);
       return (VERDICT_ORDER[a.verdictLabel] ?? 5) - (VERDICT_ORDER[b.verdictLabel] ?? 5);
     });
@@ -271,7 +293,8 @@ export default function Sp500Screener() {
         Yahoo Finance nema taj podatak (čest slučaj za neke tikere), za američke akcije se kao rezerva proba
         stockanalysis.com. &quot;EV/EBITDA&quot; poredi vrednost kompanije (tržišna kapitalizacija + dug − gotovina) sa
         operativnom zaradom — niže obično znači jeftinije, ali zavisi od sektora (kapitalno intenzivne delatnosti
-        imaju prirodno niže multiple).
+        imaju prirodno niže multiple). &quot;Kompozitni skor&quot; (1-5) je isti prosečni skor kao u zaglavlju
+        pregleda kompanije, računat istom funkcijom — zeleno ≥4, žuto 3-4, crveno ispod 3.
       </div>
 
       <div className="border border-zinc-200 dark:border-zinc-800 bg-white/70 dark:bg-zinc-900/50 rounded-xl p-4 mb-4 flex flex-wrap gap-3 items-center">
@@ -307,10 +330,11 @@ export default function Sp500Screener() {
         />
         <select
           value={sortKey}
-          onChange={(e) => setSortKey(e.target.value as "verdict" | "ticker" | "sector")}
+          onChange={(e) => setSortKey(e.target.value as "verdict" | "composite" | "ticker" | "sector")}
           className="px-3 py-2 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-transparent text-sm"
         >
           <option value="verdict">Sortiraj: kupovina prvo</option>
+          <option value="composite">Sortiraj: kompozitni skor (najviši prvo)</option>
           <option value="ticker">Sortiraj: abecedno</option>
           <option value="sector">Sortiraj: po sektoru (tržišna kap.)</option>
         </select>
@@ -376,6 +400,7 @@ function ScreenerTable({ rows }: { rows: Row[] }) {
           <th className="text-right text-xs uppercase text-zinc-500 dark:text-zinc-400 py-2 px-3 border-b border-zinc-200 dark:border-zinc-800">Tržišna kap.</th>
           <th className="text-right text-xs uppercase text-zinc-500 dark:text-zinc-400 py-2 px-3 border-b border-zinc-200 dark:border-zinc-800">FCF prinos</th>
           <th className="text-right text-xs uppercase text-zinc-500 dark:text-zinc-400 py-2 px-3 border-b border-zinc-200 dark:border-zinc-800">EV/EBITDA</th>
+          <th className="text-right text-xs uppercase text-zinc-500 dark:text-zinc-400 py-2 px-3 border-b border-zinc-200 dark:border-zinc-800">Kompozitni skor</th>
           <th className="text-left text-xs uppercase text-zinc-500 dark:text-zinc-400 py-2 px-3 border-b border-zinc-200 dark:border-zinc-800">Sud</th>
           <th className="text-left text-xs uppercase text-zinc-500 dark:text-zinc-400 py-2 px-3 border-b border-zinc-200 dark:border-zinc-800">Fundamenti</th>
           <th className="text-center text-xs uppercase text-zinc-500 dark:text-zinc-400 py-2 px-3 border-b border-zinc-200 dark:border-zinc-800">🚩</th>
@@ -406,6 +431,9 @@ function ScreenerTable({ rows }: { rows: Row[] }) {
               }`}
             >
               {fmtRatio(r.evToEbitda)}
+            </td>
+            <td className={`py-2 px-3 border-b border-zinc-200 dark:border-zinc-800 text-right tabular-nums font-semibold ${compositeColor(r.compositeScore)}`}>
+              {r.compositeScore != null ? `${r.compositeScore.toFixed(1)}/5` : "—"}
             </td>
             <td
               className={`py-2 px-3 border-b border-zinc-200 dark:border-zinc-800 text-xs font-medium ${
