@@ -17,6 +17,9 @@ export default function Header() {
           <Link href="/lista" className="hover:text-blue-600 dark:hover:text-blue-400">
             Skener indeksa
           </Link>
+          <Link href="/uporedi" className="hover:text-blue-600 dark:hover:text-blue-400">
+            Uporedi
+          </Link>
           <Link href="/portfolio" className="hover:text-blue-600 dark:hover:text-blue-400">
             Moj portfolio
           </Link>
