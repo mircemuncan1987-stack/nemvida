@@ -1078,8 +1078,8 @@ export function buildDashboardScores(
 }
 
 // Zajednički put do ocena sa /pregled (uključujući kompozitni skor) — koriste
-// ga i /pregled i /preporuke, da filter "kompozitni skor ≥ X" na preporukama
-// daje tačno isti broj koji korisnik vidi kad otvori kompaniju na pregledu.
+// ga i /pregled i /lista, da kompozitni skor bude tačno isti broj na obe
+// stranice, računat istom funkcijom.
 export function computeOwnHistoricalAverages(model: ComputedModel, monthlyPriceHistory: HistoricalPricePoint[]) {
   const shares = model.data.fundamentals.sharesOutstanding;
   const peRows = computeHistoricalPE(model.breakdown.rows, monthlyPriceHistory, shares);

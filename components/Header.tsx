@@ -20,9 +20,6 @@ export default function Header() {
           <Link href="/portfolio" className="hover:text-blue-600 dark:hover:text-blue-400">
             Moj portfolio
           </Link>
-          <Link href="/preporuke" className="hover:text-blue-600 dark:hover:text-blue-400">
-            Preporuke
-          </Link>
         </nav>
       </div>
     </header>
