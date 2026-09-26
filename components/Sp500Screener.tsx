@@ -57,6 +57,7 @@ interface Row {
   fundamentalsRating: FundamentalsRating;
   redFlagCount: number;
   vsSpy: Record<number, "outperform" | "underperform" | "na">;
+  outperformance5y: number | null; // rast iznad SPY na 5g (ukupan prinos akcije − ukupan prinos SPY), za sortiranje
   sector: string | null;
   marketCap: number | null;
   fcfYield: number | null;
@@ -136,6 +137,7 @@ async function fetchAndScore(ticker: string, nowSeconds: number): Promise<Row> {
   for (const row of benchmark) {
     vsSpy[row.years] = row.verdict === "Nadmašuje SPY" ? "outperform" : row.verdict === "Ispod SPY" ? "underperform" : "na";
   }
+  const outperformance5y = benchmark.find((row) => row.years === 5)?.outperformance ?? null;
 
   // Kad Yahoo nema FCF ni za TTM ni za poslednju godinu, proba se
   // stockanalysis.com kao poslednja rezerva (samo za američke tikere).
@@ -153,6 +155,7 @@ async function fetchAndScore(ticker: string, nowSeconds: number): Promise<Row> {
     fundamentalsRating: computed.fundamentalsRating.rating,
     redFlagCount: computed.redFlags.length,
     vsSpy,
+    outperformance5y,
     sector: modelData.sector,
     marketCap: modelData.marketCap,
     fcfYield: computeFcfYield(fcf, modelData.marketCap),
@@ -167,12 +170,12 @@ export default function Sp500Screener() {
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState(0);
   const [search, setSearch] = useState("");
-  const [sortKey, setSortKey] = useState<"verdict" | "composite" | "ticker" | "sector">("verdict");
+  const [sortKey, setSortKey] = useState<"verdict" | "composite" | "outperformance" | "ticker" | "sector">("verdict");
   const [lastUpdated, setLastUpdated] = useState<number | null>(null);
   const stopRef = useRef(false);
 
-  // v8: dodat compositeScore — stariji keš nema to polje, pa se verzija menja da se osveži.
-  const cacheKeyFor = (idx: IndexKey) => `nemvida_screener_v8_${idx}`;
+  // v9: dodat outperformance5y — stariji keš nema to polje, pa se verzija menja da se osveži.
+  const cacheKeyFor = (idx: IndexKey) => `nemvida_screener_v9_${idx}`;
 
   function loadFromCache(idx: IndexKey): boolean {
     try {
@@ -237,6 +240,7 @@ export default function Sp500Screener() {
             fundamentalsRating: "Nedovoljno podataka",
             redFlagCount: 0,
             vsSpy: {},
+            outperformance5y: null,
             sector: null,
             marketCap: null,
             fcfYield: null,
@@ -265,6 +269,7 @@ export default function Sp500Screener() {
     .sort((a, b) => {
       if (sortKey === "ticker") return a.ticker.localeCompare(b.ticker);
       if (sortKey === "composite") return (b.compositeScore ?? -1) - (a.compositeScore ?? -1);
+      if (sortKey === "outperformance") return (b.outperformance5y ?? -Infinity) - (a.outperformance5y ?? -Infinity);
       if (sortKey === "sector") return (b.marketCap ?? 0) - (a.marketCap ?? 0);
       return (VERDICT_ORDER[a.verdictLabel] ?? 5) - (VERDICT_ORDER[b.verdictLabel] ?? 5);
     });
@@ -285,7 +290,9 @@ export default function Sp500Screener() {
         tik-po-tik cena. &quot;Fundamenti&quot; je objektivna ocena poslovanja (rast, marže, zaduženost, konkurentska
         prednost) — odvojeno od cene akcije. 🚩 je broj konkretnih upozoravajućih signala (npr. negativan novčani tok,
         preterana zaduženost). &quot;vs SPY&quot; poredi ukupan prinos akcije sa SPY (S&P 500) na 3/5/10/20 godina —
-        &quot;—&quot; znači da istorija cene ne seže dovoljno unazad. Sortiranje &quot;po sektoru&quot; grupiše kompanije po
+        &quot;—&quot; znači da istorija cene ne seže dovoljno unazad. Sortiranje &quot;rast iznad SPY&quot; koristi razliku
+        ukupnog prinosa na 5 godina (akcija minus SPY) — kompanije bez dovoljno istorije cene (npr. nedavni IPO) idu na
+        dno liste. Sortiranje &quot;po sektoru&quot; grupiše kompanije po
         sektoru (Yahoo Finance klasifikacija), sektore ređa po ukupnoj tržišnoj kapitalizaciji (najveći prvo), a
         kompanije unutar sektora po sopstvenoj tržišnoj kapitalizaciji (najveće prvo). &quot;FCF prinos&quot; je slobodan
         novčani tok podeljen trenutnom tržišnom kapitalizacijom — što je veći, to kompanija generiše više gotovine u
@@ -330,11 +337,12 @@ export default function Sp500Screener() {
         />
         <select
           value={sortKey}
-          onChange={(e) => setSortKey(e.target.value as "verdict" | "composite" | "ticker" | "sector")}
+          onChange={(e) => setSortKey(e.target.value as "verdict" | "composite" | "outperformance" | "ticker" | "sector")}
           className="px-3 py-2 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-transparent text-sm"
         >
           <option value="verdict">Sortiraj: kupovina prvo</option>
           <option value="composite">Sortiraj: kompozitni skor (najviši prvo)</option>
+          <option value="outperformance">Sortiraj: rast iznad SPY (5g, najveći prvo)</option>
           <option value="ticker">Sortiraj: abecedno</option>
           <option value="sector">Sortiraj: po sektoru (tržišna kap.)</option>
         </select>
