@@ -68,7 +68,6 @@ interface Row {
 }
 
 const fmtPct = (x: number | null, digits = 1) => (x == null ? "—" : `${(x * 100).toFixed(digits)}%`);
-const fmtRatio = (x: number | null) => (x == null ? "—" : `${x.toFixed(1)}×`);
 
 function compositeColor(x: number | null): string {
   if (x == null) return "text-zinc-400";
@@ -303,9 +302,7 @@ export default function Sp500Screener() {
         novčani tok podeljen trenutnom tržišnom kapitalizacijom — što je veći, to kompanija generiše više gotovine u
         odnosu na cenu; negativan (crveno) znači da kompanija trenutno troši više gotovine nego što generiše. Kad
         Yahoo Finance nema taj podatak (čest slučaj za neke tikere), za američke akcije se kao rezerva proba
-        stockanalysis.com. &quot;EV/EBITDA&quot; poredi vrednost kompanije (tržišna kapitalizacija + dug − gotovina) sa
-        operativnom zaradom — niže obično znači jeftinije, ali zavisi od sektora (kapitalno intenzivne delatnosti
-        imaju prirodno niže multiple). &quot;Kompozitni skor&quot; (1-5) je isti prosečni skor kao u zaglavlju
+        stockanalysis.com. &quot;Kompozitni skor&quot; (1-5) je isti prosečni skor kao u zaglavlju
         pregleda kompanije, računat istom funkcijom — zeleno ≥4, žuto 3-4, crveno ispod 3. &quot;Rast prihoda&quot; je
         rast prihoda u poslednjih 12 meseci (ili istorijski CAGR kad TTM podatak nije dostupan) — zeleno znači
         ekspanzija (prihod raste), crveno opadanje (prihod pada g/g), koristi se i za sortiranje &quot;ekspanzija
@@ -414,9 +411,7 @@ function ScreenerTable({ rows }: { rows: Row[] }) {
           <th className="text-left text-xs uppercase text-zinc-500 dark:text-zinc-400 py-2 px-3 border-b border-zinc-200 dark:border-zinc-800">Ticker</th>
           <th className="text-left text-xs uppercase text-zinc-500 dark:text-zinc-400 py-2 px-3 border-b border-zinc-200 dark:border-zinc-800">Kompanija</th>
           <th className="text-right text-xs uppercase text-zinc-500 dark:text-zinc-400 py-2 px-3 border-b border-zinc-200 dark:border-zinc-800">Cena</th>
-          <th className="text-right text-xs uppercase text-zinc-500 dark:text-zinc-400 py-2 px-3 border-b border-zinc-200 dark:border-zinc-800">Tržišna kap.</th>
           <th className="text-right text-xs uppercase text-zinc-500 dark:text-zinc-400 py-2 px-3 border-b border-zinc-200 dark:border-zinc-800">FCF prinos</th>
-          <th className="text-right text-xs uppercase text-zinc-500 dark:text-zinc-400 py-2 px-3 border-b border-zinc-200 dark:border-zinc-800">EV/EBITDA</th>
           <th className="text-right text-xs uppercase text-zinc-500 dark:text-zinc-400 py-2 px-3 border-b border-zinc-200 dark:border-zinc-800">Kompozitni skor</th>
           <th className="text-right text-xs uppercase text-zinc-500 dark:text-zinc-400 py-2 px-3 border-b border-zinc-200 dark:border-zinc-800">Rast prihoda</th>
           <th className="text-left text-xs uppercase text-zinc-500 dark:text-zinc-400 py-2 px-3 border-b border-zinc-200 dark:border-zinc-800">Sud</th>
@@ -435,20 +430,12 @@ function ScreenerTable({ rows }: { rows: Row[] }) {
             </td>
             <td className="py-2 px-3 border-b border-zinc-200 dark:border-zinc-800 text-zinc-600 dark:text-zinc-400">{r.companyName}</td>
             <td className="py-2 px-3 border-b border-zinc-200 dark:border-zinc-800 text-right tabular-nums">{fmtMoney(r.currentPrice, r.currency)}</td>
-            <td className="py-2 px-3 border-b border-zinc-200 dark:border-zinc-800 text-right tabular-nums">{fmtMarketCap(r.marketCap, r.currency)}</td>
             <td
               className={`py-2 px-3 border-b border-zinc-200 dark:border-zinc-800 text-right tabular-nums ${
                 r.fcfYield != null && r.fcfYield < 0 ? "text-red-600 dark:text-red-400" : ""
               }`}
             >
               {fmtPct(r.fcfYield)}
-            </td>
-            <td
-              className={`py-2 px-3 border-b border-zinc-200 dark:border-zinc-800 text-right tabular-nums ${
-                r.evToEbitda != null && r.evToEbitda > 30 ? "text-red-600 dark:text-red-400" : ""
-              }`}
-            >
-              {fmtRatio(r.evToEbitda)}
             </td>
             <td className={`py-2 px-3 border-b border-zinc-200 dark:border-zinc-800 text-right tabular-nums font-semibold ${compositeColor(r.compositeScore)}`}>
               {r.compositeScore != null ? `${r.compositeScore.toFixed(1)}/5` : "—"}
