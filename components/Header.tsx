@@ -23,6 +23,9 @@ export default function Header() {
           <Link href="/portfolio" className="hover:text-blue-600 dark:hover:text-blue-400">
             Moj portfolio
           </Link>
+          <Link href="/pracenje" className="hover:text-blue-600 dark:hover:text-blue-400">
+            Praćenje preporuka
+          </Link>
         </nav>
       </div>
     </header>

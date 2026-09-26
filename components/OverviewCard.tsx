@@ -24,6 +24,7 @@ import {
 } from "@/lib/buildModel";
 import { type FilterCheck } from "@/lib/model";
 import { fetchDailyPriceHistory, fetchPriceHistory, fetchStockAnalysisFcf, searchSymbols, translateToSerbian, type SearchResult } from "@/lib/clientData";
+import { recordVerdict } from "@/lib/verdictJournal";
 
 const fmtMoney = (x: number | null | undefined, currency: string) =>
   x === null || x === undefined || Number.isNaN(x) ? "—" : `${x.toLocaleString("en-US", { maximumFractionDigits: 2 })} ${currency}`;
@@ -287,6 +288,14 @@ export default function OverviewCard() {
     try {
       const r = await fetchModelResult(sym);
       setResult(r);
+      recordVerdict({
+        ticker: sym.toUpperCase(),
+        companyName: r.data.companyName,
+        date: new Date().toISOString().slice(0, 10),
+        verdict: r.finalVerdict.verdict,
+        price: r.data.currentPrice,
+        currency: r.data.currency,
+      });
       const priceHistory = await fetchPriceHistory(sym);
       setMonthlyPriceHistory(priceHistory);
       setOwnAvg(computeOwnHistoricalAverages(r, priceHistory));
