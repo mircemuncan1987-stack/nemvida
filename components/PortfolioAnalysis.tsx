@@ -57,7 +57,7 @@ export default function PortfolioAnalysis() {
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState(0);
   const [startDate, setStartDate] = useState("2024-01-01");
-  const [reportedReturn, setReportedReturn] = useState("49.32");
+  const [reportedReturn, setReportedReturn] = useState("54.26");
   const [nowSeconds] = useState(() => Math.floor(Date.now() / 1000));
 
   useEffect(() => {
