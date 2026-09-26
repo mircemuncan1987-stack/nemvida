@@ -1082,10 +1082,9 @@ export function buildDashboardScores(
 // daje tačno isti broj koji korisnik vidi kad otvori kompaniju na pregledu.
 export function computeOwnHistoricalAverages(model: ComputedModel, monthlyPriceHistory: HistoricalPricePoint[]) {
   const shares = model.data.fundamentals.sharesOutstanding;
-  return analyzeHistoricalMultiples(
-    computeHistoricalPE(model.breakdown.rows, monthlyPriceHistory, shares),
-    computeHistoricalPFcf(model.breakdown.rows, monthlyPriceHistory, shares)
-  );
+  const peRows = computeHistoricalPE(model.breakdown.rows, monthlyPriceHistory, shares);
+  const pFcfRows = computeHistoricalPFcf(model.breakdown.rows, monthlyPriceHistory, shares);
+  return { ...analyzeHistoricalMultiples(peRows, pFcfRows), peRows, pFcfRows };
 }
 
 export function computeOverviewScores(

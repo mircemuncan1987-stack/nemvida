@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import {
-  analyzeHistoricalMultiples,
   classifyBusinessPhase,
   computeOverviewScores,
   computeOwnHistoricalAverages,
@@ -18,6 +17,7 @@ import {
   resolveFcfForYield,
   type ComputedModel,
   type EarningsReaction,
+  type HistoricalMultipleRow,
   type HistoricalPricePoint,
   type MultipleReadingTone,
 } from "@/lib/buildModel";
@@ -190,13 +190,77 @@ function KeyVal({ label, value }: { label: string; value: string }) {
   );
 }
 
+// Grafikon istorijskog P/E-a (godišnje, iz dostupnih izveštaja — obično
+// poslednje ~4 fiskalne godine) sa trenutnim P/E kao poslednjim stubićem i
+// isprekidanom linijom na nivou sopstvenog istorijskog proseka — vizuelni
+// odgovor na "gde je trenutna cena u odnosu na istorijsku" bez uvođenja nove
+// procene, samo prikaz brojeva koji već postoje u tabeli multiplikatora ispod.
+function PeHistoryChart({ rows, currentPE, avgPE }: { rows: HistoricalMultipleRow[]; currentPE: number | null; avgPE: number | null }) {
+  const points: { label: string; value: number; isNow: boolean }[] = rows
+    .filter((r): r is { year: string; multiple: number } => r.multiple != null && r.multiple > 0)
+    .map((r) => ({ label: r.year, value: r.multiple, isNow: false }));
+  if (currentPE != null && currentPE > 0) points.push({ label: "Sada", value: currentPE, isNow: true });
+  if (points.length < 2) return null;
+
+  const maxVal = Math.max(...points.map((p) => p.value), avgPE ?? 0) * 1.15;
+  const avgHeightPercent = avgPE != null ? Math.min(100, (avgPE / maxVal) * 100) : null;
+  const cols = `repeat(${points.length}, 1fr)`;
+
+  function toneFor(p: { value: number; isNow: boolean }): string {
+    if (!p.isNow) return "bg-zinc-300 dark:bg-zinc-700";
+    if (avgPE == null) return "bg-zinc-400";
+    if (p.value < avgPE * 0.95) return "bg-emerald-500";
+    if (p.value > avgPE * 1.05) return "bg-red-500";
+    return "bg-amber-500";
+  }
+
+  return (
+    <div className="mb-3">
+      <div className="text-[11px] text-zinc-500 dark:text-zinc-400 mb-1">Istorijski P/E (godišnje) naspram trenutnog</div>
+      <div className="grid gap-1.5" style={{ gridTemplateColumns: cols }}>
+        {points.map((p) => (
+          <div key={p.label} className={`text-center text-[10px] tabular-nums ${p.isNow ? "font-semibold text-zinc-700 dark:text-zinc-300" : "text-zinc-500 dark:text-zinc-400"}`}>
+            {p.value.toFixed(1)}×
+          </div>
+        ))}
+      </div>
+      <div className="relative h-20 grid gap-1.5" style={{ gridTemplateColumns: cols }}>
+        {avgHeightPercent != null && (
+          <div
+            className="absolute left-0 right-0 border-t border-dashed border-zinc-400 dark:border-zinc-500"
+            style={{ bottom: `${avgHeightPercent}%` }}
+          />
+        )}
+        {points.map((p) => (
+          <div key={p.label} className="flex items-end h-full" title={`${p.label}: P/E ${p.value.toFixed(1)}×`}>
+            <div className={`w-full rounded-t ${toneFor(p)}`} style={{ height: `${Math.max(4, (p.value / maxVal) * 100)}%` }} />
+          </div>
+        ))}
+      </div>
+      <div className="grid gap-1.5" style={{ gridTemplateColumns: cols }}>
+        {points.map((p) => (
+          <div key={p.label} className={`text-center text-[10px] mt-1 ${p.isNow ? "font-semibold text-zinc-900 dark:text-zinc-50" : "text-zinc-400"}`}>
+            {p.label}
+          </div>
+        ))}
+      </div>
+      {avgPE != null && (
+        <p className="text-[11px] text-zinc-400 mt-1">
+          Isprekidana linija = sopstveni istorijski prosek P/E ({avgPE.toFixed(1)}×). Zeleno/crveno na stubiću
+          &quot;Sada&quot; = trenutni P/E je ispod/iznad tog proseka (±5%), žuto = blizu proseka.
+        </p>
+      )}
+    </div>
+  );
+}
+
 export default function OverviewCard() {
   const [ticker, setTicker] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState<ComputedModel | null>(null);
   const [analyzedTicker, setAnalyzedTicker] = useState("");
-  const [ownAvg, setOwnAvg] = useState<ReturnType<typeof analyzeHistoricalMultiples> | null>(null);
+  const [ownAvg, setOwnAvg] = useState<ReturnType<typeof computeOwnHistoricalAverages> | null>(null);
   const [translatedSummary, setTranslatedSummary] = useState<string | null>(null);
   const [translatingSummary, setTranslatingSummary] = useState(false);
   const [fallbackFcf, setFallbackFcf] = useState<number | null>(null);
@@ -738,6 +802,7 @@ export default function OverviewCard() {
               <StatTile label="P/B" value={fmtRatio(data.priceToBook)} />
               <StatTile label="P/FCF" value={fmtRatio(currentPFcf)} />
             </div>
+            <PeHistoryChart rows={ownAvg?.peRows ?? []} currentPE={data.peRatio} avgPE={ownAvg?.peAvg ?? null} />
             <table className="w-full text-xs">
               <tbody>
                 {multiplesTable.map((m) => (
