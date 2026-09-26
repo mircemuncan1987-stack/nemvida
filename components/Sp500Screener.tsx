@@ -63,6 +63,7 @@ interface Row {
   fcfYield: number | null;
   evToEbitda: number | null;
   compositeScore: number | null; // 1-5, isti kao na /pregled (computeOverviewScores)
+  revenueGrowth: number | null; // rast prihoda u poslednjih 12 meseci, ili istorijski CAGR kad TTM nije dostupan — ekspanzija/opadanje
   error?: string;
 }
 
@@ -145,6 +146,7 @@ async function fetchAndScore(ticker: string, nowSeconds: number): Promise<Row> {
   const fallbackFcf = yahooFcf == null ? await fetchStockAnalysisFcf(ticker) : null;
   const fcf = yahooFcf ?? fallbackFcf;
   const compositeScore = computeOverviewScores(computed, computeOwnHistoricalAverages(computed, priceHistory), fallbackFcf).scores.composite;
+  const revenueGrowth = modelData.revenueGrowthTtm ?? computed.breakdown.revenueCagr;
 
   return {
     ticker,
@@ -161,6 +163,7 @@ async function fetchAndScore(ticker: string, nowSeconds: number): Promise<Row> {
     fcfYield: computeFcfYield(fcf, modelData.marketCap),
     evToEbitda: modelData.evToEbitda,
     compositeScore,
+    revenueGrowth,
   };
 }
 
@@ -170,12 +173,12 @@ export default function Sp500Screener() {
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState(0);
   const [search, setSearch] = useState("");
-  const [sortKey, setSortKey] = useState<"verdict" | "composite" | "outperformance" | "ticker" | "sector">("verdict");
+  const [sortKey, setSortKey] = useState<"verdict" | "composite" | "outperformance" | "growth" | "ticker" | "sector">("verdict");
   const [lastUpdated, setLastUpdated] = useState<number | null>(null);
   const stopRef = useRef(false);
 
-  // v9: dodat outperformance5y — stariji keš nema to polje, pa se verzija menja da se osveži.
-  const cacheKeyFor = (idx: IndexKey) => `nemvida_screener_v9_${idx}`;
+  // v10: dodat revenueGrowth — stariji keš nema to polje, pa se verzija menja da se osveži.
+  const cacheKeyFor = (idx: IndexKey) => `nemvida_screener_v10_${idx}`;
 
   function loadFromCache(idx: IndexKey): boolean {
     try {
@@ -246,6 +249,7 @@ export default function Sp500Screener() {
             fcfYield: null,
             evToEbitda: null,
             compositeScore: null,
+            revenueGrowth: null,
             error: s.reason instanceof Error ? s.reason.message : "Greška",
           });
         }
@@ -270,6 +274,7 @@ export default function Sp500Screener() {
       if (sortKey === "ticker") return a.ticker.localeCompare(b.ticker);
       if (sortKey === "composite") return (b.compositeScore ?? -1) - (a.compositeScore ?? -1);
       if (sortKey === "outperformance") return (b.outperformance5y ?? -Infinity) - (a.outperformance5y ?? -Infinity);
+      if (sortKey === "growth") return (b.revenueGrowth ?? -Infinity) - (a.revenueGrowth ?? -Infinity);
       if (sortKey === "sector") return (b.marketCap ?? 0) - (a.marketCap ?? 0);
       return (VERDICT_ORDER[a.verdictLabel] ?? 5) - (VERDICT_ORDER[b.verdictLabel] ?? 5);
     });
@@ -301,7 +306,10 @@ export default function Sp500Screener() {
         stockanalysis.com. &quot;EV/EBITDA&quot; poredi vrednost kompanije (tržišna kapitalizacija + dug − gotovina) sa
         operativnom zaradom — niže obično znači jeftinije, ali zavisi od sektora (kapitalno intenzivne delatnosti
         imaju prirodno niže multiple). &quot;Kompozitni skor&quot; (1-5) je isti prosečni skor kao u zaglavlju
-        pregleda kompanije, računat istom funkcijom — zeleno ≥4, žuto 3-4, crveno ispod 3.
+        pregleda kompanije, računat istom funkcijom — zeleno ≥4, žuto 3-4, crveno ispod 3. &quot;Rast prihoda&quot; je
+        rast prihoda u poslednjih 12 meseci (ili istorijski CAGR kad TTM podatak nije dostupan) — zeleno znači
+        ekspanzija (prihod raste), crveno opadanje (prihod pada g/g), koristi se i za sortiranje &quot;ekspanzija
+        prvo&quot;.
       </div>
 
       <div className="border border-zinc-200 dark:border-zinc-800 bg-white/70 dark:bg-zinc-900/50 rounded-xl p-4 mb-4 flex flex-wrap gap-3 items-center">
@@ -337,12 +345,13 @@ export default function Sp500Screener() {
         />
         <select
           value={sortKey}
-          onChange={(e) => setSortKey(e.target.value as "verdict" | "composite" | "outperformance" | "ticker" | "sector")}
+          onChange={(e) => setSortKey(e.target.value as "verdict" | "composite" | "outperformance" | "growth" | "ticker" | "sector")}
           className="px-3 py-2 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-transparent text-sm"
         >
           <option value="verdict">Sortiraj: kupovina prvo</option>
           <option value="composite">Sortiraj: kompozitni skor (najviši prvo)</option>
           <option value="outperformance">Sortiraj: rast iznad SPY (5g, najveći prvo)</option>
+          <option value="growth">Sortiraj: rast prihoda (ekspanzija prvo, opadanje na dnu)</option>
           <option value="ticker">Sortiraj: abecedno</option>
           <option value="sector">Sortiraj: po sektoru (tržišna kap.)</option>
         </select>
@@ -409,6 +418,7 @@ function ScreenerTable({ rows }: { rows: Row[] }) {
           <th className="text-right text-xs uppercase text-zinc-500 dark:text-zinc-400 py-2 px-3 border-b border-zinc-200 dark:border-zinc-800">FCF prinos</th>
           <th className="text-right text-xs uppercase text-zinc-500 dark:text-zinc-400 py-2 px-3 border-b border-zinc-200 dark:border-zinc-800">EV/EBITDA</th>
           <th className="text-right text-xs uppercase text-zinc-500 dark:text-zinc-400 py-2 px-3 border-b border-zinc-200 dark:border-zinc-800">Kompozitni skor</th>
+          <th className="text-right text-xs uppercase text-zinc-500 dark:text-zinc-400 py-2 px-3 border-b border-zinc-200 dark:border-zinc-800">Rast prihoda</th>
           <th className="text-left text-xs uppercase text-zinc-500 dark:text-zinc-400 py-2 px-3 border-b border-zinc-200 dark:border-zinc-800">Sud</th>
           <th className="text-left text-xs uppercase text-zinc-500 dark:text-zinc-400 py-2 px-3 border-b border-zinc-200 dark:border-zinc-800">Fundamenti</th>
           <th className="text-center text-xs uppercase text-zinc-500 dark:text-zinc-400 py-2 px-3 border-b border-zinc-200 dark:border-zinc-800">🚩</th>
@@ -469,6 +479,13 @@ function ScreenerTable({ rows }: { rows: Row[] }) {
             </td>
             <td className="py-2 px-3 border-b border-zinc-200 dark:border-zinc-800 text-center">
               {r.redFlagCount > 0 ? <span className="text-red-600 dark:text-red-400 font-semibold">{r.redFlagCount}</span> : <span className="text-zinc-400">0</span>}
+            </td>
+            <td
+              className={`py-2 px-3 border-b border-zinc-200 dark:border-zinc-800 text-right tabular-nums font-medium ${
+                r.revenueGrowth == null ? "text-zinc-400" : r.revenueGrowth > 0 ? "text-emerald-600 dark:text-emerald-400" : r.revenueGrowth < 0 ? "text-red-600 dark:text-red-400" : "text-zinc-600 dark:text-zinc-400"
+              }`}
+            >
+              {fmtPct(r.revenueGrowth)}
             </td>
             {BENCHMARK_HORIZONS.map((y) => (
               <td key={y} className="py-2 px-3 border-b border-zinc-200 dark:border-zinc-800 text-center">
