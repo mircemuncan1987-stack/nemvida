@@ -108,6 +108,20 @@ export interface ModelData {
   quarterlyNetIncome: number[];
   sharesOutstandingHistory: { year: string; shares: number }[]; // hronološki rastuće
   insiderTransactions: { date: number | null; filerName: string | null; type: "kupovina" | "prodaja" | "ostalo"; shares: number | null }[] | null;
+  capitalAllocationRows: CapitalAllocationRow[]; // hronološki rastuće, koliko god godina cashflow izveštaj pokriva
+}
+
+// Godišnji podaci o tome kuda je slobodan novčani tok otišao — dividende i
+// otkup akcija su apsolutne vrednosti (Yahoo ih vraća kao odliv, negativan
+// broj), netBorrowings je predznačen (pozitivno = neto novo dugovanje,
+// negativno = neto otplata duga), da bi buildCapitalAllocationBreakdown
+// mogao ispravno da razdvoji "otplata duga" od "novo pozajmljivanje".
+export interface CapitalAllocationRow {
+  label: string;
+  fcf: number | null;
+  dividendsPaid: number | null;
+  buybacks: number | null;
+  netBorrowings: number | null;
 }
 
 function classifyInsiderTransaction(text: string | undefined | null): "kupovina" | "prodaja" | "ostalo" {
@@ -280,6 +294,24 @@ export function extractModelData(fullData: any, symbol: string): ModelData {
     }
   );
 
+  const capitalAllocationRows: CapitalAllocationRow[] = incomeStatements.map(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (s: any, i: number) => {
+      const year = s.endDate?.fmt?.slice(0, 4) ?? null;
+      const cf = (year && cashflowByYear.get(year)) || {};
+      const ocf = cf.totalCashFromOperatingActivities?.raw;
+      const capex = cf.capitalExpenditures?.raw;
+      const legacyFcf = ocf != null && capex != null ? ocf + capex : null;
+      return {
+        label: year || `Godina ${i + 1}`,
+        fcf: (year && fcfByYear.get(year)) ?? legacyFcf,
+        dividendsPaid: cf.dividendsPaid?.raw != null ? Math.abs(cf.dividendsPaid.raw) : null,
+        buybacks: cf.repurchaseOfStock?.raw != null ? Math.abs(cf.repurchaseOfStock.raw) : null,
+        netBorrowings: cf.netBorrowings?.raw ?? null,
+      };
+    }
+  );
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const longTermTrend = earningsTrend.find((t: any) => t.period === "+5y");
   const analystLongTermGrowth = longTermTrend?.growth?.raw ?? null;
@@ -353,6 +385,7 @@ export function extractModelData(fullData: any, symbol: string): ModelData {
     quarterlyNetIncome,
     sharesOutstandingHistory,
     insiderTransactions,
+    capitalAllocationRows,
   };
 }
 
@@ -379,6 +412,7 @@ export interface ComputedModel {
   consecutiveRevenueQuarters: number | null;
   consecutiveEarningsQuarters: number | null;
   qualityOfEarnings: QualityOfEarnings;
+  fcfConversion: FcfConversion;
   altmanZScore: AltmanZScore;
   shareCountTrend: ShareCountTrend;
   shareholderYield: number | null;
@@ -1291,6 +1325,77 @@ export function computeQualityOfEarnings(yearlyRows: YearlyFinancials[]): Qualit
   };
 }
 
+// ---------- FCF konverzija (koliko prijavljene dobiti stvarno postaje gotovina) ----------
+//
+// Različito od "Kvaliteta zarade" (netoDobit/operativnaDobit) — ovo poredi
+// slobodan novčani tok direktno sa neto dobiti. Nizak odnos ne znači
+// automatski problem (npr. kompanija u fazi velikih kapitalnih ulaganja), ali
+// trajno nizak odnos je signal da prijavljena dobit ne prati stvarnu gotovinu.
+export interface FcfConversion {
+  ratio: number | null;
+  label: "Odlično" | "Solidno" | "Slabo" | "Nedovoljno podataka";
+  detail: string;
+}
+
+export function computeFcfConversion(yearlyRows: YearlyFinancials[]): FcfConversion {
+  const last = yearlyRows[yearlyRows.length - 1];
+  if (!last || last.fcf == null || last.netIncome == null || last.netIncome <= 0) {
+    return { ratio: null, label: "Nedovoljno podataka", detail: "Nedostaje FCF ili neto dobit za poslednju godinu, ili je neto dobit negativna/nula." };
+  }
+  const ratio = last.fcf / last.netIncome;
+  const label: FcfConversion["label"] = ratio >= 0.8 ? "Odlično" : ratio >= 0.5 ? "Solidno" : "Slabo";
+  const explanation =
+    ratio >= 0.8
+      ? "gotovo sva prijavljena dobit (ili više) se pretvara u stvarnu gotovinu."
+      : ratio >= 0.5
+        ? "solidan deo dobiti se pretvara u gotovinu, uz razliku od kapitalnih izdataka ili promena u obrtnom kapitalu."
+        : "znatan deo prijavljene dobiti ne postaje gotovina u istoj godini — vredi provideti zašto (visoki kapitalni izdaci, rastuća potraživanja/zalihe, ili računovodstvene stavke bez novčanog toka).";
+  return { ratio, label, detail: `Slobodan novčani tok je ${(ratio * 100).toFixed(0)}% neto dobiti za poslednju godinu — ${explanation}` };
+}
+
+// ---------- Kapitalna alokacija (kuda ide slobodan novčani tok) ----------
+//
+// Razlaže FCF svake godine na dividende, otkup akcija i otplatu duga —
+// preostalo (moguće i negativno) je "ostalo": zadržana gotovina/rezerva kad
+// je pozitivno, ili deo raspodele finansiran dugom/gotovinskim rezervama kad
+// je negativno (FCF nije pokrio sve isplate te godine). Prikazuje se samo za
+// godine sa pozitivnim FCF-om — bez njega procenat nema smislenu interpretaciju.
+export interface CapitalAllocationBreakdown {
+  label: string;
+  fcf: number;
+  dividendsPaid: number;
+  buybacks: number;
+  debtPaydown: number;
+  other: number;
+  dividendsPercent: number;
+  buybacksPercent: number;
+  debtPaydownPercent: number;
+  otherPercent: number;
+}
+
+export function buildCapitalAllocationBreakdown(rows: CapitalAllocationRow[]): CapitalAllocationBreakdown[] {
+  return rows
+    .filter((r): r is CapitalAllocationRow & { fcf: number } => r.fcf != null && r.fcf > 0)
+    .map((r) => {
+      const dividendsPaid = r.dividendsPaid ?? 0;
+      const buybacks = r.buybacks ?? 0;
+      const debtPaydown = r.netBorrowings != null && r.netBorrowings < 0 ? -r.netBorrowings : 0;
+      const other = r.fcf - dividendsPaid - buybacks - debtPaydown;
+      return {
+        label: r.label,
+        fcf: r.fcf,
+        dividendsPaid,
+        buybacks,
+        debtPaydown,
+        other,
+        dividendsPercent: (dividendsPaid / r.fcf) * 100,
+        buybacksPercent: (buybacks / r.fcf) * 100,
+        debtPaydownPercent: (debtPaydown / r.fcf) * 100,
+        otherPercent: (other / r.fcf) * 100,
+      };
+    });
+}
+
 // ---------- Pojednostavljen Altman Z-score ----------
 //
 // Klasična formula (Altman, 1968) za javna proizvodna preduzeća. Namerno
@@ -1568,6 +1673,7 @@ export function computeModel(data: ModelData, assumptions: Assumptions = DEFAULT
   const consecutiveRevenueQuarters = computeConsecutiveGrowthStreak(data.quarterlyRevenue);
   const consecutiveEarningsQuarters = computeConsecutiveGrowthStreak(data.quarterlyNetIncome);
   const qualityOfEarnings = computeQualityOfEarnings(data.yearlyRows);
+  const fcfConversion = computeFcfConversion(data.yearlyRows);
   const lastRowForZ = data.yearlyRows[data.yearlyRows.length - 1];
   const altmanZScore = buildAltmanZScore({
     totalAssets: data.totalAssets,
@@ -1624,6 +1730,7 @@ export function computeModel(data: ModelData, assumptions: Assumptions = DEFAULT
     consecutiveRevenueQuarters,
     consecutiveEarningsQuarters,
     qualityOfEarnings,
+    fcfConversion,
     altmanZScore,
     shareCountTrend,
     shareholderYield,

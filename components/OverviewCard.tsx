@@ -6,6 +6,7 @@ import {
   classifyBusinessPhase,
   computeOverviewScores,
   computeOwnHistoricalAverages,
+  buildCapitalAllocationBreakdown,
   BUSINESS_PHASE_DEFINITIONS,
   computeEarningsReactions,
   computeFcfYieldPremium,
@@ -370,6 +371,7 @@ export default function OverviewCard() {
       consecutiveRevenueQuarters,
       consecutiveEarningsQuarters,
       qualityOfEarnings,
+      fcfConversion,
       altmanZScore,
       shareCountTrend,
       shareholderYield,
@@ -381,6 +383,8 @@ export default function OverviewCard() {
       ownAvg,
       fallbackFcf
     );
+
+    const capitalAllocation = buildCapitalAllocationBreakdown(data.capitalAllocationRows).slice(-4);
 
     const revenueGrowth = computeGrowthHorizons(breakdown.rows, (r) => r.revenue);
     const earningsGrowth = computeGrowthHorizons(breakdown.rows, (r) => r.netIncome);
@@ -704,6 +708,13 @@ export default function OverviewCard() {
                 </span>
               </div>
               <div className="flex justify-between items-baseline gap-3 py-0.5">
+                <span className="text-zinc-500 dark:text-zinc-400">FCF konverzija (FCF/neto dobit)</span>
+                <span className={`text-right font-medium shrink-0 ${toneClass(fcfConversion.label === "Odlično" ? "good" : fcfConversion.label === "Solidno" ? "neutral" : fcfConversion.label === "Slabo" ? "bad" : "unknown")}`}>
+                  {fcfConversion.label}
+                  {fcfConversion.ratio != null ? ` (${(fcfConversion.ratio * 100).toFixed(0)}%)` : ""}
+                </span>
+              </div>
+              <div className="flex justify-between items-baseline gap-3 py-0.5">
                 <span className="text-zinc-500 dark:text-zinc-400">Stabilnost FCF-a (koef. varijacije)</span>
                 <span
                   className={`text-right font-medium shrink-0 ${toneClass(fcfStability.label === "Stabilan" ? "good" : fcfStability.label === "Umereno stabilan" ? "neutral" : fcfStability.label === "Nestabilan" ? "bad" : "unknown")}`}
@@ -718,11 +729,56 @@ export default function OverviewCard() {
               </div>
             </div>
             <p className="text-[11px] text-zinc-400 mt-2 italic">
-              {qualityOfEarnings.detail} {fcfStability.detail}
+              {qualityOfEarnings.detail} {fcfConversion.detail} {fcfStability.detail}
             </p>
             <p className="text-[11px] text-zinc-400 mt-1 italic">
               Rast prihoda/dobiti je u kutiji &quot;Rast&quot;, a ROE i dividenda u kutiji &quot;Menadžment&quot; — ovde su samo marže, gotovina i kvalitet zarade, da se isti broj ne ponavlja pod dva imena.
             </p>
+          </Box>
+
+          {/* Kapitalna alokacija */}
+          <Box title="Kapitalna alokacija">
+            {capitalAllocation.length > 0 ? (
+              <>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="text-[10px] uppercase text-zinc-400">
+                        <th className="text-left py-1">Godina</th>
+                        <th className="text-right py-1">FCF</th>
+                        <th className="text-right py-1">Dividenda</th>
+                        <th className="text-right py-1">Otkup akcija</th>
+                        <th className="text-right py-1">Otplata duga</th>
+                        <th className="text-right py-1">Ostalo</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {capitalAllocation.map((r) => (
+                        <tr key={r.label} className="border-t border-zinc-100 dark:border-zinc-800">
+                          <td className="py-1 text-zinc-500 dark:text-zinc-400">{r.label}</td>
+                          <td className="py-1 text-right font-medium">{fmtMarketCap(r.fcf, data.currency)}</td>
+                          <td className="py-1 text-right tabular-nums">{r.dividendsPercent.toFixed(0)}%</td>
+                          <td className="py-1 text-right tabular-nums">{r.buybacksPercent.toFixed(0)}%</td>
+                          <td className="py-1 text-right tabular-nums">{r.debtPaydownPercent.toFixed(0)}%</td>
+                          <td className={`py-1 text-right tabular-nums ${r.otherPercent < -10 ? "text-amber-600 dark:text-amber-400 font-medium" : ""}`}>{r.otherPercent.toFixed(0)}%</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <p className="text-[11px] text-zinc-400 mt-2 italic">
+                  Procenti su udeo u slobodnom novčanom toku (FCF) te godine. &quot;Ostalo&quot; je preostalo posle
+                  dividende, otkupa akcija i otplate duga — pozitivno znači zadržana gotovina/rezerva ili
+                  reinvestiranje, negativno (žuto) znači da je deo raspodele te godine finansiran dugom ili
+                  gotovinskim rezervama, jer FCF nije pokrio sve isplate.
+                </p>
+              </>
+            ) : (
+              <p className="text-xs italic text-zinc-500 dark:text-zinc-400">
+                Nema dovoljno podataka za prikaz — slobodan novčani tok nije pozitivan u dostupnim godišnjim
+                izveštajima, ili dividenda/otkup/dug nisu dostupni u Yahoo izveštaju za ovaj tiker.
+              </p>
+            )}
           </Box>
 
           {/* Rizik */}
