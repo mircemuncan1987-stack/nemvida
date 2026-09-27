@@ -2218,4 +2218,48 @@ export const FISHER_DATABASE: Record<string, FisherDatabaseEntry> = {
     conclusion:
       "Fišer bi vrlo verovatno kupio ovu akciju — Bapatino dugogodišnje, tehnički superiorno izvršenje koje je preuzelo tržišni udeo od dominantnog igrača (Cisco) kroz superiorniju tehnologiju je upravo vrsta R&D-vođene konkurentske prednosti koju je tražio, uz jasnu izloženost strukturnom AI infrastrukturnom trendu. Koncentracija kupaca bi bio jedini rizik koji bi pomno pratio.",
   },
+  RTX: {
+    companyName: "RTX Corporation",
+    answers: [
+      "Da, umereno-do-značajno — nakon spajanja Raytheon-a i United Technologies (2020), diversifikovan portfolio (Collins Aerospace, Pratt & Whitney motori, Raytheon odbrambeni sistemi) prati rast i komercijalne avijacije (oporavak putovanja) i globalnih odbrambenih budžeta.",
+      "Da — kompanija kontinuirano investira u nove generacije avio-motora (Pratt & Whitney Geared Turbofan) i odbrambenih sistema (projektili, radari, kibernetska bezbednost) kroz sve tri poslovne jedinice.",
+      "Efikasan, ali sa poznatim problemom — dugogodišnja R&D u avio-motorima i odbrambenim sistemima je dokazana, ali Pratt & Whitney Geared Turbofan motor je imao ozbiljan, skup kvalitetni problem (metalni prah u diskovima) koji je zahtevao masovno vraćanje motora na pregled od 2023.",
+      "Da — dugogodišnji, dubok odnos sa Boeing-om, Airbus-om (kroz Pratt & Whitney i Collins Aerospace) i Pentagonom/savezničkim vladama (kroz Raytheon odbrambene sisteme).",
+      "Da, solidne, ali pod pritiskom — marže pritisnute troškovima popravke Pratt & Whitney motora (milijarde dolara rezervacija za taj problem), mada osnovno poslovanje (Collins, Raytheon) ostaje profitabilno.",
+      "Diversifikacija kroz tri velika segmenta (Collins Aerospace, Pratt & Whitney, Raytheon) ublažava uticaj problema u jednom segmentu (motor recall), uz disciplinu troškova u popravci Geared Turbofan problema.",
+      "Generalno solidni, standardni za veliku avio-svemirsku/odbrambenu kompaniju sa visokim sigurnosnim standardima.",
+      "Da — Kristofer Kalio (CEO od 2021) je nasledio kompleksnu integraciju nakon spajanja Raytheon/UTC, uz suočavanje sa ozbiljnim Pratt & Whitney motor problemom koji je testirao njegovo rukovodstvo.",
+      "Da — dubok inženjerski i programski menadžment tim po tri poslovne jedinice, izgrađen kroz decenije u avio-svemirskoj/odbrambenoj industriji, mada je integracija nakon spajanja UTC/Raytheon bila kompleksan, višegodišnji proces.",
+      "Dobri, ali test u toku — Pratt & Whitney motor problem (metalni prah u diskovima, otkriven 2023) je ozbiljan signal da sistemi kontrole kvaliteta u proizvodnji nisu uhvatili grešku pre nego što je postala skup, globalni recall.",
+      "Kombinacija komercijalne avijacije (Collins, Pratt & Whitney) i odbrane (Raytheon) u jednoj kompaniji je specifičnost koja daje diversifikaciju kroz različite cikluse (komercijalni vs. vladin budžet), retku kod čisto odbrambenih ili čisto komercijalnih avio-svemirskih konkurenata.",
+      "Dugoročna po prirodi industrije (avio-motori i odbrambeni programi traju decenije), ali kratkoročno opterećena hitnom potrebom da se reši Pratt & Whitney motor kriza.",
+      "Ne primarno kroz nove emisije, mada su rezervacije za troškove popravke motora (milijarde dolara) značajno opteretile bilans i slobodan novčani tok privremeno.",
+      "Menadžment je bio relativno otvoren o obimu i troškovima Pratt & Whitney motor problema, redovno ažurirajući investitore o napretku popravki i finansijskom uticaju.",
+      "Mešovito pitanje — Pratt & Whitney motor kvalitetni problem (i raniji, manji kvalitetni incidenti kod Raytheon-a) dovodi u pitanje rigoroznost sistema kontrole kvaliteta, mada nema direktnih optužbi o namernom prikrivanju ili ličnom nepoštenju menadžmenta.",
+    ],
+    conclusion:
+      "Fišer bi bio oprezan u ovom trenutku — Pratt & Whitney Geared Turbofan motor kriza (skup, globalni recall zbog greške u kvalitetu proizvodnje) je konkretan, opipljiv signal da sistemi kontrole kvaliteta nisu bili na nivou koji bi tražio kod kriterijuma broj 10, čak i ako je diversifikovan portfolio (komercijalna avijacija + odbrana) inače privlačan. Sačekao bi dokaz da je problem potpuno rešen i da se sistemi kontrole kvaliteta poboljšali.",
+  },
+  MCO: {
+    companyName: "Moody's Corporation",
+    answers: [
+      "Da — kreditni rejting (Moody's Investors Service) i analitika/podaci (Moody's Analytics) imaju dugoročan rast kroz globalni rast dužničkih tržišta, sličnu tezu kao S&P Global.",
+      "Da — kompanija kontinuirano proširuje Moody's Analytics segment (analitika rizika, podaci, softver) da diversifikuje van tradicionalnog kreditnog rejtinga, uz akvizicije u ovoj oblasti.",
+      "Nije primarno proizvodna R&D kompanija — \"inovacija\" je u razvoju analitičkih modela i alata za procenu rizika.",
+      "Da — dugogodišnji, dubok odnos sa izdavačima dugovnih hartija i finansijskim institucijama širom sveta, u duopolu sa S&P Global.",
+      "Da, izuzetno visoke — duopolna pozicija (sa S&P Global) u kreditnom rejtingu daje izuzetne marže, identična investiciona teza kao S&P Global Ratings segment.",
+      "Duopolna pozicija u kreditnom rejtingu daje cenovnu moć, uz rastući Moody's Analytics segment (analitika, softver za upravljanje rizikom) kao dodatni izvor visoko-marginalnog prihoda.",
+      "Generalno solidni, standardni za veliku finansijsku informacionu kompaniju.",
+      "Da — Rob Fauber (CEO od 2021) ima dugogodišnje iskustvo u kompaniji, nastavlja disciplinovanu diversifikacionu strategiju ka Moody's Analytics.",
+      "Da — dubok menadžment tim po segmentima (rejting, analitika), izgrađen kroz decenije i akvizicije.",
+      "Odlični, standardni za veliku finansijsku informacionu kompaniju sa regulatornim nadzorom (SEC) kreditnog rejtinga.",
+      "Duopolna pozicija u kreditnom rejtingu (sa S&P Global) je specifičnost koja stvara izuzetno duboku, teško repliciranu konkurentsku prednost — praktično identičnu S&P Global-ovoj investicionoj tezi.",
+      "Dugoročna — odnosi sa izdavačima dugovnih hartija su dugoročni, ponavljajući poslovni model.",
+      "Ne primarno kroz emisiju akcija — Moody's generiše veliki slobodan novčani tok i redovno otkupljuje akcije/isplaćuje dividendu.",
+      "Menadžment komunicira relativno standardno o diversifikacionoj strategiji ka Moody's Analytics.",
+      "Da, generalno dobra reputacija, mada je (kao i S&P i Fitch) bio kritikovan za ulogu u finansijskoj krizi 2008 (preterano visoki rejtinzi za hipotekarne hartije).",
+    ],
+    conclusion:
+      "Fišer bi vrlo verovatno kupio ovu akciju — praktično identična investiciona teza kao S&P Global (duopolna pozicija u kreditnom rejtingu, izuzetne marže, rastuća analitika/podaci kao diversifikacija). Izbor između Moody's i S&P Global bi za Fišera bio sličan izboru između Visa i Mastercard — oba odlična, teško izabrati favorita.",
+  },
 };
