@@ -30,6 +30,14 @@ export type Route = {
   seasonal?: boolean;
   seasonalNote?: string;
   directFlight: boolean;
+  /**
+   * Za destinacije van redovne mreže iz Stavangera: JEDNA karta kod iste
+   * aviokompanije, sa presedanjem u njenom čvorištu (npr. KLM preko
+   * Amsterdama) - i dalje direktno kod avio-prevoznika, nikad agencija.
+   */
+  viaHub?: Airport;
+  /** Dodatna napomena o rutiranju kad ima više od jednog presedanja. */
+  stopsNote?: string;
 };
 
 const homepageOnly = (homepage: string) => () => homepage;
@@ -136,6 +144,15 @@ const airport = (iata: string, city: string, country: string, lat: number, lon: 
   lon,
 });
 
+// Čvorišta aviokompanija koje već lete iz Stavangera - koriste se i kao
+// obična evropska destinacija i kao "viaHub" za dugolinijske veze u nastavku.
+const AMS = airport("AMS", "Amsterdam", "Holandija", 52.3086, 4.7639);
+const FRA = airport("FRA", "Frankfurt", "Nemačka", 50.0379, 8.5622);
+const MUC = airport("MUC", "Minhen", "Nemačka", 48.3538, 11.7861);
+const CPH = airport("CPH", "Kopenhagen", "Danska", 55.618, 12.656);
+const HEL = airport("HEL", "Helsinki", "Finska", 60.3172, 24.9633);
+const WAW = airport("WAW", "Varšava", "Poljska", 52.1657, 20.9671);
+
 // Destinacije i aviokompanije koje zaista redovno lete iz Stavangera (SVG/Sola).
 // Isključene su "paket" charter destinacije (npr. Rodos, Krit, Palma) koje se
 // prodaju samo kroz turističke agencije/pakete, ne kao pojedinačna karta
@@ -154,12 +171,12 @@ export const destinations: Route[] = [
   { destination: airport("TRF", "Sandefjord (Torp)", "Norveška", 59.1867, 10.2586), airlineId: "norwegian", directFlight: true },
 
   // Redovne međunarodne linije
-  { destination: airport("CPH", "Kopenhagen", "Danska", 55.618, 12.656), airlineId: "sas", directFlight: true },
-  { destination: airport("CPH", "Kopenhagen", "Danska", 55.618, 12.656), airlineId: "norwegian", directFlight: true },
-  { destination: airport("AMS", "Amsterdam", "Holandija", 52.3086, 4.7639), airlineId: "klm", directFlight: true },
-  { destination: airport("FRA", "Frankfurt", "Nemačka", 50.0379, 8.5622), airlineId: "lufthansa", directFlight: true },
-  { destination: airport("MUC", "Minhen", "Nemačka", 48.3538, 11.7861), airlineId: "lufthansa", directFlight: true },
-  { destination: airport("HEL", "Helsinki", "Finska", 60.3172, 24.9633), airlineId: "finnair", directFlight: true },
+  { destination: CPH, airlineId: "sas", directFlight: true },
+  { destination: CPH, airlineId: "norwegian", directFlight: true },
+  { destination: AMS, airlineId: "klm", directFlight: true },
+  { destination: FRA, airlineId: "lufthansa", directFlight: true },
+  { destination: MUC, airlineId: "lufthansa", directFlight: true },
+  { destination: HEL, airlineId: "finnair", directFlight: true },
   { destination: airport("ABZ", "Aberdin", "Ujedinjeno Kraljevstvo", 57.2019, -2.1978), airlineId: "sas", directFlight: true },
   {
     destination: airport("ABZ", "Aberdin", "Ujedinjeno Kraljevstvo", 57.2019, -2.1978),
@@ -171,7 +188,7 @@ export const destinations: Route[] = [
     airlineId: "norwegian",
     directFlight: true,
   },
-  { destination: airport("WAW", "Varšava", "Poljska", 52.1657, 20.9671), airlineId: "lot", directFlight: true },
+  { destination: WAW, airlineId: "lot", directFlight: true },
   { destination: airport("KRK", "Krakov", "Poljska", 50.0777, 19.7848), airlineId: "wizzair", directFlight: true },
   { destination: airport("KRK", "Krakov", "Poljska", 50.0777, 19.7848), airlineId: "norwegian", directFlight: true },
   { destination: airport("GDN", "Gdanjsk", "Poljska", 54.3776, 18.4662), airlineId: "wizzair", directFlight: true },
@@ -217,5 +234,108 @@ export const destinations: Route[] = [
     directFlight: true,
     seasonal: true,
     seasonalNote: "leto, 1x nedeljno",
+  },
+
+  // Svetske destinacije - Stavanger nema sopstvene dugolinijske letove, ali
+  // ovih nekoliko aviokompanija prodaje JEDNU kartu (svoj sopstveni kod, ne
+  // agencija) sa presedanjem u sopstvenom čvorištu, dalje na sopstvenoj
+  // dugolinijskoj mreži. Obeleženo je kao "sa presedanjem", nikad kao
+  // direktan let.
+  {
+    destination: airport("HND", "Tokio", "Japan", 35.5494, 139.7798),
+    airlineId: "finnair",
+    directFlight: false,
+    viaHub: HEL,
+  },
+  {
+    destination: airport("ICN", "Seul", "Južna Koreja", 37.4602, 126.4407),
+    airlineId: "lot",
+    directFlight: false,
+    viaHub: WAW,
+  },
+  {
+    destination: airport("SIN", "Singapur", "Singapur", 1.3644, 103.9915),
+    airlineId: "lufthansa",
+    directFlight: false,
+    viaHub: MUC,
+  },
+  {
+    destination: airport("PVG", "Šangaj", "Kina", 31.1443, 121.8083),
+    airlineId: "klm",
+    directFlight: false,
+    viaHub: AMS,
+  },
+  {
+    destination: airport("HKG", "Hongkong", "Kina", 22.308, 113.9185),
+    airlineId: "lufthansa",
+    directFlight: false,
+    viaHub: FRA,
+  },
+  {
+    destination: airport("BKK", "Bankok", "Tajland", 13.69, 100.7501),
+    airlineId: "sas",
+    directFlight: false,
+    viaHub: CPH,
+  },
+  {
+    destination: airport("BOM", "Mumbaj", "Indija", 19.0887, 72.8679),
+    airlineId: "sas",
+    directFlight: false,
+    viaHub: CPH,
+    seasonal: true,
+    seasonalNote: "nova linija od okt. 2026",
+  },
+  {
+    destination: airport("JFK", "Njujork", "SAD", 40.6413, -73.7781),
+    airlineId: "klm",
+    directFlight: false,
+    viaHub: AMS,
+  },
+  {
+    destination: airport("IAH", "Hjuston", "SAD", 29.9902, -95.3368),
+    airlineId: "lufthansa",
+    directFlight: false,
+    viaHub: FRA,
+  },
+  {
+    destination: airport("SFO", "San Francisko", "SAD", 37.6213, -122.379),
+    airlineId: "lot",
+    directFlight: false,
+    viaHub: WAW,
+  },
+  {
+    destination: airport("GRU", "Sao Paulo", "Brazil", -23.4356, -46.4731),
+    airlineId: "klm",
+    directFlight: false,
+    viaHub: AMS,
+  },
+  {
+    destination: airport("EZE", "Buenos Ajres", "Argentina", -34.8222, -58.5358),
+    airlineId: "klm",
+    directFlight: false,
+    viaHub: AMS,
+  },
+  {
+    destination: airport("CPT", "Kejptaun", "Južnoafrička Republika", -33.9715, 18.6021),
+    airlineId: "klm",
+    directFlight: false,
+    viaHub: AMS,
+    seasonal: true,
+    seasonalNote: "uglavnom leto na južnoj hemisferi",
+  },
+  {
+    destination: airport("DXB", "Dubai", "Ujedinjeni Arapski Emirati", 25.2532, 55.3657),
+    airlineId: "sas",
+    directFlight: false,
+    viaHub: CPH,
+    seasonal: true,
+    seasonalNote: "nova zimska linija 2026/27",
+  },
+  {
+    destination: airport("MEL", "Melburn", "Australija", -37.669, 144.841),
+    airlineId: "finnair",
+    directFlight: false,
+    viaHub: HEL,
+    stopsNote: "2 presedanja (Helsinki, Bankok)",
   },
 ];

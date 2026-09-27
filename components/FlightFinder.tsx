@@ -19,12 +19,24 @@ function addDays(d: Date, days: number): Date {
   return copy;
 }
 
+// Padež "u ..." (lokativ) za čvorišta koja se pojavljuju u napomeni o presedanju.
+const HUB_LOCATIVE: Record<string, string> = {
+  Amsterdam: "Amsterdamu",
+  Frankfurt: "Frankfurtu",
+  Minhen: "Minhenu",
+  Kopenhagen: "Kopenhagenu",
+  Helsinki: "Helsinkiju",
+  Varšava: "Varšavi",
+};
+
 type Option = {
   airlineId: string;
   airlineName: string;
   homepage: string;
   fare: FareEstimate;
   directFlight: boolean;
+  hubCity?: string;
+  stopsNote?: string;
   seasonal?: boolean;
   seasonalNote?: string;
   bookingUrl: string;
@@ -68,6 +80,7 @@ export default function FlightFinder() {
         adults,
         airline,
         today,
+        viaHub: route.viaHub,
       });
       const bookingUrl = airline.buildBookingUrl({
         from: "SVG",
@@ -83,6 +96,8 @@ export default function FlightFinder() {
         homepage: airline.homepage,
         fare,
         directFlight: route.directFlight,
+        hubCity: route.viaHub?.city,
+        stopsNote: route.stopsNote,
         seasonal: route.seasonal,
         seasonalNote: route.seasonalNote,
         bookingUrl,
@@ -255,7 +270,13 @@ function OptionCard({ option, adults }: { option: Option; adults: number }) {
       <div className="flex-1">
         <div className="flex items-center gap-2 flex-wrap">
           <span className="font-semibold text-zinc-900 dark:text-zinc-50">{option.airlineName}</span>
-          <Badge tone="neutral">{option.directFlight ? "Direktan let" : "Sa presedanjem"}</Badge>
+          <Badge tone="neutral">
+            {option.directFlight
+              ? "Direktan let"
+              : option.stopsNote
+                ? `Sa presedanjem — ${option.stopsNote}`
+                : `Sa presedanjem u ${(option.hubCity && HUB_LOCATIVE[option.hubCity]) ?? option.hubCity ?? "čvorištu"}`}
+          </Badge>
           <Badge tone="good">Predati kofer uključen</Badge>
           {option.seasonal && <Badge tone="warning">Sezonski let{option.seasonalNote ? ` — ${option.seasonalNote}` : ""}</Badge>}
         </div>

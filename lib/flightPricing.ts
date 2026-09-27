@@ -89,11 +89,19 @@ export function estimateFare(params: {
   adults: number;
   airline: AirlineFareProfile;
   today?: Date;
+  /**
+   * Ako ruta ide preko čvorišta iste aviokompanije (npr. KLM preko
+   * Amsterdama ka dalekim destinacijama) - udaljenost se računa kao zbir
+   * obe deonice, plus fiksna interkontinentalna taksa/gorivna doplata.
+   */
+  viaHub?: Pick<Airport, "lat" | "lon">;
 }): FareEstimate {
-  const { destination, departDate, returnDate, adults, airline } = params;
+  const { destination, departDate, returnDate, adults, airline, viaHub } = params;
   const today = params.today ?? new Date();
-  const distanceKm = haversineKm(STAVANGER, destination);
-  const baseFee = airline.serviceLevel === "low-cost" ? 25 : 45;
+  const distanceKm = viaHub
+    ? haversineKm(STAVANGER, viaHub) + haversineKm(viaHub, destination)
+    : haversineKm(STAVANGER, destination);
+  const baseFee = (airline.serviceLevel === "low-cost" ? 25 : 45) + (viaHub ? 150 : 0);
   const rate = perKmRate(distanceKm);
   const oneWayBase = baseFee + distanceKm * rate;
 
