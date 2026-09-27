@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { FISHER_DATABASE, FISHER_DATABASE_NOTE } from "@/lib/fisherDatabase";
 
 // Fišerovih (Philip Fisher, "Common Stocks and Uncommon Profits") 15
@@ -43,7 +43,13 @@ function loadRecord(ticker: string): FisherRecord {
     const raw = localStorage.getItem(storageKey(ticker));
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (parsed && Array.isArray(parsed.answers)) {
+      const hasContent =
+        parsed && Array.isArray(parsed.answers) && (parsed.answers.some((a: string) => a?.trim()) || parsed.conclusion?.trim());
+      // Prazan sačuvan zapis (npr. iz vremena pre nego što je baza dodata, kada
+      // je samo otvaranje tikera upisivalo praznu belešku) se ignoriše — inače
+      // bi trajno "zaklonio" bazu za taj tiker, bez ikakve stvarne korisnikove
+      // izmene koju bi trebalo očuvati.
+      if (hasContent) {
         return {
           companyName: parsed.companyName || ticker,
           answers: FISHER_QUESTIONS.map((_, i) => parsed.answers[i] || ""),
@@ -82,12 +88,6 @@ export default function FisherAnalysis() {
   const [error, setError] = useState("");
   const [record, setRecord] = useState<FisherRecord | null>(null);
 
-  useEffect(() => {
-    if (!activeTicker) return;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- učitavanje iz localStorage pri promeni aktivnog tikera, ne pri svakom render-u
-    setRecord(loadRecord(activeTicker));
-  }, [activeTicker]);
-
   async function openTicker() {
     const sym = tickerInput.trim().toUpperCase();
     if (!sym) return;
@@ -99,9 +99,12 @@ export default function FisherAnalysis() {
       if (!stockRes.ok) throw new Error(stockData?.error || `HTTP ${stockRes.status}`);
       const companyName = extractCompanyName(stockData, sym);
       const existing = loadRecord(sym);
-      const merged: FisherRecord = { ...existing, companyName };
-      saveRecord(sym, merged);
-      setRecord(merged);
+      // Ne upisuje se ovde — samo otvaranje tikera ne treba da upiše ništa u
+      // localStorage (ni prazan checklist, ni tekst iz baze), da se ne bi
+      // "zaključao" podrazumevani tekst iz baze pre nego što korisnik stvarno
+      // izmeni neki odgovor. Upisuje se samo pri stvarnoj izmeni (updateAnswer/
+      // updateConclusion).
+      setRecord({ ...existing, companyName });
       setActiveTicker(sym);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Greška pri traženju tikera.");
