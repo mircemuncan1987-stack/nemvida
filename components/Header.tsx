@@ -20,6 +20,9 @@ export default function Header() {
           <Link href="/lista" className="hover:text-blue-600 dark:hover:text-blue-400">
             Skener indeksa
           </Link>
+          <Link href="/letovi" className="hover:text-blue-600 dark:hover:text-blue-400">
+            Letovi
+          </Link>
         </nav>
       </div>
     </header>
