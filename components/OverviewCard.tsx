@@ -922,14 +922,6 @@ export default function OverviewCard() {
 
   return (
     <div className="max-w-4xl mx-auto px-4 pb-16">
-      <div className="mt-4 mb-5 text-sm leading-relaxed rounded-xl border border-amber-300/60 dark:border-amber-700/50 bg-amber-50 dark:bg-amber-900/15 text-amber-800 dark:text-amber-300 p-4">
-        <b>⚠ Ovo NIJE finansijski savet.</b> Sve ocene dolaze iz fiksnih, dokumentovanih pragova nad merljivim podacima — bez
-        subjektivnih procena. Stavke koje finansijski izveštaji ne mere direktno (raspodela prihoda po segmentima, procena
-        pretnje od disrupcije i sl.) su jasno označene kao takve, umesto da se izmišljaju. Altman Z-score je klasična formula
-        za proizvodna preduzeća (manje pouzdana za banke i nekretnine), a reakcija cene na izveštaje je gruba aproksimacija jer
-        Yahoo ne daje tačan datum objave rezultata, samo kraj fiskalnog kvartala. Samo američke i evropske akcije.
-      </div>
-
       <form onSubmit={handleSubmit} className="flex flex-wrap gap-2 items-end border border-zinc-200 dark:border-zinc-800 bg-white/70 dark:bg-zinc-900/50 rounded-xl p-4">
         <div className="flex-1 min-w-[160px] relative">
           <label className="block text-xs text-zinc-500 dark:text-zinc-400 mb-1">Ticker ili naziv kompanije (US/EU)</label>

@@ -284,8 +284,8 @@ export default function Sp500Screener() {
 
   return (
     <div className="max-w-5xl mx-auto px-4 pb-16">
-      <div className="mt-4 mb-5 text-sm leading-relaxed rounded-xl border border-amber-300/60 dark:border-amber-700/50 bg-amber-50 dark:bg-amber-900/15 text-amber-800 dark:text-amber-300 p-4">
-        <b>⚠ Ovo NIJE finansijski savet.</b> Sud je izveden iz istog sveobuhvatnog modela (rast poslovanja + disciplina
+      <div className="mt-4 mb-5 text-sm leading-relaxed rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/40 text-zinc-600 dark:text-zinc-400 p-4">
+        Sud je izveden iz istog sveobuhvatnog modela (rast poslovanja + disciplina
         valuacije) sa podrazumevanim pretpostavkama (nisu ručno prilagođene po kompaniji) — za detaljniju analizu
         pojedinačne akcije koristi{" "}
         <a href="/pregled" className="underline">pregled kompanije</a>. Liste tikera po indeksima su

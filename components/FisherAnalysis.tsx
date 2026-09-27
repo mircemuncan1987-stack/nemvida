@@ -61,14 +61,6 @@ export default function FisherAnalysis() {
 
   return (
     <div className="max-w-3xl mx-auto px-4 pb-16">
-      <div className="mt-4 mb-5 text-sm leading-relaxed rounded-xl border border-amber-300/60 dark:border-amber-700/50 bg-amber-50 dark:bg-amber-900/15 text-amber-800 dark:text-amber-300 p-4">
-        <b>⚠ Ovo NIJE finansijski savet.</b> Fišerovih (Philip Fisher, &quot;Common Stocks and Uncommon
-        Profits&quot;) 15 pitanja, prevedenih na srpski. Odgovori postoje samo za oko 100 najvećih S&P 500 kompanija
-        (uključujući MSFT, AAPL, NVDA...) i napisao ih je AI na osnovu opšteg znanja — ne iz merljivih Yahoo Finance
-        podataka kao ostatak sajta, i ne iz live pretrage interneta, pa mogu biti zastareli ili netačni, posebno za
-        skorašnje događaje.
-      </div>
-
       <div className="border border-zinc-200 dark:border-zinc-800 bg-white/70 dark:bg-zinc-900/50 rounded-xl p-4 mb-4 flex flex-wrap gap-3 items-center">
         <input
           type="text"
@@ -96,18 +88,18 @@ export default function FisherAnalysis() {
               <div className="space-y-4">
                 {FISHER_QUESTIONS.map((q, i) => (
                   <div key={i}>
-                    <div className="text-sm font-medium mb-1">
+                    <div className="text-sm font-semibold text-blue-700 dark:text-blue-400 mb-1.5">
                       {i + 1}. {q}
                     </div>
-                    <p className="text-sm text-zinc-700 dark:text-zinc-300 whitespace-pre-wrap break-words">
+                    <p className="text-sm text-zinc-600 dark:text-zinc-400 whitespace-pre-wrap break-words border-l-2 border-zinc-200 dark:border-zinc-700 pl-3">
                       {dbEntry.answers[i]}
                     </p>
                   </div>
                 ))}
               </div>
               <div className="mt-5 pt-4 border-t border-zinc-200 dark:border-zinc-800">
-                <div className="text-sm font-bold mb-1">Zaključak — da li bi Fišer kupio ovu akciju?</div>
-                <p className="text-sm text-zinc-700 dark:text-zinc-300 whitespace-pre-wrap break-words">{dbEntry.conclusion}</p>
+                <div className="text-sm font-semibold text-blue-700 dark:text-blue-400 mb-1.5">Zaključak — da li bi Fišer kupio ovu akciju?</div>
+                <p className="text-sm text-zinc-600 dark:text-zinc-400 whitespace-pre-wrap break-words border-l-2 border-zinc-200 dark:border-zinc-700 pl-3">{dbEntry.conclusion}</p>
               </div>
               <p className="text-[11px] text-zinc-400 mt-4 italic">{FISHER_DATABASE_NOTE}</p>
             </>

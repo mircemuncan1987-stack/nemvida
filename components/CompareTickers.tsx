@@ -175,16 +175,6 @@ export default function CompareTickers() {
 
   return (
     <div className="max-w-5xl mx-auto px-4 pb-16">
-      <div className="mt-4 mb-5 text-sm leading-relaxed rounded-xl border border-amber-300/60 dark:border-amber-700/50 bg-amber-50 dark:bg-amber-900/15 text-amber-800 dark:text-amber-300 p-4">
-        <b>⚠ Ovo NIJE finansijski savet.</b> Uporedi do {MAX_TICKERS} kompanija koje ti biraš (npr. direktni
-        konkurenti, ili kompanije iz istog sektora) — isti sveobuhvatni model kao na{" "}
-        <a href="/pregled" className="underline">pregledu kompanije</a>, prikazan jedno pored drugog. Najbolja
-        vrednost u svakom redu je istaknuta zeleno (osim kad su svi tikeri identični po tom metriku, ili nemaju
-        dovoljno podataka) — &quot;najbolja&quot; znači samo veća/manja u očekivanom smeru (npr. niži P/E, viša
-        marža), ne i da je ta kompanija bolja kupovina u celini. Ovaj alat ne predlaže sam konkurente — ti odlučuješ
-        koga poredi, da se ne bi izmišljalo poređenje koje ne možemo da proverimo.
-      </div>
-
       <div className="border border-zinc-200 dark:border-zinc-800 bg-white/70 dark:bg-zinc-900/50 rounded-xl p-4 mb-4">
         <div className="flex flex-wrap gap-2 mb-3">
           {tickers.map((t, i) => (

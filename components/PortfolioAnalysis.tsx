@@ -200,14 +200,6 @@ export default function PortfolioAnalysis() {
 
   return (
     <div className="max-w-5xl mx-auto px-4 pb-16">
-      <div className="mt-4 mb-5 text-sm leading-relaxed rounded-xl border border-amber-300/60 dark:border-amber-700/50 bg-amber-50 dark:bg-amber-900/15 text-amber-800 dark:text-amber-300 p-4">
-        <b>⚠ Ovo NIJE finansijski savet.</b> Vrednosti pozicija su iz tvog poslednjeg izveštaja brokera (možeš ih ručno
-        ažurirati) — cena, sud, fundamenti i tehnički pregled po akciji se preuzimaju uživo iz istog sveobuhvatnog
-        modela kao na <a href="/pregled" className="underline">/pregled</a> i <a href="/lista" className="underline">/lista</a>.
-        Fondovi (bez pojedinačnog tikera) i gotovina se ne analiziraju pojedinačno, samo se broje u ukupnu vrednost i
-        udele.
-      </div>
-
       <Section title="Pozicije u portfelju">
         <div className="overflow-x-auto">
           <table className="w-full text-sm border-collapse">
@@ -463,7 +455,7 @@ export default function PortfolioAnalysis() {
             Automatska analiza vesti po pojedinačnoj poziciji (koja vest utiče na koju akciju i koliko) nije još
             integrisana na sajtu — za najsvežije vesti pogledaj <Link href="/" className="underline">Vesti</Link>. Model
             pokriva samo američka i evropska tržišta; svi zaključci su automatski izvedeni iz javno dostupnih podataka
-            prema fiksnim pravilima. Ovo NIJE finansijski savet.
+            prema fiksnim pravilima.
           </div>
         </>
       )}
