@@ -284,32 +284,7 @@ export default function Sp500Screener() {
 
   return (
     <div className="max-w-5xl mx-auto px-4 pb-16">
-      <div className="mt-4 mb-5 text-sm leading-relaxed rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/40 text-zinc-600 dark:text-zinc-400 p-4">
-        Sud je izveden iz istog sveobuhvatnog modela (rast poslovanja + disciplina
-        valuacije) sa podrazumevanim pretpostavkama (nisu ručno prilagođene po kompaniji) — za detaljniju analizu
-        pojedinačne akcije koristi{" "}
-        <a href="/pregled" className="underline">pregled kompanije</a>. Liste tikera po indeksima su
-        snimci iz opšteg znanja i mogu odstupati od trenutnog zvaničnog sastava (kompozicije se povremeno menjaju).
-        &quot;Osveženo&quot; znači vreme poslednjeg preuzimanja podataka (keširano lokalno do 12h), ne doslovno live
-        tik-po-tik cena. &quot;Fundamenti&quot; je objektivna ocena poslovanja (rast, marže, zaduženost, konkurentska
-        prednost) — odvojeno od cene akcije. 🚩 je broj konkretnih upozoravajućih signala (npr. negativan novčani tok,
-        preterana zaduženost). &quot;vs SPY&quot; poredi ukupan prinos akcije sa SPY (S&P 500) na 3/5/10/20 godina —
-        &quot;—&quot; znači da istorija cene ne seže dovoljno unazad. Sortiranje &quot;rast iznad SPY&quot; koristi razliku
-        ukupnog prinosa na 5 godina (akcija minus SPY) — kompanije bez dovoljno istorije cene (npr. nedavni IPO) idu na
-        dno liste. Sortiranje &quot;po sektoru&quot; grupiše kompanije po
-        sektoru (Yahoo Finance klasifikacija), sektore ređa po ukupnoj tržišnoj kapitalizaciji (najveći prvo), a
-        kompanije unutar sektora po sopstvenoj tržišnoj kapitalizaciji (najveće prvo). &quot;FCF prinos&quot; je slobodan
-        novčani tok podeljen trenutnom tržišnom kapitalizacijom — što je veći, to kompanija generiše više gotovine u
-        odnosu na cenu; negativan (crveno) znači da kompanija trenutno troši više gotovine nego što generiše. Kad
-        Yahoo Finance nema taj podatak (čest slučaj za neke tikere), za američke akcije se kao rezerva proba
-        stockanalysis.com. &quot;Kompozitni skor&quot; (1-5) je isti prosečni skor kao u zaglavlju
-        pregleda kompanije, računat istom funkcijom — zeleno ≥4, žuto 3-4, crveno ispod 3. &quot;Rast prihoda&quot; je
-        rast prihoda u poslednjih 12 meseci (ili istorijski CAGR kad TTM podatak nije dostupan) — zeleno znači
-        ekspanzija (prihod raste), crveno opadanje (prihod pada g/g), koristi se i za sortiranje &quot;ekspanzija
-        prvo&quot;.
-      </div>
-
-      <div className="border border-zinc-200 dark:border-zinc-800 bg-white/70 dark:bg-zinc-900/50 rounded-xl p-4 mb-4 flex flex-wrap gap-3 items-center">
+      <div className="border border-zinc-200 dark:border-zinc-800 bg-white/70 dark:bg-zinc-900/50 rounded-xl p-4 mb-4 mt-4 flex flex-wrap gap-3 items-center">
         <div className="flex flex-wrap gap-1 rounded-lg border border-zinc-300 dark:border-zinc-700 p-1">
           {(Object.keys(INDEXES) as IndexKey[]).map((k) => (
             <button
