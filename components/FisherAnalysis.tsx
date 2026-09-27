@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { FISHER_DATABASE, FISHER_DATABASE_NOTE } from "@/lib/fisherDatabase";
 
 // Fišerovih (Philip Fisher, "Common Stocks and Uncommon Profits") 15
 // kvalitativnih pitanja — namerno BEZ automatskih AI odgovora. Ova pitanja
@@ -52,6 +53,10 @@ function loadRecord(ticker: string): FisherRecord {
     }
   } catch {
     /* nije kritično ako localStorage nije dostupan */
+  }
+  const dbEntry = FISHER_DATABASE[ticker];
+  if (dbEntry) {
+    return { companyName: dbEntry.companyName, answers: [...dbEntry.answers], conclusion: dbEntry.conclusion };
   }
   return { companyName: ticker, answers: FISHER_QUESTIONS.map(() => ""), conclusion: "" };
 }
@@ -120,16 +125,18 @@ export default function FisherAnalysis() {
   }
 
   const answeredCount = record ? record.answers.filter((a) => a.trim().length > 0).length : 0;
+  const isFromDatabase = activeTicker != null && activeTicker in FISHER_DATABASE;
 
   return (
     <div className="max-w-3xl mx-auto px-4 pb-16">
       <div className="mt-4 mb-5 text-sm leading-relaxed rounded-xl border border-amber-300/60 dark:border-amber-700/50 bg-amber-50 dark:bg-amber-900/15 text-amber-800 dark:text-amber-300 p-4">
-        <b>⚠ Ovo NIJE finansijski savet, i NIJE AI-generisana analiza.</b> Ovo je template/checklist Fišerovih
-        (Philip Fisher, &quot;Common Stocks and Uncommon Profits&quot;) 15 pitanja, prevedenih na srpski, za tvoje
-        sopstveno istraživanje (vesti, godišnji i kvartalni izveštaji, investitorske prezentacije). Sajt ne izmišlja
-        odgovore na ova pitanja — ona su namerno kvalitativna (integritet menadžmenta, odnosi sa zaposlenima...) i ne
-        mogu se izračunati iz Yahoo Finance podataka kao ostatak modela. Tvoji odgovori se čuvaju lokalno u ovom
-        pregledaču, po tikeru.
+        <b>⚠ Ovo NIJE finansijski savet.</b> Ovo je checklist Fišerovih (Philip Fisher, &quot;Common Stocks and
+        Uncommon Profits&quot;) 15 pitanja, prevedenih na srpski. Za oko 100 najvećih S&P 500 kompanija (uključujući
+        MSFT, AAPL, NVDA...) odgovori su unapred popunjeni iz baze koju je napisao AI na osnovu opšteg znanja — ne iz
+        merljivih Yahoo Finance podataka kao ostatak sajta, i ne iz live pretrage interneta, pa mogu biti zastareli
+        ili netačni, posebno za skorašnje događaje. Za sve ostale tikere kreće se od prazne checklist-e za tvoje
+        sopstveno istraživanje. Bilo koji odgovor možeš izmeniti — izmene se čuvaju lokalno u ovom pregledaču, po
+        tikeru, i imaju prednost nad tekstom iz baze.
       </div>
 
       <div className="border border-zinc-200 dark:border-zinc-800 bg-white/70 dark:bg-zinc-900/50 rounded-xl p-4 mb-4 flex flex-wrap gap-3 items-center">
@@ -156,6 +163,12 @@ export default function FisherAnalysis() {
             </h2>
             <span className="text-xs text-zinc-500 dark:text-zinc-400">{answeredCount}/15 popunjeno</span>
           </div>
+          {isFromDatabase && (
+            <p className="text-xs text-blue-700 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg px-3 py-2 mb-4">
+              Odgovori ispod su unapred popunjeni iz baze — {FISHER_DATABASE_NOTE} Slobodno izmeni bilo koji odgovor,
+              tvoja izmena se čuva lokalno i ima prednost nad ovim tekstom.
+            </p>
+          )}
           <div className="space-y-4">
             {FISHER_QUESTIONS.map((q, i) => (
               <div key={i}>
