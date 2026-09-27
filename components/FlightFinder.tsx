@@ -2,7 +2,7 @@
 
 import { useMemo, useRef, useState } from "react";
 import { destinations, getAirline } from "@/lib/flights";
-import { estimateFare, type FareEstimate } from "@/lib/flightPricing";
+import { estimateFare, formatNok, type FareEstimate } from "@/lib/flightPricing";
 import FlightPriceMap from "./FlightPriceMap";
 
 function toInputDate(d: Date): string {
@@ -237,32 +237,11 @@ export default function FlightFinder() {
             </div>
           </div>
         ) : (
-          <div>
-            <h2 className="text-lg font-bold text-zinc-900 dark:text-zinc-50 mb-3">Sve destinacije iz Stavangera</h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {[...groups.values()]
-                .sort((a, b) => a.options[0].fare.partyTotal - b.options[0].fare.partyTotal)
-                .map((g) => (
-                  <button
-                    key={g.destination.iata}
-                    type="button"
-                    onClick={() => handleSelect(g.destination.iata)}
-                    className="text-left rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white/60 dark:bg-zinc-900/40 p-4 hover:border-blue-400 dark:hover:border-blue-600 transition-colors"
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="font-semibold text-zinc-900 dark:text-zinc-50">{g.destination.city}</span>
-                      <span className="text-xs text-zinc-500 dark:text-zinc-500">{g.destination.iata}</span>
-                    </div>
-                    <div className="mt-2 text-2xl font-bold text-zinc-900 dark:text-zinc-50">
-                      od {g.options[0].fare.partyTotal} €
-                    </div>
-                    <div className="text-xs text-zinc-500 dark:text-zinc-400">
-                      za {adults} {adults === 1 ? "putnika" : "putnika"} · {g.options[0].airlineName}
-                      {g.options.length > 1 ? ` · +${g.options.length - 1} drugih opcija` : ""}
-                    </div>
-                  </button>
-                ))}
-            </div>
+          <div className="text-center py-10 text-zinc-500 dark:text-zinc-400">
+            <p className="text-sm">
+              Okreni globus prevlačenjem i klikni na destinaciju da vidiš cenu i link za rezervaciju — ili je izaberi
+              iz padajuće liste iznad.
+            </p>
           </div>
         )}
       </div>
@@ -280,12 +259,12 @@ function OptionCard({ option, adults }: { option: Option; adults: number }) {
           <Badge tone="good">Predati kofer uključen</Badge>
           {option.seasonal && <Badge tone="warning">Sezonski let{option.seasonalNote ? ` — ${option.seasonalNote}` : ""}</Badge>}
         </div>
-        <div className="mt-2 text-3xl font-bold text-zinc-900 dark:text-zinc-50">{option.fare.partyTotal} €</div>
+        <div className="mt-2 text-3xl font-bold text-zinc-900 dark:text-zinc-50">{formatNok(option.fare.partyTotal)}</div>
         <div className="text-xs text-zinc-500 dark:text-zinc-400">
-          {Math.round(option.fare.partyTotal / adults)} € po putniku · procena za {adults}{" "}
+          {formatNok(Math.round(option.fare.partyTotal / adults))} po putniku · procena za {adults}{" "}
           {adults === 1 ? "putnika" : "putnika"}
           {option.baggageAddedFee > 0 && (
-            <> · uključili smo procenjenih {option.baggageAddedFee} € za predati kofer (aviokompanija ga inače ne uključuje po defaultu)</>
+            <> · uključili smo procenjenih {formatNok(option.baggageAddedFee)} za predati kofer (aviokompanija ga inače ne uključuje po defaultu)</>
           )}
         </div>
         {!option.deepLinkSupported && (

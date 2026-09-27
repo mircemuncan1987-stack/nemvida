@@ -66,7 +66,7 @@ export type AirlineFareProfile = {
 };
 
 export type FareEstimate = {
-  currency: "EUR";
+  currency: "NOK";
   perPassengerOneLeg: number;
   perPassengerTotal: number;
   partyTotal: number;
@@ -74,6 +74,13 @@ export type FareEstimate = {
   baggageIncluded: true; // uvek true u prikazanoj ceni - ili je već uključen, ili ga dodajemo
   distanceKm: number;
 };
+
+// Model računa u EUR-ekvivalentu (lakše je kalibrisati stope po km), a onda se
+// finalni iznos konvertuje u NOK za prikaz - Stavanger je u Norveškoj, pa su
+// krune prirodnija valuta za korisnika nego evri.
+const EUR_TO_NOK = 11.5;
+const roundToTen = (x: number) => Math.round(x / 10) * 10;
+const toNok = (eur: number) => roundToTen(eur * EUR_TO_NOK);
 
 export function estimateFare(params: {
   destination: Pick<Airport, "lat" | "lon">;
@@ -105,14 +112,19 @@ export function estimateFare(params: {
   const perPassengerTotal = outboundFare + inboundFare + baggageFeeAddedPerPassenger;
 
   return {
-    currency: "EUR",
-    perPassengerOneLeg: Math.round(outboundFare),
-    perPassengerTotal: Math.round(perPassengerTotal),
-    partyTotal: Math.round(perPassengerTotal * adults),
-    baggageFeeAddedPerPassenger: Math.round(baggageFeeAddedPerPassenger),
+    currency: "NOK",
+    perPassengerOneLeg: toNok(outboundFare),
+    perPassengerTotal: toNok(perPassengerTotal),
+    partyTotal: toNok(perPassengerTotal * adults),
+    baggageFeeAddedPerPassenger: toNok(baggageFeeAddedPerPassenger),
     baggageIncluded: true,
     distanceKm: Math.round(distanceKm),
   };
+}
+
+/** Formatira iznos u NOK po norveškoj konvenciji (razmak kao separator hiljada). */
+export function formatNok(amount: number): string {
+  return `${amount.toLocaleString("no-NO")} kr`;
 }
 
 // Sekvencijalna plava skala (validirana paleta) za mapu cena: svetlije = jeftinije.
