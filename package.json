@@ -9,25 +9,20 @@
     "lint": "eslint"
   },
   "dependencies": {
-    "d3-geo": "^3.1.1",
     "date-fns": "^4.4.0",
     "fast-xml-parser": "^5.11.1",
     "gray-matter": "^4.0.3",
     "marked": "^18.0.11",
     "next": "16.3.4",
     "react": "19.2.8",
-    "react-dom": "19.2.8",
-    "topojson-client": "^3.1.0",
-    "world-atlas": "^2.0.2"
+    "react-dom": "19.2.8"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@tailwindcss/typography": "^0.5.20",
-    "@types/d3-geo": "^3.1.1",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "@types/topojson-client": "^3.1.5",
     "eslint": "^9",
     "eslint-config-next": "16.3.4",
     "tailwindcss": "^4",
