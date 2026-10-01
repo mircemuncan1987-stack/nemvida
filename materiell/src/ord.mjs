@@ -77,10 +77,12 @@ export const finn = (w) => {
 
 // Bokstavkort: bokstav + et ord som begynner på den.
 export const BOKSTAVER = [
-  ['A', 'ananas', '🍍'], ['B', 'bil', '🚗'], ['D', 'dusj', '🚿'], ['E', 'elefant', '🐘'],
-  ['F', 'fly', '✈️'], ['G', 'gitar', '🎸'], ['H', 'hest', '🐴'], ['I', 'is', '🍦'],
-  ['J', 'jakke', '🧥'], ['K', 'katt', '🐱'], ['L', 'løve', '🦁'], ['M', 'mus', '🐭'],
-  ['N', 'nese', '👃'], ['O', 'ost', '🧀'], ['P', 'pizza', '🍕'], ['R', 'rev', '🦊'],
-  ['S', 'sol', '☀️'], ['T', 'tog', '🚆'], ['U', 'ugle', '🦉'], ['V', 'vott', '🧤'],
-  ['Ø', 'øye', '👁️'],
+  ['A', 'ananas', '🍍'], ['B', 'bil', '🚗'], ['C', 'cowboy', '🤠'], ['D', 'dusj', '🚿'],
+  ['E', 'elefant', '🐘'], ['F', 'fly', '✈️'], ['G', 'gitar', '🎸'], ['H', 'hest', '🐴'],
+  ['I', 'is', '🍦'], ['J', 'jakke', '🧥'], ['K', 'katt', '🐱'], ['L', 'løve', '🦁'],
+  ['M', 'mus', '🐭'], ['N', 'nese', '👃'], ['O', 'ost', '🧀'], ['P', 'pizza', '🍕'],
+  ['Q', 'quiz', '❓'], ['R', 'rev', '🦊'], ['S', 'sol', '☀️'], ['T', 'tog', '🚆'],
+  ['U', 'ugle', '🦉'], ['V', 'vott', '🧤'], ['W', 'wc', '🚽'], ['X', 'xylofon', 'svg:xylofon'],
+  ['Y', 'yoga', '🧘'], ['Z', 'zebra', '🦓'], ['Æ', 'ærfugl', '🦆'], ['Ø', 'øye', '👁️'],
+  ['Å', 'åker', '🌾'],
 ];
