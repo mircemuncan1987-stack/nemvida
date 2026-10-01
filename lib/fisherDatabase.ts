@@ -5,11 +5,10 @@
 // ovim kompanijama, NE live pretragom interneta u realnom vremenu — mogu biti
 // zastareli ili netačni za skorašnje događaje, posebno tačke o menadžmentu i
 // odnosima sa zaposlenima koje su suštinski kvalitativne i teško provrljive.
-// Korisnik može da prepiše svaki odgovor — te izmene se čuvaju lokalno
-// (localStorage) i imaju prednost nad ovim podrazumevanim tekstom.
+// Prikaz na sajtu je samo za čitanje — korisnik ne može da menja ove odgovore.
 
 export const FISHER_DATABASE_NOTE =
-  "Odgovori ispod je napisao AI na osnovu opšteg znanja (nije live pretraga interneta), kao početna tačka — ne kao gotov zaključak. Uvek provizeri kod skorašnjih izveštaja i vesti pre odluke.";
+  "Odgovori ispod je napisao AI na osnovu opšteg znanja (nije live pretraga interneta), kao početna tačka — ne kao gotov zaključak. Uvek proveri kod skorašnjih izveštaja i vesti pre odluke.";
 
 export interface FisherDatabaseEntry {
   companyName: string;
