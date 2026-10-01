@@ -511,7 +511,7 @@ export default function OverviewCard() {
               <p className="text-xs italic text-zinc-500 dark:text-zinc-400 mb-3">Opis poslovanja nije dostupan.</p>
             )}
             <p className="text-[11px] text-zinc-400 mb-2 italic">
-              Podela prihoda po segmentima nije dostupna (Yahoo Finance je ne pruža za većinu tikera) — proverljivi kvalitativni signali ispod:
+              Podela prihoda po segmentima nije dostupna (Yahoo Finance ne pruža tu podelu za većinu tikera) — proverljivi kvalitativni signali ispod:
             </p>
             {qualityChecks.map((c) => (
               <CheckRow key={c.label} c={c} />

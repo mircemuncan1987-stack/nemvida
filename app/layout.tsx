@@ -15,9 +15,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Nemvida Finance — Besplatne finansijske vesti i stručni članci",
+  title: "Nemvida Finance — Besplatne finansijske vesti i alati za analizu akcija",
   description:
-    "Besplatne i otvorene finansijske vesti u realnom vremenu za Visa, Mastercard, American Express, Nvidia, Amazon, Meta, Alphabet, Microsoft, Merck, TSMC i Investor AB.",
+    "Besplatne finansijske vesti u realnom vremenu uz besplatne alate za analizu akcija: pregled kompanije, poređenje tikera, skener S&P 500/Dow/Nasdaq-100 i evropskih indeksa, praćenje sopstvenog portfelja i Fišerovih 15 pitanja za najveće S&P 500 kompanije.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
