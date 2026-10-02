@@ -32,29 +32,89 @@ function extractCompanyName(stockData: any, fallback: string): string {
   return price?.longName || price?.shortName || fallback;
 }
 
+interface DbSuggestion {
+  ticker: string;
+  companyName: string;
+}
+
+const DB_ENTRIES: DbSuggestion[] = Object.entries(FISHER_DATABASE).map(([ticker, e]) => ({ ticker, companyName: e.companyName }));
+
+// Pretraga po tikeru ILI po nazivu kompanije (delimično poklapanje, bez
+// razlike malih/velikih slova) — baza ima samo ~100 kompanija, pa je
+// pretraga trenutna i lokalna, bez poziva na server.
+function searchDatabase(query: string): DbSuggestion[] {
+  const q = query.trim().toLowerCase();
+  if (q.length < 2) return [];
+  return DB_ENTRIES.filter((e) => e.ticker.toLowerCase().includes(q) || e.companyName.toLowerCase().includes(q)).slice(0, 8);
+}
+
+// Kad korisnik otkuca ceo naziv (ili deo koji jednoznačno odgovara samo
+// jednoj kompaniji) i pritisne Enter/"Prikaži" bez klika na predlog iz
+// padajuće liste — isti rezultat kao da je kliknuo predlog.
+function resolveToTicker(query: string): string | null {
+  const trimmed = query.trim();
+  if (!trimmed) return null;
+  const upper = trimmed.toUpperCase();
+  if (FISHER_DATABASE[upper]) return upper;
+  const q = trimmed.toLowerCase();
+  const exact = DB_ENTRIES.find((e) => e.companyName.toLowerCase() === q);
+  if (exact) return exact.ticker;
+  const matches = searchDatabase(trimmed);
+  if (matches.length === 1) return matches[0].ticker;
+  return null;
+}
+
 export default function FisherAnalysis() {
   const [tickerInput, setTickerInput] = useState("");
   const [activeTicker, setActiveTicker] = useState<string | null>(null);
   const [companyName, setCompanyName] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [suggestions, setSuggestions] = useState<DbSuggestion[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
 
-  async function openTicker() {
-    const sym = tickerInput.trim().toUpperCase();
-    if (!sym) return;
+  async function openTicker(symOverride?: string) {
+    const raw = (symOverride ?? tickerInput).trim();
+    if (!raw) return;
+    setShowSuggestions(false);
     setLoading(true);
     setError("");
+    const dbTicker = resolveToTicker(raw);
+    const sym = (dbTicker ?? raw).toUpperCase();
     try {
       const stockRes = await fetch(`/api/stock?symbol=${encodeURIComponent(sym)}&type=valuation`, { cache: "no-store" });
       const stockData = await stockRes.json();
       if (!stockRes.ok) throw new Error(stockData?.error || `HTTP ${stockRes.status}`);
       setCompanyName(extractCompanyName(stockData, sym));
       setActiveTicker(sym);
+      setTickerInput(sym);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Greška pri traženju tikera.");
+      if (dbTicker) {
+        // Živi podatak (cena/trenutni naziv) nije dostupan, ali kompanija je
+        // u Fišerovoj bazi — prikaži iz baze umesto da prijavljuje grešku.
+        setCompanyName(FISHER_DATABASE[dbTicker].companyName);
+        setActiveTicker(dbTicker);
+        setTickerInput(dbTicker);
+      } else {
+        setError(err instanceof Error ? err.message : "Greška pri traženju tikera ili naziva kompanije.");
+      }
     } finally {
       setLoading(false);
     }
+  }
+
+  function handleInputChange(value: string) {
+    setTickerInput(value);
+    const found = searchDatabase(value);
+    setSuggestions(found);
+    setShowSuggestions(found.length > 0);
+  }
+
+  function pickSuggestion(s: DbSuggestion) {
+    setSuggestions([]);
+    setShowSuggestions(false);
+    setTickerInput(s.ticker);
+    openTicker(s.ticker);
   }
 
   const dbEntry = activeTicker ? FISHER_DATABASE[activeTicker] : null;
@@ -62,15 +122,39 @@ export default function FisherAnalysis() {
   return (
     <div className="max-w-3xl mx-auto px-4 pb-16">
       <div className="border border-zinc-200 dark:border-zinc-800 bg-white/70 dark:bg-zinc-900/50 rounded-xl p-4 mb-4 flex flex-wrap gap-3 items-center">
-        <input
-          type="text"
-          value={tickerInput}
-          onChange={(e) => setTickerInput(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && !loading && openTicker()}
-          placeholder="Ticker (npr. MSFT)"
-          className="flex-1 min-w-[160px] px-3 py-2 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-transparent text-sm"
-        />
-        <button onClick={openTicker} disabled={loading} className="bg-blue-600 text-white font-semibold px-5 py-2 rounded-lg text-sm disabled:opacity-60">
+        <div className="flex-1 min-w-[220px] relative">
+          <input
+            type="text"
+            value={tickerInput}
+            onChange={(e) => handleInputChange(e.target.value)}
+            onFocus={() => suggestions.length > 0 && setShowSuggestions(true)}
+            onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
+            onKeyDown={(e) => e.key === "Enter" && !loading && openTicker()}
+            placeholder="Ticker ili naziv kompanije (npr. MSFT ili Microsoft)"
+            autoComplete="off"
+            className="w-full px-3 py-2 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-transparent text-sm"
+          />
+          {showSuggestions && suggestions.length > 0 && (
+            <ul className="absolute z-10 mt-1 w-full max-h-64 overflow-y-auto rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 shadow-lg">
+              {suggestions.map((s) => (
+                <li key={s.ticker}>
+                  <button
+                    type="button"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => pickSuggestion(s)}
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-zinc-100 dark:hover:bg-zinc-800 flex justify-between gap-2"
+                  >
+                    <span className="truncate">
+                      <span className="font-semibold">{s.ticker}</span>{" "}
+                      <span className="text-zinc-500 dark:text-zinc-400">{s.companyName}</span>
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+        <button onClick={() => openTicker()} disabled={loading} className="bg-blue-600 text-white font-semibold px-5 py-2 rounded-lg text-sm disabled:opacity-60">
           {loading ? "Tražim..." : "Prikaži"}
         </button>
       </div>
