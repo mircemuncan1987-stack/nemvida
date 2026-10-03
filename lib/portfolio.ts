@@ -225,7 +225,7 @@ function buildSuggestion(
   if (flaggedWeight > 0.3) {
     return `Nema pojedinačne pozicije ocenjene kao "Slabi" po kvalitetu, ali ${(flaggedWeight * 100).toFixed(
       0
-    )}% portfelja ima bar jednu crvenu zastavicu — pregledaj tabelu "Sud po poziciji" i prioritizuj pozicije sa najviše zastavica.`;
+    )}% portfelja ima bar jednu ozbiljnu ili umerenu crvenu zastavicu (ne čisto informativnu) — pregledaj tabelu "Sud po poziciji" i prioritizuj pozicije sa najviše zastavica.`;
   }
 
   const bestOsrednji = positions
@@ -281,14 +281,14 @@ export function buildPortfolioConclusion(input: PortfolioConclusionInput): Portf
 
   if (flaggedWeight > 0) {
     sentences.push(
-      `${(flaggedWeight * 100).toFixed(0)}% portfelja (po vrednosti, od pokrivenog dela) ima bar jednu crvenu zastavicu iz modela, ponderisano ${weightedRedFlags.toFixed(2)} zastavice po poziciji — ${
+      `${(flaggedWeight * 100).toFixed(0)}% portfelja (po vrednosti, od pokrivenog dela) ima bar jednu ozbiljnu ili umerenu crvenu zastavicu iz modela (čisto informativne napomene se ne broje), ponderisano ${weightedRedFlags.toFixed(2)} zastavice po poziciji — ${
         flaggedWeight > 0.4
           ? "značajan deo portfelja trenutno nosi bar jedan konkretan, modelom detektovan rizik."
           : "ograničeno na manji deo portfelja."
       }`
     );
   } else {
-    sentences.push("Nijedna pozicija sa dostupnim podacima trenutno ne nosi crvenu zastavicu iz modela.");
+    sentences.push("Nijedna pozicija sa dostupnim podacima trenutno ne nosi ozbiljnu ili umerenu crvenu zastavicu iz modela (čisto informativne napomene ne računaju se kao rizik).");
   }
 
   if (severeConcentration.length > 0) {

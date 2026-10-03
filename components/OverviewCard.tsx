@@ -903,14 +903,33 @@ export default function OverviewCard() {
           <div className="border border-red-300/60 dark:border-red-700/50 bg-red-50 dark:bg-red-900/15 rounded-xl p-4">
             <h3 className="text-xs font-bold uppercase tracking-wide text-red-700 dark:text-red-400 mb-2">Crveni signali</h3>
             {redFlags.length || bullBear.bear.length ? (
-              <ul className="space-y-1">
-                {[...redFlags, ...bullBear.bear].slice(0, 6).map((b) => (
-                  <li key={b} className="text-xs text-red-800 dark:text-red-300 flex gap-1.5">
-                    <span>✗</span>
-                    <span>{b}</span>
-                  </li>
-                ))}
-              </ul>
+              <>
+                <ul className="space-y-1">
+                  {[...redFlags]
+                    .sort((a, b) => b.severity - a.severity)
+                    .slice(0, 6)
+                    .map((f, i) => (
+                      <li
+                        key={`rf-${i}`}
+                        className={`text-xs flex gap-1.5 ${
+                          f.severity >= 3 ? "text-red-800 dark:text-red-300" : f.severity === 2 ? "text-amber-700 dark:text-amber-400" : "text-zinc-500 dark:text-zinc-400"
+                        }`}
+                      >
+                        <span className="shrink-0">{f.severity >= 3 ? "✗" : f.severity === 2 ? "⚠" : "ℹ"}</span>
+                        <span>{f.label}</span>
+                      </li>
+                    ))}
+                  {bullBear.bear.slice(0, Math.max(0, 6 - redFlags.length)).map((b) => (
+                    <li key={b} className="text-xs text-red-800 dark:text-red-300 flex gap-1.5">
+                      <span className="shrink-0">✗</span>
+                      <span>{b}</span>
+                    </li>
+                  ))}
+                </ul>
+                <p className="text-[11px] text-zinc-400 mt-2 italic">
+                  ✗ ozbiljno · ⚠ umereno · ℹ informativno (ne nužno rizik ili lošiji kvalitet — npr. širok raspon ciljnih cena analitičara je pitanje konsenzusa, ne kompanije same po sebi).
+                </p>
+              </>
             ) : (
               <p className="text-xs italic text-red-800/70 dark:text-red-300/70">Nema detektovanih upozorenja u dostupnim podacima.</p>
             )}

@@ -10,7 +10,7 @@ import {
   resolveFcfForYield,
 } from "@/lib/buildModel";
 import { computeFcfYield } from "@/lib/valuation";
-import type { FundamentalsRating, Verdict4 } from "@/lib/model";
+import { significantRedFlagCount, type FundamentalsRating, type Verdict4 } from "@/lib/model";
 import { fetchPriceHistory, fetchStockAnalysisFcf } from "@/lib/clientData";
 
 const MAX_TICKERS = 5;
@@ -91,7 +91,7 @@ async function analyzeTicker(ticker: string): Promise<CompareResult> {
     debtToEquity: modelData.debtToEquity != null ? modelData.debtToEquity / 100 : null,
     dividendYield: modelData.dividendYield,
     moatScore: computed.moat.score,
-    redFlagCount: computed.redFlags.length,
+    redFlagCount: significantRedFlagCount(computed.redFlags),
   };
 }
 
@@ -115,7 +115,7 @@ const METRICS: MetricDef[] = [
   { label: "Dug/kapital", get: (r) => r.debtToEquity, format: (v) => fmtRatio(v), direction: "lower" },
   { label: "Dividendni prinos", get: (r) => r.dividendYield, format: (v) => fmtPct(v), direction: "higher" },
   { label: "Moat skor", get: (r) => r.moatScore, format: (v) => (v != null ? `${v}/10` : "—"), direction: "higher" },
-  { label: "Crvene zastavice", get: (r) => r.redFlagCount, format: (v) => (v != null ? `${v}` : "—"), direction: "lower" },
+  { label: "Crvene zastavice (ozbiljne/umerene)", get: (r) => r.redFlagCount, format: (v) => (v != null ? `${v}` : "—"), direction: "lower" },
 ];
 
 function bestIndexFor(metric: MetricDef, values: (CompareResult | null)[]): number | null {

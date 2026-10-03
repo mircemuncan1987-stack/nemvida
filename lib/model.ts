@@ -793,7 +793,7 @@ export function buildBullBear(inputs: BullBearInputs): BullBearResult {
   }
 
   if (inputs.redFlagCount > 0) {
-    bearCandidates.push(`${inputs.redFlagCount} crvena zastavica u analizi rizika (vidi sekciju 6).`);
+    bearCandidates.push(`${inputs.redFlagCount} ozbiljna/umerena crvena zastavica u analizi rizika (vidi sekciju 6) — ne broji čisto informativne napomene.`);
   } else if (inputs.topRisk && inputs.topRisk.severity >= 4) {
     bearCandidates.push(`Najveći pojedinačni rizik: ${inputs.topRisk.label.toLowerCase()} (${inputs.topRisk.detail}).`);
   }
@@ -895,6 +895,33 @@ export function rateFundamentals(inputs: FundamentalsRatingInputs): Fundamentals
 }
 
 // ---------- Crvene zastavice (konkretni upozoravajući signali, odvojeno od opšte liste rizika) ----------
+//
+// Nisu sve zastavice podjednako ozbiljne — svaka nosi fiksnu, dokumentovanu
+// težinu (severity) umesto da se samo broje kao da je svaka jednako
+// relevantna za rizik kompanije:
+//   3 = Ozbiljna — direktan signal finansijske nevolje ili pogoršanja
+//       osnovnog poslovanja (negativan FCF, gubitak na operativnom nivou,
+//       prekomerna zaduženost, dividenda iz gubitka, opadajući prihod).
+//   2 = Umerena — konkretan, proverljiv rizik koji zaslužuje pažnju, ali sam
+//       po sebi ne znači nužno nevolju (likvidnost, neodrživ payout, short
+//       interes).
+//   1 = Informativna — zanimljiv podatak, ali NIJE pouzdan signal lošijeg
+//       kvaliteta ili većeg rizika same kompanije: širok raspon ciljnih cena
+//       analitičara samo znači da se analitičari razlikuju u metodologiji
+//       /pretpostavkama, ne da je kompanija lošija; blaga neto prodaja
+//       insajdera se često dešava iz poreskih/diversifikacionih razloga;
+//       negativan knjigovodstveni kapital je često posledica agresivnog (i
+//       inače pozitivnog) otkupa akcija; visok PEG je pitanje cene, ne
+//       kvaliteta biznisa.
+// Agregatni brojevi na sajtu (🚩 kolone, ponderisana izloženost na
+// /portfolio) broje samo zastavice sa severity >= 2 — vidi
+// significantRedFlagCount — da jedna informativna napomena ne bi lažno
+// prikazala akciju kao rizičniju.
+
+export interface RedFlag {
+  label: string;
+  severity: 1 | 2 | 3;
+}
 
 export interface RedFlagInputs {
   latestFcf: number | null;
@@ -909,47 +936,62 @@ export interface RedFlagInputs {
   analystDispersionPercent: number | null;
 }
 
-export function identifyRedFlags(inputs: RedFlagInputs): string[] {
-  const flags: string[] = [];
+export function identifyRedFlags(inputs: RedFlagInputs): RedFlag[] {
+  const flags: RedFlag[] = [];
 
   if (inputs.latestFcf != null && inputs.latestFcf < 0) {
-    flags.push("Negativan slobodan novčani tok u poslednjoj godini — kompanija trenutno ne generiše gotovinu iz poslovanja.");
+    flags.push({ severity: 3, label: "Negativan slobodan novčani tok u poslednjoj godini — kompanija trenutno ne generiše gotovinu iz poslovanja." });
   }
   if (inputs.operatingMargins != null && inputs.operatingMargins < 0) {
-    flags.push("Negativna operativna marža — poslovanje je gubitno na operativnom nivou, ne samo zbog jednokratnih stavki.");
+    flags.push({ severity: 3, label: "Negativna operativna marža — poslovanje je gubitno na operativnom nivou, ne samo zbog jednokratnih stavki." });
   }
   if (inputs.debtToEquity != null && inputs.debtToEquity > 2) {
-    flags.push(`Veoma visoka zaduženost (Dug/kapital ${inputs.debtToEquity.toFixed(2)}) — finansijski rizik u slučaju pada prihoda ili rasta kamatnih stopa.`);
+    flags.push({ severity: 3, label: `Veoma visoka zaduženost (Dug/kapital ${inputs.debtToEquity.toFixed(2)}) — finansijski rizik u slučaju pada prihoda ili rasta kamatnih stopa.` });
   }
   if (inputs.debtToEquity != null && inputs.debtToEquity < 0) {
-    flags.push(`Negativan knjigovodstveni kapital (Dug/kapital ${inputs.debtToEquity.toFixed(2)}) — obično zbog agresivnog otkupa sopstvenih akcija; odnos Dug/kapital nije direktno uporediv, proveriti zaduženost odvojeno.`);
+    flags.push({
+      severity: 1,
+      label: `Negativan knjigovodstveni kapital (Dug/kapital ${inputs.debtToEquity.toFixed(2)}) — obično zbog agresivnog otkupa sopstvenih akcija (same po sebi dobar znak), ne nužno finansijska slabost; odnos Dug/kapital prosto nije direktno uporediv u ovom slučaju.`,
+    });
   }
   if (inputs.currentRatio != null && inputs.currentRatio < 1) {
-    flags.push(`Current ratio ispod 1 (${inputs.currentRatio.toFixed(2)}) — kratkoročne obaveze premašuju kratkoročnu imovinu.`);
+    flags.push({ severity: 2, label: `Current ratio ispod 1 (${inputs.currentRatio.toFixed(2)}) — kratkoročne obaveze premašuju kratkoročnu imovinu.` });
   }
   if (inputs.payoutRatio != null && inputs.payoutRatio > 1) {
-    flags.push(`Payout ratio preko 100% (${(inputs.payoutRatio * 100).toFixed(0)}%) — dividenda se isplaćuje iz više od trenutne dobiti, teško održivo dugoročno.`);
+    flags.push({ severity: 2, label: `Payout ratio preko 100% (${(inputs.payoutRatio * 100).toFixed(0)}%) — dividenda se isplaćuje iz više od trenutne dobiti, teško održivo dugoročno.` });
   }
   if (inputs.payoutRatio != null && inputs.payoutRatio < 0) {
-    flags.push(`Payout ratio je negativan (${(inputs.payoutRatio * 100).toFixed(0)}%) — dividenda se isplaćuje uprkos gubitku, u potpunosti nepokrivena tekućom dobiti.`);
+    flags.push({ severity: 3, label: `Payout ratio je negativan (${(inputs.payoutRatio * 100).toFixed(0)}%) — dividenda se isplaćuje uprkos gubitku, u potpunosti nepokrivena tekućom dobiti.` });
   }
   if (inputs.insiderNetPercentShares != null && inputs.insiderNetPercentShares < -0.02) {
-    flags.push(`Insajderi su u neto prodaji akcija (${(inputs.insiderNetPercentShares * 100).toFixed(2)}%) u poslednjem periodu.`);
+    flags.push({ severity: 1, label: `Insajderi su u neto prodaji akcija (${(inputs.insiderNetPercentShares * 100).toFixed(2)}%) u poslednjem periodu — često iz poreskih/diversifikacionih razloga, ne nužno signal o izgledima kompanije.` });
   }
   if (inputs.shortPercentOfFloat != null && inputs.shortPercentOfFloat > 0.15) {
-    flags.push(`Visok short interes (${(inputs.shortPercentOfFloat * 100).toFixed(1)}% slobodnih akcija) — deo tržišta aktivno kladi na pad cene.`);
+    flags.push({ severity: 2, label: `Visok short interes (${(inputs.shortPercentOfFloat * 100).toFixed(1)}% slobodnih akcija) — deo tržišta aktivno kladi na pad cene.` });
   }
   if (inputs.pegRatio != null && inputs.pegRatio > 3) {
-    flags.push(`PEG preko 3 (${inputs.pegRatio.toFixed(2)}) — cena znatno prevazilazi trenutnu stopu rasta zarade.`);
+    flags.push({ severity: 1, label: `PEG preko 3 (${inputs.pegRatio.toFixed(2)}) — pitanje cene u odnosu na rast, ne kvaliteta ili rizika same kompanije.` });
   }
   if (inputs.revenueGrowthTtm != null && inputs.revenueGrowthTtm < -0.05) {
-    flags.push(`Prihod opada godišnje (${(inputs.revenueGrowthTtm * 100).toFixed(1)}%) u poslednjih 12 meseci.`);
+    flags.push({ severity: 3, label: `Prihod opada godišnje (${(inputs.revenueGrowthTtm * 100).toFixed(1)}%) u poslednjih 12 meseci.` });
   }
   if (inputs.analystDispersionPercent != null && inputs.analystDispersionPercent > 80) {
-    flags.push(`Veoma širok raspon ciljnih cena analitičara (${inputs.analystDispersionPercent.toFixed(0)}% oko proseka) — nizak konsenzus o vrednosti akcije.`);
+    flags.push({
+      severity: 1,
+      label: `Veoma širok raspon ciljnih cena analitičara (${inputs.analystDispersionPercent.toFixed(0)}% oko proseka) — znači da se analitičari razlikuju u metodologiji/pretpostavkama o budućnosti, NE da je kompanija lošija ili rizičnija po sebi.`,
+    });
   }
 
   return flags;
+}
+
+// Broj zastavica koje se računaju u agregatne prikaze (🚩 kolone, ponderisana
+// izloženost na /portfolio) — samo severity >= 2, da čisto informativne
+// napomene (severity 1) ne bi lažno uvećale "rizik" kompanije u zbirnim
+// brojevima. Pune liste (sa severity 1 uključenim) i dalje se vide u
+// detaljnom prikazu po kompaniji (npr. "Crveni signali" na /pregled).
+export function significantRedFlagCount(flags: RedFlag[]): number {
+  return flags.filter((f) => f.severity >= 2).length;
 }
 
 // ---------- Prompt: Should I Buy This Stock? (finalna sinteza) ----------

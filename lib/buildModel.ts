@@ -22,6 +22,7 @@ import {
   buildFinancialBreakdown,
   getSectorPeMedian,
   identifyRedFlags,
+  significantRedFlagCount,
   rankRisks,
   rateFundamentals,
   runGrowthFilter,
@@ -32,6 +33,7 @@ import {
   buildMoatNarrative,
   type FilterCheck,
   type FinalVerdict,
+  type RedFlag,
   type YearlyFinancials,
 } from "@/lib/model";
 
@@ -407,7 +409,7 @@ export interface ComputedModel {
   bullBear: ReturnType<typeof buildBullBear>;
   finalVerdict: FinalVerdict;
   fundamentalsRating: ReturnType<typeof rateFundamentals>;
-  redFlags: string[];
+  redFlags: RedFlag[];
   fcfStability: ReturnType<typeof computeFcfStability>;
   consecutiveRevenueQuarters: number | null;
   consecutiveEarningsQuarters: number | null;
@@ -1704,7 +1706,7 @@ export function computeModel(data: ModelData, assumptions: Assumptions = DEFAULT
     dividendYield: data.dividendYield,
     dividendPaidConsistently: data.dividendPaidConsistently,
     topRisk: risks[0] ?? null,
-    redFlagCount: redFlags.length,
+    redFlagCount: significantRedFlagCount(redFlags),
   });
 
   return {

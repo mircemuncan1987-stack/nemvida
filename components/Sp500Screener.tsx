@@ -24,7 +24,7 @@ import {
   resolveFcfForYield,
 } from "@/lib/buildModel";
 import { computeFcfYield } from "@/lib/valuation";
-import type { FundamentalsRating } from "@/lib/model";
+import { significantRedFlagCount, type FundamentalsRating } from "@/lib/model";
 import { fetchPriceHistory, fetchSpyHistory, fetchStockAnalysisFcf } from "@/lib/clientData";
 
 const CONCURRENCY = 6;
@@ -154,7 +154,7 @@ async function fetchAndScore(ticker: string, nowSeconds: number): Promise<Row> {
     currency: modelData.currency,
     verdictLabel: computed.finalVerdict.verdict,
     fundamentalsRating: computed.fundamentalsRating.rating,
-    redFlagCount: computed.redFlags.length,
+    redFlagCount: significantRedFlagCount(computed.redFlags),
     vsSpy,
     outperformance5y,
     sector: modelData.sector,
@@ -390,7 +390,7 @@ function ScreenerTable({ rows }: { rows: Row[] }) {
           <th className="text-right text-xs uppercase text-zinc-500 dark:text-zinc-400 py-2 px-3 border-b border-zinc-200 dark:border-zinc-800">Kompozitni skor</th>
           <th className="text-left text-xs uppercase text-zinc-500 dark:text-zinc-400 py-2 px-3 border-b border-zinc-200 dark:border-zinc-800">Sud</th>
           <th className="text-left text-xs uppercase text-zinc-500 dark:text-zinc-400 py-2 px-3 border-b border-zinc-200 dark:border-zinc-800">Fundamenti</th>
-          <th className="text-center text-xs uppercase text-zinc-500 dark:text-zinc-400 py-2 px-3 border-b border-zinc-200 dark:border-zinc-800">🚩</th>
+          <th className="text-center text-xs uppercase text-zinc-500 dark:text-zinc-400 py-2 px-3 border-b border-zinc-200 dark:border-zinc-800" title="Broji samo ozbiljne/umerene zastavice, ne čisto informativne napomene">🚩</th>
           <th className="text-right text-xs uppercase text-zinc-500 dark:text-zinc-400 py-2 px-3 border-b border-zinc-200 dark:border-zinc-800">Rast prihoda</th>
           {BENCHMARK_HORIZONS.map((y) => (
             <th key={y} className="text-center text-xs uppercase text-zinc-500 dark:text-zinc-400 py-2 px-3 border-b border-zinc-200 dark:border-zinc-800">vs SPY {y}g</th>

@@ -15,6 +15,7 @@ import {
 } from "@/lib/buildModel";
 import { fetchPriceHistory, fetchSpyHistory, fetchStockAnalysisFcf } from "@/lib/clientData";
 import { computeFcfYield } from "@/lib/valuation";
+import { significantRedFlagCount } from "@/lib/model";
 import {
   analyzeConcentration,
   buildPortfolioConclusion,
@@ -218,8 +219,9 @@ export default function PortfolioAnalysis() {
         scoreCoveredWeight += weight;
       }
       ratingMap.set(c.fundamentalsRating.rating, (ratingMap.get(c.fundamentalsRating.rating) || 0) + weight);
-      if (c.redFlags.length > 0) flaggedWeight += weight;
-      weightedFlags += weight * c.redFlags.length;
+      const sigFlags = significantRedFlagCount(c.redFlags);
+      if (sigFlags > 0) flaggedWeight += weight;
+      weightedFlags += weight * sigFlags;
       positions.push({ name: h.name, weight, rating: c.fundamentalsRating.rating, qualityScore: r.qualityScore });
     }
     if (coveredWeight === 0) return null;
@@ -411,13 +413,13 @@ export default function PortfolioAnalysis() {
                       <span className={`font-semibold ${portfolioQuality.flaggedWeight > 0.3 ? "text-red-600 dark:text-red-400" : portfolioQuality.flaggedWeight > 0 ? "text-amber-600 dark:text-amber-400" : "text-emerald-600 dark:text-emerald-400"}`}>
                         {(portfolioQuality.flaggedWeight * 100).toFixed(0)}%
                       </span>{" "}
-                      portfelja (po vrednosti, od pokrivenog dela) ima bar jednu crvenu zastavicu iz modela.
+                      portfelja (po vrednosti, od pokrivenog dela) ima bar jednu ozbiljnu ili umerenu crvenu zastavicu iz modela.
                     </p>
                     <p className="text-sm mt-1 text-zinc-600 dark:text-zinc-400">
-                      Ponderisan broj crvenih zastavica po poziciji: <b>{portfolioQuality.weightedRedFlags.toFixed(2)}</b>.
+                      Ponderisan broj (ozbiljnih/umerenih) crvenih zastavica po poziciji: <b>{portfolioQuality.weightedRedFlags.toFixed(2)}</b>.
                     </p>
                     <p className="text-[11px] text-zinc-400 mt-2 italic">
-                      Detalji po poziciji (koja zastavica, za koji tiker) su u tabeli &quot;Sud po poziciji&quot; ispod.
+                      Čisto informativne napomene (npr. širok raspon ciljnih cena analitičara) se ne broje ovde — vide se samo u detaljnom prikazu na Pregledu te kompanije, jer nisu pouzdan signal rizika. Detalji po poziciji (koja zastavica, za koji tiker) su u tabeli &quot;Sud po poziciji&quot; ispod.
                     </p>
                   </div>
                 </div>
@@ -463,7 +465,7 @@ export default function PortfolioAnalysis() {
                     <th className="text-right text-xs uppercase text-zinc-500 py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800">FCF prinos</th>
                     <th className="text-left text-xs uppercase text-zinc-500 py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800">Sud</th>
                     <th className="text-left text-xs uppercase text-zinc-500 py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800">Fundamenti</th>
-                    <th className="text-center text-xs uppercase text-zinc-500 py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800">🚩</th>
+                    <th className="text-center text-xs uppercase text-zinc-500 py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800" title="Broji samo ozbiljne/umerene zastavice, ne čisto informativne napomene">🚩</th>
                     <th className="text-left text-xs uppercase text-zinc-500 py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800">Uračunato u cenu?</th>
                   </tr>
                 </thead>
@@ -491,8 +493,12 @@ export default function PortfolioAnalysis() {
                             <td className={`py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800 text-xs font-medium ${c.fundamentalsRating.rating === "Jaki" ? "text-emerald-600 dark:text-emerald-400" : c.fundamentalsRating.rating === "Slabi" ? "text-red-600 dark:text-red-400" : "text-zinc-600 dark:text-zinc-400"}`}>
                               {c.fundamentalsRating.rating}
                             </td>
-                            <td className="py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800 text-center">
-                              {c.redFlags.length > 0 ? <span className="text-red-600 dark:text-red-400 font-semibold">{c.redFlags.length}</span> : <span className="text-zinc-400">0</span>}
+                            <td className="py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800 text-center" title="Broji samo ozbiljne/umerene zastavice, ne čisto informativne napomene">
+                              {significantRedFlagCount(c.redFlags) > 0 ? (
+                                <span className="text-red-600 dark:text-red-400 font-semibold">{significantRedFlagCount(c.redFlags)}</span>
+                              ) : (
+                                <span className="text-zinc-400">0</span>
+                              )}
                             </td>
                             <td className="py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800 text-xs text-zinc-600 dark:text-zinc-400">
                               {c.valuationFilter.pricedForPerfection ? "Da — cena uključuje visoka očekivanja" : "Ne — nema ekstremnih očekivanja u ceni"}
