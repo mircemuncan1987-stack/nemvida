@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import {
   computeModel,
+  computeOverviewScores,
+  computeOwnHistoricalAverages,
   computeReturnSince,
   computeTotalReturn,
   extractModelData,
@@ -30,10 +32,32 @@ const fmtNok = (x: number) => `${x.toLocaleString("nb-NO", { maximumFractionDigi
 const fmtPct = (x: number | null, digits = 1) =>
   x === null || Number.isNaN(x) ? "—" : `${x >= 0 ? "+" : ""}${(x * 100).toFixed(digits)}%`;
 
+// Isti pragovi koji se koriste na /lista (compositeColor) za bojenje
+// kompozitnog skora — da isti broj izgleda isto na obe stranice.
+function qualityColor(score: number | null): string {
+  if (score == null) return "text-zinc-400";
+  if (score >= 4) return "text-emerald-600 dark:text-emerald-400";
+  if (score >= 3) return "text-amber-600 dark:text-amber-400";
+  return "text-red-600 dark:text-red-400";
+}
+function qualityLabel(score: number | null): string {
+  if (score == null) return "Nedovoljno podataka";
+  if (score >= 4) return "Visok kvalitet";
+  if (score >= 3) return "Srednji kvalitet";
+  return "Nizak kvalitet";
+}
+function ratingBarColor(rating: string): string {
+  if (rating === "Jaki") return "bg-emerald-500";
+  if (rating === "Slabi") return "bg-red-500";
+  if (rating === "Osrednji") return "bg-amber-500";
+  return "bg-zinc-400";
+}
+
 interface HoldingResult {
   computed: ComputedModel | null;
   priceHistory: HistoricalPricePoint[];
   resolvedFcf: number | null; // Yahoo (TTM ili poslednja godina), uz stockanalysis.com kao poslednju rezervu
+  compositeScore: number | null; // isti kompozitni skor (1-5) kao na /pregled i /lista
   error?: string;
 }
 
@@ -115,15 +139,22 @@ export default function PortfolioAnalysis() {
           const priceHistory = await fetchPriceHistory(ticker);
           let resolvedFcf = resolveFcfForYield(modelData);
           if (resolvedFcf == null) resolvedFcf = await fetchStockAnalysisFcf(ticker);
-          return { ticker, computed, priceHistory, resolvedFcf };
+          const ownAvg = computeOwnHistoricalAverages(computed, priceHistory);
+          const compositeScore = computeOverviewScores(computed, ownAvg, resolvedFcf).scores.composite;
+          return { ticker, computed, priceHistory, resolvedFcf, compositeScore };
         })
       );
       settled.forEach((s, idx) => {
         const ticker = batch[idx];
         if (s.status === "fulfilled") {
-          newResults.set(ticker, { computed: s.value.computed, priceHistory: s.value.priceHistory, resolvedFcf: s.value.resolvedFcf });
+          newResults.set(ticker, {
+            computed: s.value.computed,
+            priceHistory: s.value.priceHistory,
+            resolvedFcf: s.value.resolvedFcf,
+            compositeScore: s.value.compositeScore,
+          });
         } else {
-          newResults.set(ticker, { computed: null, priceHistory: [], resolvedFcf: null, error: s.reason instanceof Error ? s.reason.message : "Greška" });
+          newResults.set(ticker, { computed: null, priceHistory: [], resolvedFcf: null, compositeScore: null, error: s.reason instanceof Error ? s.reason.message : "Greška" });
         }
       });
       setResults(new Map(newResults));
@@ -151,6 +182,45 @@ export default function PortfolioAnalysis() {
   const stressTest = useMemo(() => stressTestPortfolio(holdings, betaByTicker), [holdings, betaByTicker]);
 
   const hasResults = results.size > 0;
+
+  // Kvalitet portfelja — ponderisan prosek istog kompozitnog skora (1-5) koji
+  // se koristi na /pregled i /lista, plus ponderisan presek fundamenata i
+  // crvenih zastavica po pozicijama — ne novi, nezavisan sud, samo agregacija
+  // već izračunatih, dokumentovanih brojeva na nivou cele pozicije.
+  const portfolioQuality = useMemo(() => {
+    if (!hasResults || total <= 0) return null;
+    let weightedScore = 0;
+    let scoreCoveredWeight = 0;
+    let coveredWeight = 0;
+    let flaggedWeight = 0;
+    let weightedFlags = 0;
+    const ratingMap = new Map<string, number>();
+    for (const h of holdings) {
+      if (!h.ticker) continue;
+      const r = results.get(h.ticker);
+      const c = r?.computed;
+      if (!c) continue;
+      const weight = h.marketValueNok / total;
+      coveredWeight += weight;
+      if (r.compositeScore != null) {
+        weightedScore += weight * r.compositeScore;
+        scoreCoveredWeight += weight;
+      }
+      ratingMap.set(c.fundamentalsRating.rating, (ratingMap.get(c.fundamentalsRating.rating) || 0) + weight);
+      if (c.redFlags.length > 0) flaggedWeight += weight;
+      weightedFlags += weight * c.redFlags.length;
+    }
+    if (coveredWeight === 0) return null;
+    return {
+      score: scoreCoveredWeight > 0 ? weightedScore / scoreCoveredWeight : null,
+      coveredWeight,
+      ratingWeights: Array.from(ratingMap.entries())
+        .map(([rating, weight]) => ({ rating, weight: weight / coveredWeight }))
+        .sort((a, b) => b.weight - a.weight),
+      flaggedWeight: flaggedWeight / coveredWeight,
+      weightedRedFlags: weightedFlags / coveredWeight,
+    };
+  }, [hasResults, holdings, results, total]);
 
   const portfolioVsSpySinceStart = useMemo(() => {
     if (!hasResults || spyHistory.length === 0) return null;
@@ -269,6 +339,69 @@ export default function PortfolioAnalysis() {
 
       {hasResults && (
         <>
+          <Section title="Kvalitet portfelja">
+            {portfolioQuality ? (
+              <>
+                <div className="flex flex-wrap items-center gap-4 mb-4">
+                  <div className="text-center px-4 py-2 rounded-xl bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900">
+                    <div className="text-[10px] uppercase tracking-wide opacity-70">Ponderisan kompozitni skor</div>
+                    <div className={`text-2xl font-bold ${qualityColor(portfolioQuality.score)}`}>
+                      {portfolioQuality.score != null ? portfolioQuality.score.toFixed(1) : "—"}
+                    </div>
+                    <div className="text-xs font-bold">{qualityLabel(portfolioQuality.score)}</div>
+                  </div>
+                  <p className="text-xs text-zinc-500 dark:text-zinc-400 flex-1 min-w-[220px]">
+                    Isti kompozitni skor (1-5) kao na stranici Pregled, ponderisan udelom svake pozicije u portfelju —
+                    pokriva {(portfolioQuality.coveredWeight * 100).toFixed(0)}% portfelja po vrednosti (fondovi bez
+                    tikera i gotovina su isključeni).
+                  </p>
+                </div>
+                <div className="grid sm:grid-cols-2 gap-6">
+                  <div>
+                    <h4 className="text-xs font-semibold uppercase text-zinc-500 dark:text-zinc-400 mb-2">
+                      Ocena fundamenata (ponderisano udelom)
+                    </h4>
+                    <div className="space-y-1.5">
+                      {portfolioQuality.ratingWeights.map((r) => (
+                        <div key={r.rating} className="text-sm">
+                          <div className="flex justify-between">
+                            <span>{r.rating}</span>
+                            <span className="tabular-nums">{(r.weight * 100).toFixed(1)}%</span>
+                          </div>
+                          <div className="h-1.5 rounded-full bg-zinc-200 dark:bg-zinc-800 overflow-hidden mt-0.5">
+                            <div className={`h-full ${ratingBarColor(r.rating)}`} style={{ width: `${Math.min(100, r.weight * 100)}%` }} />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-semibold uppercase text-zinc-500 dark:text-zinc-400 mb-2">Izloženost crvenim zastavicama</h4>
+                    <p className="text-sm">
+                      <span className={`font-semibold ${portfolioQuality.flaggedWeight > 0.3 ? "text-red-600 dark:text-red-400" : portfolioQuality.flaggedWeight > 0 ? "text-amber-600 dark:text-amber-400" : "text-emerald-600 dark:text-emerald-400"}`}>
+                        {(portfolioQuality.flaggedWeight * 100).toFixed(0)}%
+                      </span>{" "}
+                      portfelja (po vrednosti, od pokrivenog dela) ima bar jednu crvenu zastavicu iz modela.
+                    </p>
+                    <p className="text-sm mt-1 text-zinc-600 dark:text-zinc-400">
+                      Ponderisan broj crvenih zastavica po poziciji: <b>{portfolioQuality.weightedRedFlags.toFixed(2)}</b>.
+                    </p>
+                    <p className="text-[11px] text-zinc-400 mt-2 italic">
+                      Detalji po poziciji (koja zastavica, za koji tiker) su u tabeli &quot;Sud po poziciji&quot; ispod.
+                    </p>
+                  </div>
+                </div>
+                <p className="text-[11px] text-zinc-400 mt-3 italic">
+                  Ovo nije nov, nezavisan sud — samo ponderisan prosek/presek već izračunatih brojeva (kompozitni
+                  skor, ocena fundamenata, crvene zastavice) po svakoj pojedinačnoj poziciji, otežan njenim udelom u
+                  portfelju.
+                </p>
+              </>
+            ) : (
+              <p className="text-sm text-zinc-500 dark:text-zinc-400">Nema dovoljno pokrivenih pozicija (sa tikerom i uspešnom analizom) za procenu kvaliteta.</p>
+            )}
+          </Section>
+
           <Section title="Koncentracija i diverzifikacija">
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
               <WeightList title="Po vrsti imovine" rows={concentration.categoryWeights} />

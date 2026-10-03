@@ -4,7 +4,7 @@ import PortfolioAnalysis from "@/components/PortfolioAnalysis";
 export const metadata = {
   title: "Moj portfolio | Nemvida Finance",
   description:
-    "Analiza sopstvenog portfelja: sud po poziciji iz sveobuhvatnog modela, koncentracija i diverzifikacija, tehnički pregled, stres-test i poređenje sa SPY.",
+    "Analiza sopstvenog portfelja: ponderisan kvalitet portfelja, sud po poziciji iz sveobuhvatnog modela, koncentracija i diverzifikacija, tehnički pregled, stres-test i poređenje sa SPY.",
 };
 
 export default function PortfolioPage() {
