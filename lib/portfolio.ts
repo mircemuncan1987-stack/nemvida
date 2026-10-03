@@ -168,9 +168,18 @@ export function stressTestPortfolio(
 
 // ---------- Zaključak o kvalitetu portfelja kao celini (deterministički) ----------
 //
-// Ne nov, nezavisan sud — samo agregacija već izračunatih brojeva (ponderisan
-// kompozitni skor, ponderisana izloženost crvenim zastavicama, upozorenja o
-// koncentraciji, beta/stres-test) u jedan kratak, citirajući zaključak.
+// Ne nov, nezavisan sud — samo agregacija već izračunatih brojeva (ponderisana
+// ocena KVALITETA KOMPANIJA — poslovanje/moat/menadžment, namerno bez rasta,
+// rizika i valuacije — ponderisana izloženost crvenim zastavicama, upozorenja
+// o koncentraciji, beta/stres-test) u jedan kratak, citirajući zaključak, plus
+// jedan konkretan predlog za poboljšanje izveden iz tih istih brojeva.
+
+export interface PortfolioPositionQuality {
+  name: string;
+  weight: number; // 0-1, udeo u ukupnoj vrednosti portfelja
+  rating: string; // FundamentalsRating kao string ("Jaki"/"Osrednji"/"Slabi"/"Nedovoljno podataka")
+  qualityScore: number | null;
+}
 
 export interface PortfolioConclusionInput {
   qualityScore: number | null;
@@ -180,20 +189,65 @@ export interface PortfolioConclusionInput {
   concentrationFlags: ConcentrationFlag[];
   portfolioBeta: number | null;
   bearMarketImpactPercent: number | null; // iz scenarija -20%
+  positions: PortfolioPositionQuality[];
 }
 
 export interface PortfolioConclusion {
   verdict: "Snažan portfolio" | "Solidan portfolio, uz par tačaka pažnje" | "Portfolio zahteva pažnju" | "Nedovoljno podataka";
   points: string[];
+  suggestion: string;
+}
+
+// Minimalni udeo pozicije da bi uopšte bila kandidat za konkretan predlog —
+// slaba pozicija koja čini 0,3% portfelja nije prioritet za akciju.
+const MIN_WEIGHT_FOR_SUGGESTION = 0.02;
+
+function buildSuggestion(
+  severeConcentration: ConcentrationFlag[],
+  flaggedWeight: number,
+  positions: PortfolioPositionQuality[]
+): string {
+  if (severeConcentration.length > 0) {
+    const f = severeConcentration[0];
+    return `Prioritet: smanji izloženost gde upozorenje stoji najjače — ${f.label} (${f.detail}). Ovo je trenutno najveći strukturni rizik, pre nego kvalitet bilo koje pojedinačne kompanije.`;
+  }
+
+  const weakCandidates = positions
+    .filter((p) => p.weight >= MIN_WEIGHT_FOR_SUGGESTION && (p.rating === "Slabi" || (p.qualityScore != null && p.qualityScore <= 2)))
+    .sort((a, b) => b.weight - a.weight);
+  if (weakCandidates.length > 0) {
+    const w = weakCandidates[0];
+    return `Razmisli da preispitaš poziciju ${w.name} (${(w.weight * 100).toFixed(1)}% portfelja) — fundamenti su ocenjeni kao "${w.rating}"${
+      w.qualityScore != null ? ` (ocena kvaliteta kompanije ${w.qualityScore.toFixed(1)}/5)` : ""
+    }, najslabija pozicija u portfelju po ovom kriterijumu. Ne mora značiti prodaju — prvo pogledaj detalje na Pregledu te kompanije i proveri da li se slabost odnosi na privremen problem ili strukturnu promenu.`;
+  }
+
+  if (flaggedWeight > 0.3) {
+    return `Nema pojedinačne pozicije ocenjene kao "Slabi" po kvalitetu, ali ${(flaggedWeight * 100).toFixed(
+      0
+    )}% portfelja ima bar jednu crvenu zastavicu — pregledaj tabelu "Sud po poziciji" i prioritizuj pozicije sa najviše zastavica.`;
+  }
+
+  const bestOsrednji = positions
+    .filter((p) => p.rating === "Osrednji" && p.weight >= MIN_WEIGHT_FOR_SUGGESTION)
+    .sort((a, b) => b.weight - a.weight)[0];
+  if (bestOsrednji) {
+    return `Nema hitnih slabosti — najveća pozicija sa samo osrednjim fundamentima je ${bestOsrednji.name} (${(bestOsrednji.weight * 100).toFixed(
+      1
+    )}% portfelja). Nije nužno zameniti, ali je kandidat da se prati pažljivije od pozicija ocenjenih kao "Jaki".`;
+  }
+
+  return "Nema očiglednog slabog člana po kvalitetu kompanije — fokus trenutno može biti na redovnom praćenju (nove crvene zastavice, promene fundamenata) umesto na zameni postojećih pozicija.";
 }
 
 export function buildPortfolioConclusion(input: PortfolioConclusionInput): PortfolioConclusion {
-  const { qualityScore, qualityCoveredWeight, flaggedWeight, weightedRedFlags, concentrationFlags, portfolioBeta, bearMarketImpactPercent } = input;
+  const { qualityScore, qualityCoveredWeight, flaggedWeight, weightedRedFlags, concentrationFlags, portfolioBeta, bearMarketImpactPercent, positions } = input;
 
   if (qualityScore == null || qualityCoveredWeight === 0) {
     return {
       verdict: "Nedovoljno podataka",
       points: ["Nema dovoljno pokrivenih pozicija (sa tikerom i uspešnom analizom) da bi se izveo zaključak o kvalitetu portfelja kao celine."],
+      suggestion: "Pokreni analizu portfelja da bi se izračunala ocena kvaliteta kompanija i dobio konkretan predlog.",
     };
   }
 
@@ -216,12 +270,12 @@ export function buildPortfolioConclusion(input: PortfolioConclusionInput): Portf
   const sentences: string[] = [];
 
   sentences.push(
-    `Ponderisan kompozitni skor portfelja je ${qualityScore.toFixed(1)}/5 (pokriva ${(qualityCoveredWeight * 100).toFixed(0)}% portfelja po vrednosti) — ${
+    `Ponderisana ocena kvaliteta kompanija u portfelju (poslovanje, moat, menadžment — bez rasta/rizika/valuacije) je ${qualityScore.toFixed(1)}/5 (pokriva ${(qualityCoveredWeight * 100).toFixed(0)}% portfelja po vrednosti) — ${
       qualityScore >= 4
-        ? "u proseku visoko ocenjene pozicije po sveobuhvatnom modelu."
+        ? "u proseku kompanije visokog kvaliteta po sveobuhvatnom modelu."
         : qualityScore >= 3
-          ? "u proseku solidne, ali ne izuzetne pozicije."
-          : "u proseku slabije ocenjene pozicije — vredi preispitati najslabije karike u tabeli \"Sud po poziciji\"."
+          ? "u proseku solidne, ali ne izuzetne kompanije."
+          : "u proseku kompanije slabijeg kvaliteta — vredi preispitati najslabije karike u tabeli \"Sud po poziciji\"."
     }`
   );
 
@@ -241,7 +295,7 @@ export function buildPortfolioConclusion(input: PortfolioConclusionInput): Portf
     sentences.push(
       `${severeConcentration.length === 1 ? "Postoji jedno ozbiljno upozorenje" : `Postoje ${severeConcentration.length} ozbiljna upozorenja`} o koncentraciji (${severeConcentration
         .map((f) => f.label)
-        .join(", ")}) — ovo je trenutno najveći strukturni rizik portfelja, nezavisno od kvaliteta pojedinačnih pozicija.`
+        .join(", ")}) — ovo je trenutno najveći strukturni rizik portfelja, nezavisno od kvaliteta pojedinačnih kompanija.`
     );
   } else if (moderateConcentration.length > 0) {
     sentences.push(`Postoji ${moderateConcentration.length} povišeno (ne ozbiljno) upozorenje o koncentraciji — vredi pratiti, ali nije hitno.`);
@@ -257,7 +311,9 @@ export function buildPortfolioConclusion(input: PortfolioConclusionInput): Portf
     );
   }
 
-  return { verdict, points: sentences };
+  const suggestion = buildSuggestion(severeConcentration, flaggedWeight, positions);
+
+  return { verdict, points: sentences, suggestion };
 }
 
 // ---------- Tehnički snimak (deterministički, iz mesečne istorije cena) ----------

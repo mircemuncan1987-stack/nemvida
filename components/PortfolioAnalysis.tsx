@@ -58,7 +58,13 @@ interface HoldingResult {
   computed: ComputedModel | null;
   priceHistory: HistoricalPricePoint[];
   resolvedFcf: number | null; // Yahoo (TTM ili poslednja godina), uz stockanalysis.com kao poslednju rezervu
-  compositeScore: number | null; // isti kompozitni skor (1-5) kao na /pregled i /lista
+  // Ocena KVALITETA KOMPANIJE (1-5), ne kompozitni skor sa /pregled — namerno
+  // isključuje rast, rizik i valuaciju (to su dimenzije cene/momentuma/makro
+  // rizika, ne kvaliteta samog biznisa). Prosek tri dimenzije koje najbliže
+  // odgovaraju pitanju "da li je ovo dobra kompanija": poslovanje (fundamenti
+  // koji prolaze kvalitativne provere), moat (konkurentska prednost) i
+  // menadžment (vlasnička struktura, insajderske transakcije, disciplina).
+  qualityScore: number | null;
   error?: string;
 }
 
@@ -141,8 +147,10 @@ export default function PortfolioAnalysis() {
           let resolvedFcf = resolveFcfForYield(modelData);
           if (resolvedFcf == null) resolvedFcf = await fetchStockAnalysisFcf(ticker);
           const ownAvg = computeOwnHistoricalAverages(computed, priceHistory);
-          const compositeScore = computeOverviewScores(computed, ownAvg, resolvedFcf).scores.composite;
-          return { ticker, computed, priceHistory, resolvedFcf, compositeScore };
+          const dims = computeOverviewScores(computed, ownAvg, resolvedFcf).scores;
+          const qualityDims = [dims.business.score, dims.moat.score, dims.management.score].filter((v): v is number => v != null);
+          const qualityScore = qualityDims.length ? qualityDims.reduce((a, b) => a + b, 0) / qualityDims.length : null;
+          return { ticker, computed, priceHistory, resolvedFcf, qualityScore };
         })
       );
       settled.forEach((s, idx) => {
@@ -152,10 +160,10 @@ export default function PortfolioAnalysis() {
             computed: s.value.computed,
             priceHistory: s.value.priceHistory,
             resolvedFcf: s.value.resolvedFcf,
-            compositeScore: s.value.compositeScore,
+            qualityScore: s.value.qualityScore,
           });
         } else {
-          newResults.set(ticker, { computed: null, priceHistory: [], resolvedFcf: null, compositeScore: null, error: s.reason instanceof Error ? s.reason.message : "Greška" });
+          newResults.set(ticker, { computed: null, priceHistory: [], resolvedFcf: null, qualityScore: null, error: s.reason instanceof Error ? s.reason.message : "Greška" });
         }
       });
       setResults(new Map(newResults));
@@ -184,10 +192,11 @@ export default function PortfolioAnalysis() {
 
   const hasResults = results.size > 0;
 
-  // Kvalitet portfelja — ponderisan prosek istog kompozitnog skora (1-5) koji
-  // se koristi na /pregled i /lista, plus ponderisan presek fundamenata i
-  // crvenih zastavica po pozicijama — ne novi, nezavisan sud, samo agregacija
-  // već izračunatih, dokumentovanih brojeva na nivou cele pozicije.
+  // Kvalitet portfelja — ponderisan prosek ocene KVALITETA KOMPANIJA (vidi
+  // napomenu kod HoldingResult.qualityScore — poslovanje/moat/menadžment, bez
+  // rasta/rizika/valuacije), plus ponderisan presek fundamenata i crvenih
+  // zastavica po pozicijama — ne novi, nezavisan sud, samo agregacija već
+  // izračunatih, dokumentovanih brojeva na nivou cele pozicije.
   const portfolioQuality = useMemo(() => {
     if (!hasResults || total <= 0) return null;
     let weightedScore = 0;
@@ -196,6 +205,7 @@ export default function PortfolioAnalysis() {
     let flaggedWeight = 0;
     let weightedFlags = 0;
     const ratingMap = new Map<string, number>();
+    const positions: { name: string; weight: number; rating: string; qualityScore: number | null }[] = [];
     for (const h of holdings) {
       if (!h.ticker) continue;
       const r = results.get(h.ticker);
@@ -203,13 +213,14 @@ export default function PortfolioAnalysis() {
       if (!c) continue;
       const weight = h.marketValueNok / total;
       coveredWeight += weight;
-      if (r.compositeScore != null) {
-        weightedScore += weight * r.compositeScore;
+      if (r.qualityScore != null) {
+        weightedScore += weight * r.qualityScore;
         scoreCoveredWeight += weight;
       }
       ratingMap.set(c.fundamentalsRating.rating, (ratingMap.get(c.fundamentalsRating.rating) || 0) + weight);
       if (c.redFlags.length > 0) flaggedWeight += weight;
       weightedFlags += weight * c.redFlags.length;
+      positions.push({ name: h.name, weight, rating: c.fundamentalsRating.rating, qualityScore: r.qualityScore });
     }
     if (coveredWeight === 0) return null;
     return {
@@ -220,6 +231,7 @@ export default function PortfolioAnalysis() {
         .sort((a, b) => b.weight - a.weight),
       flaggedWeight: flaggedWeight / coveredWeight,
       weightedRedFlags: weightedFlags / coveredWeight,
+      positions,
     };
   }, [hasResults, holdings, results, total]);
 
@@ -234,6 +246,7 @@ export default function PortfolioAnalysis() {
       concentrationFlags: concentration.flags,
       portfolioBeta: stressTest.portfolioBeta,
       bearMarketImpactPercent: bearScenario?.portfolioImpactPercent ?? null,
+      positions: portfolioQuality?.positions ?? [],
     });
   }, [hasResults, portfolioQuality, concentration, stressTest]);
 
@@ -359,16 +372,18 @@ export default function PortfolioAnalysis() {
               <>
                 <div className="flex flex-wrap items-center gap-4 mb-4">
                   <div className="text-center px-4 py-2 rounded-xl bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900">
-                    <div className="text-[10px] uppercase tracking-wide opacity-70">Ponderisan kompozitni skor</div>
+                    <div className="text-[10px] uppercase tracking-wide opacity-70">Kvalitet kompanija</div>
                     <div className={`text-2xl font-bold ${qualityColor(portfolioQuality.score)}`}>
                       {portfolioQuality.score != null ? portfolioQuality.score.toFixed(1) : "—"}
                     </div>
                     <div className="text-xs font-bold">{qualityLabel(portfolioQuality.score)}</div>
                   </div>
                   <p className="text-xs text-zinc-500 dark:text-zinc-400 flex-1 min-w-[220px]">
-                    Isti kompozitni skor (1-5) kao na stranici Pregled, ponderisan udelom svake pozicije u portfelju —
-                    pokriva {(portfolioQuality.coveredWeight * 100).toFixed(0)}% portfelja po vrednosti (fondovi bez
-                    tikera i gotovina su isključeni).
+                    Prosek ocena poslovanja, konkurentske prednosti (moat) i menadžmenta (1-5, isti pokazatelji kao na
+                    stranici Pregled) — namerno BEZ rasta, rizika i valuacije, jer to su dimenzije cene i makro rizika,
+                    ne kvaliteta same kompanije. Ponderisano udelom svake pozicije u portfelju — pokriva{" "}
+                    {(portfolioQuality.coveredWeight * 100).toFixed(0)}% portfelja po vrednosti (fondovi bez tikera i
+                    gotovina su isključeni).
                   </p>
                 </div>
                 <div className="grid sm:grid-cols-2 gap-6">
@@ -407,9 +422,9 @@ export default function PortfolioAnalysis() {
                   </div>
                 </div>
                 <p className="text-[11px] text-zinc-400 mt-3 italic">
-                  Ovo nije nov, nezavisan sud — samo ponderisan prosek/presek već izračunatih brojeva (kompozitni
-                  skor, ocena fundamenata, crvene zastavice) po svakoj pojedinačnoj poziciji, otežan njenim udelom u
-                  portfelju.
+                  Ovo nije nov, nezavisan sud — samo ponderisan prosek/presek već izračunatih brojeva (ocena
+                  kvaliteta kompanije, ocena fundamenata, crvene zastavice) po svakoj pojedinačnoj poziciji, otežan
+                  njenim udelom u portfelju.
                 </p>
               </>
             ) : (
@@ -579,8 +594,12 @@ export default function PortfolioAnalysis() {
                   </li>
                 ))}
               </ul>
+              <div className="mt-4 pt-3 border-t border-zinc-200 dark:border-zinc-800">
+                <h4 className="text-xs font-semibold uppercase text-blue-700 dark:text-blue-400 mb-1.5">Konkretan predlog za poboljšanje</h4>
+                <p className="text-sm text-zinc-700 dark:text-zinc-300">{portfolioConclusion.suggestion}</p>
+              </div>
               <p className="text-[11px] text-zinc-400 mt-3 italic">
-                Zaključak je agregacija već prikazanih brojeva iznad (kvalitet portfelja, koncentracija, stres-test) po fiksnim pravilima — nije nov, nezavisan sud ni preporuka za kupovinu/prodaju.
+                Zaključak i predlog su agregacija već prikazanih brojeva iznad (kvalitet kompanija, koncentracija, stres-test) po fiksnim pravilima — nije nov, nezavisan sud ni preporuka za kupovinu/prodaju, već polazna tačka za sopstvenu odluku.
               </p>
             </Section>
           )}
