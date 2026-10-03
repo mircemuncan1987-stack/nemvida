@@ -166,6 +166,100 @@ export function stressTestPortfolio(
   return { scenarios: results, portfolioBeta: weightedBeta };
 }
 
+// ---------- Zaključak o kvalitetu portfelja kao celini (deterministički) ----------
+//
+// Ne nov, nezavisan sud — samo agregacija već izračunatih brojeva (ponderisan
+// kompozitni skor, ponderisana izloženost crvenim zastavicama, upozorenja o
+// koncentraciji, beta/stres-test) u jedan kratak, citirajući zaključak.
+
+export interface PortfolioConclusionInput {
+  qualityScore: number | null;
+  qualityCoveredWeight: number;
+  flaggedWeight: number;
+  weightedRedFlags: number;
+  concentrationFlags: ConcentrationFlag[];
+  portfolioBeta: number | null;
+  bearMarketImpactPercent: number | null; // iz scenarija -20%
+}
+
+export interface PortfolioConclusion {
+  verdict: "Snažan portfolio" | "Solidan portfolio, uz par tačaka pažnje" | "Portfolio zahteva pažnju" | "Nedovoljno podataka";
+  points: string[];
+}
+
+export function buildPortfolioConclusion(input: PortfolioConclusionInput): PortfolioConclusion {
+  const { qualityScore, qualityCoveredWeight, flaggedWeight, weightedRedFlags, concentrationFlags, portfolioBeta, bearMarketImpactPercent } = input;
+
+  if (qualityScore == null || qualityCoveredWeight === 0) {
+    return {
+      verdict: "Nedovoljno podataka",
+      points: ["Nema dovoljno pokrivenih pozicija (sa tikerom i uspešnom analizom) da bi se izveo zaključak o kvalitetu portfelja kao celine."],
+    };
+  }
+
+  const severeConcentration = concentrationFlags.filter((f) => f.severity >= 3);
+  const moderateConcentration = concentrationFlags.filter((f) => f.severity === 2);
+
+  let points = 0;
+  if (qualityScore >= 4) points += 2;
+  else if (qualityScore >= 3) points += 1;
+  else points -= 1;
+
+  if (flaggedWeight <= 0.1) points += 1;
+  else if (flaggedWeight > 0.4) points -= 1;
+
+  if (severeConcentration.length > 0) points -= 1;
+
+  const verdict: PortfolioConclusion["verdict"] =
+    points >= 3 ? "Snažan portfolio" : points >= 1 ? "Solidan portfolio, uz par tačaka pažnje" : "Portfolio zahteva pažnju";
+
+  const sentences: string[] = [];
+
+  sentences.push(
+    `Ponderisan kompozitni skor portfelja je ${qualityScore.toFixed(1)}/5 (pokriva ${(qualityCoveredWeight * 100).toFixed(0)}% portfelja po vrednosti) — ${
+      qualityScore >= 4
+        ? "u proseku visoko ocenjene pozicije po sveobuhvatnom modelu."
+        : qualityScore >= 3
+          ? "u proseku solidne, ali ne izuzetne pozicije."
+          : "u proseku slabije ocenjene pozicije — vredi preispitati najslabije karike u tabeli \"Sud po poziciji\"."
+    }`
+  );
+
+  if (flaggedWeight > 0) {
+    sentences.push(
+      `${(flaggedWeight * 100).toFixed(0)}% portfelja (po vrednosti, od pokrivenog dela) ima bar jednu crvenu zastavicu iz modela, ponderisano ${weightedRedFlags.toFixed(2)} zastavice po poziciji — ${
+        flaggedWeight > 0.4
+          ? "značajan deo portfelja trenutno nosi bar jedan konkretan, modelom detektovan rizik."
+          : "ograničeno na manji deo portfelja."
+      }`
+    );
+  } else {
+    sentences.push("Nijedna pozicija sa dostupnim podacima trenutno ne nosi crvenu zastavicu iz modela.");
+  }
+
+  if (severeConcentration.length > 0) {
+    sentences.push(
+      `${severeConcentration.length === 1 ? "Postoji jedno ozbiljno upozorenje" : `Postoje ${severeConcentration.length} ozbiljna upozorenja`} o koncentraciji (${severeConcentration
+        .map((f) => f.label)
+        .join(", ")}) — ovo je trenutno najveći strukturni rizik portfelja, nezavisno od kvaliteta pojedinačnih pozicija.`
+    );
+  } else if (moderateConcentration.length > 0) {
+    sentences.push(`Postoji ${moderateConcentration.length} povišeno (ne ozbiljno) upozorenje o koncentraciji — vredi pratiti, ali nije hitno.`);
+  } else {
+    sentences.push("Nema upozorenja o koncentraciji iznad pragova modela — portfolio je razumno diverzifikovan po pozicijama, sektorima i valuti.");
+  }
+
+  if (portfolioBeta != null && bearMarketImpactPercent != null) {
+    sentences.push(
+      `Ponderisana beta portfelja je ${portfolioBeta.toFixed(2)} — u scenariju medveđeg tržišta od -20% model procenjuje uticaj od otprilike ${bearMarketImpactPercent.toFixed(
+        0
+      )}% na ukupnu vrednost portfelja (detalji u stres-testu iznad).`
+    );
+  }
+
+  return { verdict, points: sentences };
+}
+
 // ---------- Tehnički snimak (deterministički, iz mesečne istorije cena) ----------
 
 export interface HistoricalPoint {

@@ -17,6 +17,7 @@ import { fetchPriceHistory, fetchSpyHistory, fetchStockAnalysisFcf } from "@/lib
 import { computeFcfYield } from "@/lib/valuation";
 import {
   analyzeConcentration,
+  buildPortfolioConclusion,
   DEFAULT_HOLDINGS,
   stressTestPortfolio,
   totalValueNok,
@@ -221,6 +222,20 @@ export default function PortfolioAnalysis() {
       weightedRedFlags: weightedFlags / coveredWeight,
     };
   }, [hasResults, holdings, results, total]);
+
+  const portfolioConclusion = useMemo(() => {
+    if (!hasResults) return null;
+    const bearScenario = stressTest.scenarios.find((s) => s.marketMovePercent === -20);
+    return buildPortfolioConclusion({
+      qualityScore: portfolioQuality?.score ?? null,
+      qualityCoveredWeight: portfolioQuality?.coveredWeight ?? 0,
+      flaggedWeight: portfolioQuality?.flaggedWeight ?? 0,
+      weightedRedFlags: portfolioQuality?.weightedRedFlags ?? 0,
+      concentrationFlags: concentration.flags,
+      portfolioBeta: stressTest.portfolioBeta,
+      bearMarketImpactPercent: bearScenario?.portfolioImpactPercent ?? null,
+    });
+  }, [hasResults, portfolioQuality, concentration, stressTest]);
 
   const portfolioVsSpySinceStart = useMemo(() => {
     if (!hasResults || spyHistory.length === 0) return null;
@@ -540,6 +555,35 @@ export default function PortfolioAnalysis() {
               Procena je linearna (beta × pad tržišta) — pojednostavljenje koje ne uzima u obzir da korelacije rastu u panici (pozicije koje inače nisu povezane mogu pasti zajedno), niti specifične rizike po kompaniji iz sekcije rizika/crvenih zastavica iznad.
             </p>
           </Section>
+
+          {portfolioConclusion && (
+            <Section title="Zaključak o kvalitetu portfelja">
+              <div
+                className={`inline-block mb-3 px-3 py-1 rounded-full text-xs font-bold ${
+                  portfolioConclusion.verdict === "Snažan portfolio"
+                    ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
+                    : portfolioConclusion.verdict === "Solidan portfolio, uz par tačaka pažnje"
+                      ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
+                      : portfolioConclusion.verdict === "Portfolio zahteva pažnju"
+                        ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
+                        : "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400"
+                }`}
+              >
+                {portfolioConclusion.verdict}
+              </div>
+              <ul className="space-y-1.5">
+                {portfolioConclusion.points.map((p, i) => (
+                  <li key={i} className="text-sm text-zinc-700 dark:text-zinc-300 flex gap-2">
+                    <span className="text-zinc-400 shrink-0">•</span>
+                    <span>{p}</span>
+                  </li>
+                ))}
+              </ul>
+              <p className="text-[11px] text-zinc-400 mt-3 italic">
+                Zaključak je agregacija već prikazanih brojeva iznad (kvalitet portfelja, koncentracija, stres-test) po fiksnim pravilima — nije nov, nezavisan sud ni preporuka za kupovinu/prodaju.
+              </p>
+            </Section>
+          )}
 
           <Section title="Istorijski učinak naspram SPY">
             <div className="flex flex-wrap gap-4 items-end mb-4">
