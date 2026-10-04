@@ -26,6 +26,7 @@ const INDICATOR_CODES = [
   "SP.POP.TOTL", // ukupno stanovništvo
   "SP.POP.GROW", // rast stanovništva (godišnje, %)
   "SI.POV.GINI", // Gini koeficijent (nejednakost dohotka)
+  "SP.DYN.LE00.IN", // životni vek pri rođenju (godine) — proxy za opšti razvoj/standard
 ] as const;
 
 export type IndicatorCode = (typeof INDICATOR_CODES)[number];

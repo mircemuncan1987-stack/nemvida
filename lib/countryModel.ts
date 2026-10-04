@@ -2,9 +2,17 @@
 // filozofija kao lib/model.ts za akcije: fiksni, dokumentovani pragovi nad
 // javnim podacima (World Bank), bez subjektivne/AI procene. Svaki prag je
 // opštepoznata, standardna granica u makroekonomiji (npr. inflacija iznad
-// 10% se standardno smatra visokom, javni dug iznad 90% BDP-a je prag koji
-// koriste i MMF/Svetska banka u svojim analizama održivosti duga) — nije
-// izmišljen za potrebe ovog sajta.
+// 8% se standardno smatra visokom, javni dug iznad 80% BDP-a je blizu/preko
+// zone rizika koju MMF/Svetska banka prate) — nije izmišljen za potrebe
+// ovog sajta.
+//
+// NAMERNO STROŽI pragovi nego u prvoj verziji: "good" sada znači stvarno
+// solidno po međunarodnim merilima, ne samo "nije najgore". Takođe je BDP
+// po glavi stanovnika (i životni vek, kao proxy za opšti razvoj) UKLJUČEN
+// u bodovanje (ranije je bio samo informativan) — bez toga, brza % stopa
+// rasta manje, siromašnije ekonomije (koja realno sustiže sa niske osnove)
+// je mogla da nadmaši bogatu, razvijenu ekonomiju sa sporijim, ali zrelim
+// rastom, što ne odgovara stvarnom poretku snage privreda.
 
 import type { IndicatorCode, IndicatorPoint } from "@/app/api/country/route";
 
@@ -13,8 +21,8 @@ export type Tone = "good" | "neutral" | "bad" | "unknown";
 export interface IndicatorDef {
   code: IndicatorCode;
   label: string;
-  unit: "percent" | "usd" | "number" | "index";
-  dimension: "rast" | "cene" | "fiskalno" | "spoljno" | "trziste-rada";
+  unit: "percent" | "usd" | "number" | "index" | "years";
+  dimension: "rast" | "razvoj" | "cene" | "fiskalno" | "spoljno" | "trziste-rada";
   tone: (value: number | null) => Tone;
   flagIfGood?: (value: number) => string; // zeleni signal (opciono — ne svaki pokazatelj nosi flag)
   flagIfBad?: (value: number) => string; // crveni signal (opciono)
@@ -28,64 +36,108 @@ export const INDICATOR_DEFS: IndicatorDef[] = [
     label: "Rast BDP-a (godišnje)",
     unit: "percent",
     dimension: "rast",
-    tone: (v) => (v == null ? "unknown" : v >= 2 ? "good" : v >= 0 ? "neutral" : "bad"),
-    flagIfGood: (v) => `Solidan rast BDP-a (${v.toFixed(1)}% godišnje) — ekonomija realno raste brže od svetskog proseka.`,
-    flagIfBad: (v) => `Ekonomija se smanjuje (rast BDP-a ${v.toFixed(1)}%) — recesija u poslednjoj raspoloživoj godini.`,
+    tone: (v) => (v == null ? "unknown" : v >= 3 ? "good" : v >= 1 ? "neutral" : "bad"),
+    flagIfGood: (v) => `Solidan rast BDP-a (${v.toFixed(1)}% godišnje) — iznad praga od 3% koji se smatra snažnim rastom.`,
+    flagIfBad: (v) =>
+      v < 0
+        ? `Ekonomija se smanjuje (rast BDP-a ${v.toFixed(1)}%) — recesija u poslednjoj raspoloživoj godini.`
+        : `Spor rast BDP-a (${v.toFixed(1)}% godišnje) — ispod praga od 1% koji se smatra minimalno zdravim rastom.`,
+  },
+  {
+    code: "SP.POP.TOTL",
+    label: "Stanovništvo",
+    unit: "number",
+    dimension: "rast",
+    tone: () => "unknown",
+  },
+  {
+    code: "SP.POP.GROW",
+    label: "Rast stanovništva (godišnje)",
+    unit: "percent",
+    dimension: "rast",
+    tone: () => "unknown", // informativno — ni rast ni pad stanovništva nisu sami po sebi "dobri/loši"
   },
   {
     code: "NY.GDP.PCAP.CD",
     label: "BDP po glavi stanovnika",
     unit: "usd",
-    dimension: "rast",
-    tone: () => "unknown", // informativno (nivo bogatstva), namerno bez "dobro/loše" suda
+    dimension: "razvoj",
+    // Prag "good" (≥25.000 USD) odgovara donjoj granici razvijenih ekonomija;
+    // "bad" (<8.000 USD) World Bank svrstava blizu donjeg srednjeg dohotka.
+    tone: (v) => (v == null ? "unknown" : v >= 25000 ? "good" : v >= 8000 ? "neutral" : "bad"),
+    flagIfGood: (v) => `Visok BDP po glavi stanovnika (${(v / 1000).toFixed(1)}k USD) — nivo razvijene ekonomije.`,
+    flagIfBad: (v) => `Nizak BDP po glavi stanovnika (${(v / 1000).toFixed(1)}k USD) — ispod praga od 8k USD, nivo srednje razvijene/slabije ekonomije.`,
+  },
+  {
+    code: "SP.DYN.LE00.IN",
+    label: "Životni vek pri rođenju",
+    unit: "years",
+    dimension: "razvoj",
+    tone: (v) => (v == null ? "unknown" : v >= 78 ? "good" : v >= 70 ? "neutral" : "bad"),
+    flagIfGood: (v) => `Visok životni vek (${v.toFixed(1)} god.) — proxy za opšti razvoj, zdravstvo i standard života.`,
+    flagIfBad: (v) => `Nizak životni vek (${v.toFixed(1)} god.) — ispod praga od 70 godina, signal slabijeg zdravstvenog sistema/standarda.`,
   },
   {
     code: "FP.CPI.TOTL.ZG",
     label: "Inflacija (potrošačke cene)",
     unit: "percent",
     dimension: "cene",
-    tone: (v) => (v == null ? "unknown" : v < 0 ? "bad" : v <= 4 ? "good" : v <= 10 ? "neutral" : "bad"),
+    tone: (v) => (v == null ? "unknown" : v < 0 ? "bad" : v <= 3 ? "good" : v <= 8 ? "neutral" : "bad"),
     flagIfGood: (v) => `Inflacija pod kontrolom (${v.toFixed(1)}% godišnje) — blizu uobičajenog cilja centralnih banaka od ~2%.`,
     flagIfBad: (v) =>
       v < 0
         ? `Deflacija (${v.toFixed(1)}%) — padajuće cene mogu značiti slabu tražnju, rizik od odlaganja potrošnje.`
-        : `Visoka inflacija (${v.toFixed(1)}% godišnje) — značajno iznad standardnog cilja od ~2%, erodira kupovnu moć i štednju.`,
+        : `Visoka inflacija (${v.toFixed(1)}% godišnje) — iznad praga od 8%, značajno erodira kupovnu moć i štednju.`,
   },
   {
     code: "SL.UEM.TOTL.ZS",
     label: "Nezaposlenost",
     unit: "percent",
     dimension: "trziste-rada",
-    tone: (v) => (v == null ? "unknown" : v < 6 ? "good" : v <= 12 ? "neutral" : "bad"),
+    tone: (v) => (v == null ? "unknown" : v < 5 ? "good" : v <= 10 ? "neutral" : "bad"),
     flagIfGood: (v) => `Niska nezaposlenost (${v.toFixed(1)}%) — tržište rada blizu pune zaposlenosti.`,
-    flagIfBad: (v) => `Visoka nezaposlenost (${v.toFixed(1)}%) — značajan deo radne snage bez posla.`,
+    flagIfBad: (v) => `Visoka nezaposlenost (${v.toFixed(1)}%) — iznad praga od 10%, značajan deo radne snage bez posla.`,
+  },
+  {
+    code: "SI.POV.GINI",
+    label: "Gini koeficijent (nejednakost dohotka)",
+    unit: "index",
+    dimension: "trziste-rada",
+    tone: (v) => (v == null ? "unknown" : v < 28 ? "good" : v <= 36 ? "neutral" : "bad"),
+    flagIfGood: (v) => `Niska nejednakost dohotka (Gini ${v.toFixed(0)}) — dohodak relativno ravnomerno raspoređen.`,
+    flagIfBad: (v) => `Visoka nejednakost dohotka (Gini ${v.toFixed(0)}) — iznad praga od 36, dohodak izrazito neravnomerno raspoređen.`,
   },
   {
     code: "GC.DOD.TOTL.GD.ZS",
     label: "Javni dug (% BDP-a)",
     unit: "percent",
     dimension: "fiskalno",
-    tone: (v) => (v == null ? "unknown" : v < 60 ? "good" : v <= 90 ? "neutral" : "bad"),
-    flagIfGood: (v) => `Nizak javni dug (${v.toFixed(0)}% BDP-a) — ispod uobičajenog praga održivosti od 60%.`,
-    flagIfBad: (v) => `Visok javni dug (${v.toFixed(0)}% BDP-a) — iznad praga od 90% BDP-a koji MMF/Svetska banka tretiraju kao rizičnu zonu.`,
+    tone: (v) => (v == null ? "unknown" : v < 50 ? "good" : v <= 80 ? "neutral" : "bad"),
+    flagIfGood: (v) => `Nizak javni dug (${v.toFixed(0)}% BDP-a) — ispod praga od 50%.`,
+    flagIfBad: (v) => `Visok javni dug (${v.toFixed(0)}% BDP-a) — iznad praga od 80% BDP-a, blizu/preko zone rizika koju MMF/Svetska banka prate.`,
   },
   {
     code: "GC.BAL.CASH.GD.ZS",
     label: "Fiskalni bilans (% BDP-a)",
     unit: "percent",
     dimension: "fiskalno",
-    tone: (v) => (v == null ? "unknown" : v >= -3 ? "good" : v >= -6 ? "neutral" : "bad"),
-    flagIfGood: (v) => `Fiskalni bilans pod kontrolom (${v >= 0 ? "suficit" : "deficit"} ${Math.abs(v).toFixed(1)}% BDP-a) — ispod uobičajenog praga od 3% deficita.`,
-    flagIfBad: (v) => `Veliki budžetski deficit (${Math.abs(v).toFixed(1)}% BDP-a) — iznad praga od 6%, dug raste brže od uobičajenog.`,
+    // "Good" sada traži bilans blizu ravnoteže ili suficit (ne samo deficit
+    // "ispod 3%") — manji, ali hroničan deficit i dalje polako gomila dug.
+    tone: (v) => (v == null ? "unknown" : v >= -1 ? "good" : v >= -4 ? "neutral" : "bad"),
+    flagIfGood: (v) => `Fiskalni bilans blizu ravnoteže ili suficit (${v >= 0 ? "suficit" : "deficit"} ${Math.abs(v).toFixed(1)}% BDP-a).`,
+    flagIfBad: (v) => `Veliki budžetski deficit (${Math.abs(v).toFixed(1)}% BDP-a) — iznad praga od 4%, dug raste brže od uobičajenog.`,
   },
   {
     code: "BN.CAB.XOKA.GD.ZS",
     label: "Saldo tekućeg računa (% BDP-a)",
     unit: "percent",
     dimension: "spoljno",
-    tone: (v) => (v == null ? "unknown" : v >= -2 ? "good" : v >= -5 ? "neutral" : "bad"),
-    flagIfGood: (v) => `Zdrav spoljni bilans (tekući račun ${v >= 0 ? "suficit" : "deficit"} ${Math.abs(v).toFixed(1)}% BDP-a) — nema velike zavisnosti od stranog finansiranja.`,
-    flagIfBad: (v) => `Veliki deficit tekućeg računa (${Math.abs(v).toFixed(1)}% BDP-a) — ekonomija zavisi od priliva stranog kapitala da bi finansirala uvoz.`,
+    // "Good" traži stvarni suficit (≥0%), ne samo "mali deficit" — hroničan
+    // deficit tekućeg računa, čak i mali, znači trajnu zavisnost od priliva
+    // stranog kapitala da bi se finansirao uvoz.
+    tone: (v) => (v == null ? "unknown" : v >= 0 ? "good" : v >= -4 ? "neutral" : "bad"),
+    flagIfGood: (v) => `Suficit tekućeg računa (${v.toFixed(1)}% BDP-a) — ekonomija je neto izvoznik kapitala, nema zavisnosti od stranog finansiranja.`,
+    flagIfBad: (v) => `Veliki deficit tekućeg računa (${Math.abs(v).toFixed(1)}% BDP-a) — iznad praga od 4%, ekonomija zavisi od priliva stranog kapitala da bi finansirala uvoz.`,
   },
   {
     code: "NE.TRD.GNFS.ZS",
@@ -103,33 +155,11 @@ export const INDICATOR_DEFS: IndicatorDef[] = [
     flagIfGood: (v) => `Visok priliv stranih direktnih investicija (${v.toFixed(1)}% BDP-a) — znak poverenja stranih investitora.`,
     flagIfBad: (v) => `Neto odliv stranih direktnih investicija (${v.toFixed(1)}% BDP-a) — više kapitala napušta zemlju nego što ulazi.`,
   },
-  {
-    code: "SP.POP.TOTL",
-    label: "Stanovništvo",
-    unit: "number",
-    dimension: "rast",
-    tone: () => "unknown",
-  },
-  {
-    code: "SP.POP.GROW",
-    label: "Rast stanovništva (godišnje)",
-    unit: "percent",
-    dimension: "rast",
-    tone: () => "unknown", // informativno — ni rast ni pad stanovništva nisu sami po sebi "dobri/loši"
-  },
-  {
-    code: "SI.POV.GINI",
-    label: "Gini koeficijent (nejednakost dohotka)",
-    unit: "index",
-    dimension: "trziste-rada",
-    tone: (v) => (v == null ? "unknown" : v < 30 ? "good" : v <= 40 ? "neutral" : "bad"),
-    flagIfGood: (v) => `Niska nejednakost dohotka (Gini ${v.toFixed(0)}) — dohodak relativno ravnomerno raspoređen.`,
-    flagIfBad: (v) => `Visoka nejednakost dohotka (Gini ${v.toFixed(0)}) — dohodak izrazito neravnomerno raspoređen.`,
-  },
 ];
 
 export const DIMENSION_LABELS: Record<IndicatorDef["dimension"], string> = {
-  rast: "Rast i veličina ekonomije",
+  rast: "Rast ekonomije",
+  razvoj: "Razvoj i životni standard",
   cene: "Cene (inflacija)",
   fiskalno: "Fiskalno zdravlje",
   spoljno: "Spoljni sektor",
@@ -205,6 +235,7 @@ export function fmtIndicatorValue(def: IndicatorDef, point: IndicatorPoint | und
     if (Math.abs(v) >= 1000) return `${(v / 1000).toFixed(1)}k USD`;
     return `${v.toFixed(0)} USD`;
   }
+  if (def.unit === "years") return `${v.toFixed(1)} god.`;
   if (def.unit === "index") return v.toFixed(1);
   // number (npr. stanovništvo)
   if (Math.abs(v) >= 1e9) return `${(v / 1e9).toFixed(2)} mlrd.`;
