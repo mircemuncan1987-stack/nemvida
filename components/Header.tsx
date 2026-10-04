@@ -23,6 +23,9 @@ export default function Header() {
           <Link href="/lista" className="hover:text-blue-600 dark:hover:text-blue-400 whitespace-nowrap">
             Skener
           </Link>
+          <Link href="/zemlje" className="hover:text-blue-600 dark:hover:text-blue-400 whitespace-nowrap">
+            Zemlje
+          </Link>
           <Link href="/portfolio" className="hover:text-blue-600 dark:hover:text-blue-400 whitespace-nowrap">
             Portfolio
           </Link>
