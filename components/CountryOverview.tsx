@@ -277,7 +277,9 @@ export default function CountryOverview() {
           <p className="text-[11px] text-zinc-400 italic">
             Izvor: World Bank Open Data (api.worldbank.org), besplatna javna baza. Makroekonomski podaci se ne ažuriraju dnevno/kvartalno kao cene akcija —
             prikazana je najnovija godina za koju World Bank ima objavljenu vrednost za svaki pokazatelj (naznačeno u zagradi uz broj), što za neke zemlje
-            i pokazatelje može kasniti 1-2 godine.
+            i pokazatelje može kasniti 1-2 godine. Javni dug, fiskalni bilans i Gini koeficijent su prikazani samo informativno (kad postoje) — World Bank
+            pokrivenost tih tačno tih brojeva je rupičava i za velike, razvijene ekonomije, pa ne ulaze u skor ni u zelene/crvene signale; umesto duga,
+            ocenu &quot;Fiskalna i finansijska snaga&quot; nosi bruto nacionalna štednja, koja ima znatno širu pokrivenost.
           </p>
         </div>
       )}

@@ -18,8 +18,9 @@ const INDICATOR_CODES = [
   "NY.GDP.PCAP.CD", // BDP po glavi stanovnika (trenutni USD)
   "FP.CPI.TOTL.ZG", // inflacija, potrošačke cene (godišnje, %)
   "SL.UEM.TOTL.ZS", // nezaposlenost (% radne snage)
-  "GC.DOD.TOTL.GD.ZS", // javni dug (% BDP-a)
-  "GC.BAL.CASH.GD.ZS", // fiskalni bilans / budžetski suficit-deficit (% BDP-a)
+  "NY.GNS.ICTR.ZS", // bruto nacionalna štednja (% BDP-a) — široko dostupan proxy fiskalnog/finansijskog kapaciteta
+  "GC.DOD.TOTL.GD.ZS", // javni dug (% BDP-a) — informativno, World Bank pokrivenost je rupičava za mnoge zemlje
+  "GC.BAL.CASH.GD.ZS", // fiskalni bilans (% BDP-a) — informativno, ista slaba pokrivenost kao javni dug
   "BN.CAB.XOKA.GD.ZS", // saldo tekućeg računa (% BDP-a)
   "NE.TRD.GNFS.ZS", // otvorenost trgovine (izvoz+uvoz, % BDP-a)
   "BX.KLT.DINV.WD.GD.ZS", // neto priliv direktnih stranih investicija (% BDP-a)
