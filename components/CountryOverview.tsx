@@ -275,11 +275,12 @@ export default function CountryOverview() {
           </div>
 
           <p className="text-[11px] text-zinc-400 italic">
-            Izvor: World Bank Open Data (api.worldbank.org), besplatna javna baza. Makroekonomski podaci se ne ažuriraju dnevno/kvartalno kao cene akcija —
-            prikazana je najnovija godina za koju World Bank ima objavljenu vrednost za svaki pokazatelj (naznačeno u zagradi uz broj), što za neke zemlje
-            i pokazatelje može kasniti 1-2 godine. Javni dug, fiskalni bilans i Gini koeficijent su prikazani samo informativno (kad postoje) — World Bank
-            pokrivenost tih tačno tih brojeva je rupičava i za velike, razvijene ekonomije, pa ne ulaze u skor ni u zelene/crvene signale; umesto duga,
-            ocenu &quot;Fiskalna i finansijska snaga&quot; nosi bruto nacionalna štednja, koja ima znatno širu pokrivenost.
+            Izvori: World Bank Open Data (api.worldbank.org) za većinu pokazatelja; javni dug i fiskalni bilans dolaze iz IMF World Economic Outlook baze
+            (preko IMF DataMapper javnog API-ja) jer World Bank-ova verzija tih dve brojke ima rupičavu pokrivenost čak i za velike, razvijene ekonomije.
+            Oba su besplatne javne baze, bez API ključa. Makroekonomski podaci se ne ažuriraju dnevno/kvartalno kao cene akcija — prikazana je najnovija
+            godina za koju izvor ima objavljenu vrednost za svaki pokazatelj (naznačeno u zagradi uz broj), što za neke zemlje i pokazatelje može kasniti
+            1-2 godine. Gini koeficijent (nejednakost dohotka) ostaje prikazan samo informativno kad postoji — to je anketni podatak sa rupama kod gotovo
+            svih zemalja, bez uporedive alternative, pa ne ulazi u skor ni u zelene/crvene signale.
           </p>
         </div>
       )}

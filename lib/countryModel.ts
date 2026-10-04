@@ -14,21 +14,22 @@
 // je mogla da nadmaši bogatu, razvijenu ekonomiju sa sporijim, ali zrelim
 // rastom, što ne odgovara stvarnom poretku snage privreda.
 //
-// POKRIVENOST PODATAKA: javni dug i fiskalni bilans (World Bank-ovi GC.*
-// pokazatelji, izvedeni iz IMF Government Finance Statistics) imaju
-// rupičavu pokrivenost čak i za velike, razvijene ekonomije (npr. Švedska),
-// jer te zemlje te brojeve prijavljuju kroz Eurostat/IMF Article IV, ne
-// kroz format koji World Bank ovde ima u bazi; Gini koeficijent je anketni
-// podatak sa sličnim rupama za gotovo sve zemlje. Da jedna zemlja ne bi
-// bila kažnjena/nagrađena samo zato što joj je taj specifičan broj (ne)
-// dostupan u WB bazi, sva tri su OSTAVLJENA INFORMATIVNO (prikazuju se kad
-// postoje, ali ne ulaze u skor ni u zelene/crvene signale). Umesto duga,
-// dimenzija "Fiskalna i finansijska snaga" se bodira bruto nacionalnom
-// štednjom (NY.GNS.ICTR.ZS) — standardni nacionalni-računi agregat sa
-// znatno širom, pouzdanijom pokrivenošću. Potpuno 100% pokriće svakog
-// pojedinačnog pokazatelja za baš svaku zemlju nije realno ni iz jednog
-// besplatnog izvora — ovde su birani pokazatelji sa najširom raspoloživom
-// pokrivenošću za SKOR, dok ređi podaci ostaju vidljivi kao bonus kontekst.
+// POKRIVENOST PODATAKA: javni dug i fiskalni bilans dolaze iz IMF-ove
+// sopstvene World Economic Outlook baze (app/api/country/route.ts, IMF
+// DataMapper API) umesto iz World Bank-ove verzije tih pokazatelja — WB-ova
+// verzija (izvedena iz IMF Government Finance Statistics) ima rupičavu
+// pokrivenost čak i za velike, razvijene ekonomije (npr. Švedska, koja taj
+// broj prijavljuje kroz Eurostat/IMF Article IV, ne kroz GFS format koji WB
+// ima u bazi); IMF WEO prati "opštu državu" za ~190 ekonomija dva puta
+// godišnje i ima znatno širu, pouzdaniju pokrivenost — standardni izvor na
+// koji se i MMF/analitičari pozivaju za baš ove dve brojke. Pored toga,
+// dimenzija "Fiskalna i finansijska snaga" uključuje i bruto nacionalnu
+// štednju (NY.GNS.ICTR.ZS, World Bank) kao treći, dodatni ugao.
+//
+// Gini koeficijent (nejednakost dohotka) OSTAJE čisto informativan — to je
+// anketni podatak (kućne ankete, ne redovno godišnje izveštavanje) sa
+// rupama kod gotovo svih zemalja i za njega nema uporedivog alternativnog
+// izvora sa širom pokrivenošću, pa ne ulazi u skor ni zastavice.
 
 import type { IndicatorCode, IndicatorPoint } from "@/app/api/country/route";
 
@@ -140,26 +141,27 @@ export const INDICATOR_DEFS: IndicatorDef[] = [
     flagIfBad: (v) => `Niska nacionalna štednja (${v.toFixed(1)}% BDP-a) — ispod praga od 15%, slab kapacitet za samostalno finansiranje investicija.`,
   },
   {
-    // Javni dug (World Bank/IMF GFS) — poznato rupičava pokrivenost čak i za
-    // velike, razvijene ekonomije (npr. Švedska) jer mnoge zemlje prijavljuju
-    // ove podatke kroz Eurostat/IMF Article IV, ne kroz WB-ov GFS format.
-    // OSTAVLJEN INFORMATIVNO — prikazuje se kad postoji, ali ne ulazi u skor,
-    // da nedostatak podatka za jednu zemlju ne bi oduzimao poene koje druga
-    // zemlja "dobija" samo zato što njen dug WB slučajno ima u bazi.
-    code: "GC.DOD.TOTL.GD.ZS",
-    label: "Javni dug (% BDP-a)",
+    // Javni dug — IMF World Economic Outlook (ne World Bank), vidi napomenu
+    // na vrhu fajla o razlogu. Pragovi su standardna MMF merila održivosti.
+    code: "GGXWDG_NGDP",
+    label: "Javni dug (% BDP-a, IMF WEO)",
     unit: "percent",
     dimension: "fiskalno",
-    tone: () => "unknown",
+    tone: (v) => (v == null ? "unknown" : v < 50 ? "good" : v <= 80 ? "neutral" : "bad"),
+    flagIfGood: (v) => `Nizak javni dug (${v.toFixed(0)}% BDP-a) — ispod praga od 50%.`,
+    flagIfBad: (v) => `Visok javni dug (${v.toFixed(0)}% BDP-a) — iznad praga od 80% BDP-a, blizu/preko zone rizika koju MMF prati.`,
   },
   {
-    // Fiskalni bilans — ista napomena i isti razlog kao kod javnog duga
-    // iznad (IMF GFS, rupičava pokrivenost).
-    code: "GC.BAL.CASH.GD.ZS",
-    label: "Fiskalni bilans (% BDP-a)",
+    // Fiskalni bilans — IMF World Economic Outlook (ne World Bank). "Good"
+    // traži bilans blizu ravnoteže ili suficit, ne samo "deficit ispod X%"
+    // — manji, ali hroničan deficit i dalje polako gomila dug.
+    code: "GGXCNL_NGDP",
+    label: "Fiskalni bilans (% BDP-a, IMF WEO)",
     unit: "percent",
     dimension: "fiskalno",
-    tone: () => "unknown",
+    tone: (v) => (v == null ? "unknown" : v >= -1 ? "good" : v >= -4 ? "neutral" : "bad"),
+    flagIfGood: (v) => `Fiskalni bilans blizu ravnoteže ili suficit (${v >= 0 ? "suficit" : "deficit"} ${Math.abs(v).toFixed(1)}% BDP-a).`,
+    flagIfBad: (v) => `Veliki budžetski deficit (${Math.abs(v).toFixed(1)}% BDP-a) — iznad praga od 4%, dug raste brže od uobičajenog.`,
   },
   {
     code: "BN.CAB.XOKA.GD.ZS",
