@@ -17,9 +17,6 @@ export default function Header() {
           <Link href="/fisher" className="hover:text-blue-600 dark:hover:text-blue-400 whitespace-nowrap">
             Fišer
           </Link>
-          <Link href="/uporedi" className="hover:text-blue-600 dark:hover:text-blue-400 whitespace-nowrap">
-            Uporedi
-          </Link>
           <Link href="/lista" className="hover:text-blue-600 dark:hover:text-blue-400 whitespace-nowrap">
             Skener
           </Link>
