@@ -25,9 +25,15 @@ import {
   computeTechnicalSnapshot,
   type PortfolioHolding,
 } from "@/lib/portfolio";
-import { buildBuyRecommendation, type BuyCandidateInput } from "@/lib/buyAttractiveness";
+import { buildBuyRecommendation, type BuyCandidateInput, type BuyCandidateResult } from "@/lib/buyAttractiveness";
 
 const STORAGE_KEY = "nemvida_portfolio_v1";
+const VERDICT_RANK: Record<BuyCandidateResult["verdict"], number> = {
+  "Atraktivno za dokupovanje": 0,
+  "Fer vrednovano": 1,
+  Skupo: 2,
+  "Nedovoljno podataka": 3,
+};
 const CONCURRENCY = 4;
 const BENCHMARK_YEARS = [1, 3, 5];
 
@@ -580,7 +586,15 @@ export default function PortfolioAnalysis() {
               <div className="space-y-3">
                 {buyRecommendation.ranked
                   .slice()
-                  .sort((a, b) => (b.combinedScore ?? -2) - (a.combinedScore ?? -2))
+                  .sort((a, b) => {
+                    // Prvo po verdiktu (atraktivno na vrhu), tek onda po skoru unutar
+                    // iste grupe — sprečava da pozicija sa cikličnim upozorenjem
+                    // (visok skor, ali spuštena na "Fer vrednovano") ispadne iznad
+                    // stvarno atraktivnih pozicija samo zato što joj je skor viši.
+                    const rankDiff = VERDICT_RANK[a.verdict] - VERDICT_RANK[b.verdict];
+                    if (rankDiff !== 0) return rankDiff;
+                    return (b.combinedScore ?? -2) - (a.combinedScore ?? -2);
+                  })
                   .map((cand) => {
                     const toneClass = (tone: string) =>
                       tone === "povoljno"
