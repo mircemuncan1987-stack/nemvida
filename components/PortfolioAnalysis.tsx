@@ -206,10 +206,12 @@ export default function PortfolioAnalysis() {
       const r = results.get(h.ticker);
       const c = r?.computed;
       if (!c) continue;
+      const closes = r.priceHistory.map((p) => p.close).filter((v): v is number => v != null);
       candidates.push({
         ticker: h.ticker,
         name: h.name,
         sector: c.data.sector,
+        currentPrice: c.data.currentPrice,
         peRatio: c.data.peRatio,
         pegRatio: c.data.pegRatio,
         evToEbitda: c.data.evToEbitda,
@@ -218,6 +220,7 @@ export default function PortfolioAnalysis() {
         analystLongTermGrowth: c.data.analystLongTermGrowth,
         revenueGrowthTtm: c.data.revenueGrowthTtm,
         sectorPeMedian: getSectorPeMedian(c.data.sector),
+        historicalHighPrice: closes.length ? Math.max(...closes) : null,
         weightInPortfolio: h.marketValueNok / total,
       });
     }
@@ -574,58 +577,51 @@ export default function PortfolioAnalysis() {
                 </div>
               )}
 
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm border-collapse">
-                  <thead>
-                    <tr>
-                      <th className="text-left text-xs uppercase text-zinc-500 py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800">Pozicija</th>
-                      <th className="text-left text-xs uppercase text-zinc-500 py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800">Sektor</th>
-                      <th className="text-left text-xs uppercase text-zinc-500 py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800">P/E vs sektor</th>
-                      <th className="text-left text-xs uppercase text-zinc-500 py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800">PEG</th>
-                      <th className="text-left text-xs uppercase text-zinc-500 py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800">EV/EBITDA</th>
-                      <th className="text-left text-xs uppercase text-zinc-500 py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800">FCF prinos</th>
-                      <th className="text-left text-xs uppercase text-zinc-500 py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800">Rast</th>
-                      <th className="text-left text-xs uppercase text-zinc-500 py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800">Ocena</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {buyRecommendation.ranked
-                      .slice()
-                      .sort((a, b) => (b.combinedScore ?? -2) - (a.combinedScore ?? -2))
-                      .map((cand) => {
-                        const toneClass = (tone: string) =>
-                          tone === "povoljno"
-                            ? "text-emerald-600 dark:text-emerald-400"
-                            : tone === "skupo"
-                              ? "text-red-600 dark:text-red-400"
-                              : tone === "neutralno"
-                                ? "text-amber-600 dark:text-amber-400"
-                                : "text-zinc-400";
-                        const [peC, pegC, evC, fcfC] = cand.valuationComponents;
-                        return (
-                          <tr key={cand.ticker} className={cand.ticker === buyRecommendation.topPick?.ticker ? "bg-emerald-50/50 dark:bg-emerald-900/10" : ""}>
-                            <td className="py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800 font-medium">
-                              <a href={`/pregled?ticker=${cand.ticker}`} className="hover:underline">{cand.name}</a>
-                            </td>
-                            <td className="py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800 text-xs text-zinc-500 dark:text-zinc-400">{cand.sector ?? "—"}</td>
-                            <td className={`py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800 tabular-nums ${toneClass(peC.tone)}`} title={peC.detail}>{peC.value}</td>
-                            <td className={`py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800 tabular-nums ${toneClass(pegC.tone)}`} title={pegC.detail}>{pegC.value}</td>
-                            <td className={`py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800 tabular-nums ${toneClass(evC.tone)}`} title={evC.detail}>{evC.value}</td>
-                            <td className={`py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800 tabular-nums ${toneClass(fcfC.tone)}`} title={fcfC.detail}>{fcfC.value}</td>
-                            <td className={`py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800 tabular-nums ${toneClass(cand.growthComponent.tone)}`} title={cand.growthComponent.detail}>
-                              {cand.growthComponent.value}
-                            </td>
-                            <td className={`py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800 text-xs font-semibold ${toneClass(cand.verdict === "Atraktivno za dokupovanje" ? "povoljno" : cand.verdict === "Skupo" ? "skupo" : cand.verdict === "Fer vrednovano" ? "neutralno" : "nepoznato")}`}>
-                              {cand.verdict}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                  </tbody>
-                </table>
+              <div className="space-y-3">
+                {buyRecommendation.ranked
+                  .slice()
+                  .sort((a, b) => (b.combinedScore ?? -2) - (a.combinedScore ?? -2))
+                  .map((cand) => {
+                    const toneClass = (tone: string) =>
+                      tone === "povoljno"
+                        ? "text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20"
+                        : tone === "skupo"
+                          ? "text-red-700 dark:text-red-400 bg-red-50 dark:bg-red-900/20"
+                          : tone === "neutralno"
+                            ? "text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20"
+                            : "text-zinc-400 bg-zinc-50 dark:bg-zinc-800/40";
+                    const verdictTone = cand.verdict === "Atraktivno za dokupovanje" ? "povoljno" : cand.verdict === "Skupo" ? "skupo" : cand.verdict === "Fer vrednovano" ? "neutralno" : "nepoznato";
+                    const isTop = cand.ticker === buyRecommendation.topPick?.ticker;
+                    return (
+                      <div
+                        key={cand.ticker}
+                        className={`p-3 rounded border ${isTop ? "border-emerald-300 dark:border-emerald-700" : "border-zinc-200 dark:border-zinc-800"}`}
+                      >
+                        <div className="flex flex-wrap items-baseline justify-between gap-2 mb-1.5">
+                          <div className="text-sm font-bold">
+                            <a href={`/pregled?ticker=${cand.ticker}`} className="hover:underline">{cand.name}</a>
+                            {cand.sector && <span className="ml-1.5 text-xs font-normal text-zinc-500 dark:text-zinc-400">({cand.sector})</span>}
+                            {cand.isHoldingCompany && <span className="ml-1.5 text-[10px] font-normal uppercase text-blue-600 dark:text-blue-400">holding — valuacija preko NAV</span>}
+                          </div>
+                          <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${toneClass(verdictTone)}`}>{cand.verdict}</span>
+                        </div>
+                        <div className="flex flex-wrap gap-1.5 mb-2">
+                          {cand.valuationComponents.map((comp) => (
+                            <span key={comp.label} className={`text-xs px-1.5 py-0.5 rounded ${toneClass(comp.tone)}`} title={comp.detail}>
+                              {comp.label}: {comp.value}
+                            </span>
+                          ))}
+                          <span className={`text-xs px-1.5 py-0.5 rounded ${toneClass(cand.growthComponent.tone)}`} title={cand.growthComponent.detail}>
+                            {cand.growthComponent.label}: {cand.growthComponent.value}
+                          </span>
+                        </div>
+                        <p className="text-sm text-zinc-700 dark:text-zinc-300">{cand.narrative}</p>
+                      </div>
+                    );
+                  })}
               </div>
               <p className="text-[11px] text-zinc-400 mt-3 italic">
-                Nova, samostalna valuacija (odvojena od sveobuhvatnog modela gore) napravljena samo za poređenje POZICIJA KOJE VEĆ POSEDUJEŠ — P/E naspram sektorske medijane, PEG, EV/EBITDA i FCF prinos (ponderisano 60%) kombinovano sa procenom rasta (analitičarska 5G procena ili rast prihoda, 40%), po fiksnim pragovima. Ne uzima u obzir trenutnu težinu pozicije u portfelju niti kvalitet kompanije — to je već pokriveno sekcijama iznad.
+                Nova, samostalna valuacija (odvojena od sveobuhvatnog modela gore) napravljena samo za poređenje POZICIJA KOJE VEĆ POSEDUJEŠ — standardno P/E naspram sektorske medijane, PEG, EV/EBITDA i FCF prinos, uz dve korekcije: (1) kod sektora čija je zarada vezana za cenu robe (energetika, sirovine), cena blizu višegodišnjeg maksimuma sprečava ocenu &ldquo;atraktivno&rdquo; bez obzira na nizak trailing P/E — da se ne bi niska zarada na vrhu ciklusa pogrešno protumačila kao jeftina akcija; (2) za holding kompanije (Aker, Investor) umesto P/E koristi se diskont/premija na poslednju ručno uneti NAV po akciji (izvor i datum su deo podatka u lib/buyAttractiveness.ts), jer standardni multiplikatori za njih nisu merodavni. Sve se kombinuje sa procenom rasta (analitičarska 5G procena ili rast prihoda) po fiksnim pragovima. Ne uzima u obzir trenutnu težinu pozicije u portfelju niti kvalitet kompanije — to je već pokriveno sekcijama iznad.
               </p>
             </Section>
           )}

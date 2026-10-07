@@ -11,6 +11,30 @@
 // rangiranje MALOG, već provereno-kvalitetnog skupa akcija, ne za filtriranje
 // celog tržišta.
 //
+// Dve posebne korekcije, obe dodate nakon konkretne primedbe korisnika:
+//
+// 1. CIKLIČNI RIZIK (scoreCyclicalRisk) — kod ciklično osetljivih sektora
+//    (energetika, sirovine) nizak trailing P/E na VRHU ciklusa cena robe ne
+//    znači da je akcija jeftina, već da je zarada privremeno naduvana cenom
+//    robe ("value trap"). Konkretan primer: Vår Energi je naftna kompanija
+//    čiji je trailing P/E nizak upravo zato što su cene nafte/akcija blizu
+//    rekordnih nivoa, ne zato što je akcija stvarno povoljna. Zato se
+//    posebno proverava da li je cena blizu višegodišnjeg maksimuma, i ako je
+//    sektor ciklično osetljiv, pozicija NE MOŽE biti "Atraktivno za
+//    dokupovanje" bez obzira na ostale multiplikatore.
+//
+// 2. NAV ZA HOLDING KOMPANIJE (scoreNavDiscount) — za Aker ASA i Investor AB,
+//    P/E, PEG i EV/EBITDA NISU merodavni, jer je njihova "zarada" uglavnom
+//    računovodstveni dobitak/gubitak na portfolio ulaganja, ne operativni
+//    poslovni rezultat. Standardna, ispravna mera za holding kompanije je
+//    diskont/premija cene akcije na NAV (Net Asset Value) po akciji koji
+//    kompanija sama objavljuje kvartalno. Pošto ne postoji besplatan, javni
+//    API koji vraća NAV za ove dve kompanije, vrednosti su REČNO UNETE iz
+//    njihovih poslednjih objavljenih kvartalnih izveštaja (vidi
+//    HOLDING_COMPANY_NAV ispod) — baš kao DEFAULT_HOLDINGS u lib/portfolio.ts,
+//    ovo zahteva ručno ažuriranje kad kompanija objavi sledeći kvartalni
+//    izveštaj (Aker ASA i Investor AB izveštavaju NAV kvartalno).
+//
 // Isti princip kao svuda na sajtu: fiksni, dokumentovani pragovi nad
 // proverljivim brojevima, nema slobodne AI procene.
 
@@ -18,6 +42,7 @@ export interface BuyCandidateInput {
   ticker: string;
   name: string;
   sector: string | null;
+  currentPrice: number | null;
   peRatio: number | null;
   pegRatio: number | null;
   evToEbitda: number | null;
@@ -26,6 +51,7 @@ export interface BuyCandidateInput {
   analystLongTermGrowth: number | null; // Yahoo earningsTrend +5y, decimalno (0.12 = 12%)
   revenueGrowthTtm: number | null; // decimalno
   sectorPeMedian: number | null; // orijentaciona medijana P/E za sektor (ista tabela kao ostatak sajta)
+  historicalHighPrice: number | null; // maksimum zatvaranja iz raspoložive (mesečne, "max" range) cenovne istorije
   weightInPortfolio: number; // 0-1, trenutni udeo u portfelju — samo informativno, ne utiče na rang
 }
 
@@ -43,13 +69,16 @@ export interface BuyCandidateResult {
   name: string;
   sector: string | null;
   weightInPortfolio: number;
+  isHoldingCompany: boolean;
   valuationComponents: BuyComponent[];
   growthComponent: BuyComponent;
+  cyclicalWarning: boolean; // true kad je cikličan rizik oborio ocenu na "Fer vrednovano" ili niže
+  narrative: string; // 3-5 rečenica, sintetizovano iz komponenti iznad — ne nov sud, samo tekstualni spoj već izračunatih brojeva
   cheapnessScore: number | null; // -1..+1, prosek dostupnih valuacionih komponenti
   growthScore: number | null; // -1..+1
   combinedScore: number | null; // -1..+1, cheapness*0.6 + growth*0.4
   verdict: "Atraktivno za dokupovanje" | "Fer vrednovano" | "Skupo" | "Nedovoljno podataka";
-  dataCoverage: number; // broj dostupnih valuacionih komponenti (0-4), za prikaz pouzdanosti
+  dataCoverage: number; // broj dostupnih valuacionih komponenti, za prikaz pouzdanosti
 }
 
 export interface BuyRecommendation {
@@ -59,58 +88,116 @@ export interface BuyRecommendation {
   note: string;
 }
 
+// ---------- NAV za holding kompanije (ručno ažurirano iz kvartalnih izveštaja) ----------
+//
+// IZVOR I DATUM SU DEO PODATKA — kad kompanija objavi sledeći kvartal, ove
+// brojke treba ručno osvežiti (isti princip kao portfolio PDF uvoz).
+const HOLDING_COMPANY_NAV: Record<string, { navPerShare: number; currency: string; asOf: string; source: string }> = {
+  "AKER.OL": { navPerShare: 1429, currency: "NOK", asOf: "30.6.2026 (2. kvartal 2026)", source: "Aker ASA, kvartalni izveštaj" },
+  "INVE-A.ST": { navPerShare: 397, currency: "SEK", asOf: "30.6.2026 (2. kvartal 2026)", source: "Investor AB, kvartalni izveštaj" },
+  "INVE-B.ST": { navPerShare: 397, currency: "SEK", asOf: "30.6.2026 (2. kvartal 2026)", source: "Investor AB, kvartalni izveštaj" },
+};
+
+// Yahoo/GICS sektori čija je zarada direktno vezana za cenu robe (nafta, gas,
+// metali, rudarstvo) — kod ovih sektora trailing multiplikatori na vrhu
+// ciklusa cena robe sistematski izgledaju "jeftino" iako nisu.
+const CYCLICAL_COMMODITY_SECTORS = new Set(["Energy", "Basic Materials"]);
+
 function fcfYield(fcf: number | null, marketCap: number | null): number | null {
   if (fcf == null || marketCap == null || marketCap <= 0) return null;
   return fcf / marketCap;
 }
 
-// Komponenta 1 — P/E u odnosu na sektor (ili na generički prag 20× ako
-// medijana sektora nije poznata). Namerno BLAŽI apsolutni prag od sektorske
-// medijane (±15%) nego kod opšteg modela, jer ovde upoređujemo akcije koje su
-// već prošle kvalitativnu proveru — razlike od par procenata nisu bitne,
-// bitno je ko je JASNO jeftiniji od ostalih.
+// Komponenta — P/E u odnosu na sektor (ili na generički prag 20× ako medijana
+// sektora nije poznata). Namerno BLAŽI apsolutni prag od sektorske medijane
+// (±15%) nego kod opšteg modela, jer ovde upoređujemo akcije koje su već
+// prošle kvalitativnu proveru — razlike od par procenata nisu bitne, bitno je
+// ko je JASNO jeftiniji od ostalih.
 function scorePe(peRatio: number | null, sectorPeMedian: number | null): BuyComponent {
   if (peRatio == null) return { label: "P/E naspram sektora", value: "—", tone: "nepoznato", detail: "P/E nije dostupan." };
   const benchmark = sectorPeMedian ?? 20;
   const benchmarkLabel = sectorPeMedian != null ? "medijane sektora" : "generičkog praga (sektor nepoznat)";
   const ratio = peRatio / benchmark;
   if (ratio < 0.85) {
-    return { label: "P/E naspram sektora", value: `${peRatio.toFixed(1)}×`, tone: "povoljno", detail: `${((1 - ratio) * 100).toFixed(0)}% ispod ${benchmarkLabel} (${benchmark.toFixed(0)}×).` };
+    return { label: "P/E naspram sektora", value: `${peRatio.toFixed(1)}×`, tone: "povoljno", detail: `P/E ${peRatio.toFixed(1)}× je ${((1 - ratio) * 100).toFixed(0)}% ispod ${benchmarkLabel} (${benchmark.toFixed(0)}×).` };
   }
   if (ratio > 1.15) {
-    return { label: "P/E naspram sektora", value: `${peRatio.toFixed(1)}×`, tone: "skupo", detail: `${((ratio - 1) * 100).toFixed(0)}% iznad ${benchmarkLabel} (${benchmark.toFixed(0)}×).` };
+    return { label: "P/E naspram sektora", value: `${peRatio.toFixed(1)}×`, tone: "skupo", detail: `P/E ${peRatio.toFixed(1)}× je ${((ratio - 1) * 100).toFixed(0)}% iznad ${benchmarkLabel} (${benchmark.toFixed(0)}×).` };
   }
-  return { label: "P/E naspram sektora", value: `${peRatio.toFixed(1)}×`, tone: "neutralno", detail: `Blizu ${benchmarkLabel} (${benchmark.toFixed(0)}×).` };
+  return { label: "P/E naspram sektora", value: `${peRatio.toFixed(1)}×`, tone: "neutralno", detail: `P/E ${peRatio.toFixed(1)}× je blizu ${benchmarkLabel} (${benchmark.toFixed(0)}×).` };
 }
 
-// Komponenta 2 — PEG. Pragovi stroži nego opšti filter valuacije na sajtu
-// (0,5/2,0) — ovde je 0,5/1,5, jer se rangira uži skup već odabranih
-// kompanija pa se traži jasnija razlika da bi poredak imao smisla.
+// PEG — pragovi stroži nego opšti filter valuacije na sajtu (0,5/2,0) — ovde
+// je 0,5/1,5, jer se rangira uži skup već odabranih kompanija pa se traži
+// jasnija razlika da bi poredak imao smisla.
 function scorePeg(pegRatio: number | null): BuyComponent {
   if (pegRatio == null) return { label: "PEG", value: "—", tone: "nepoznato", detail: "PEG nije dostupan." };
-  if (pegRatio < 0.5) return { label: "PEG", value: pegRatio.toFixed(2), tone: "povoljno", detail: "Ispod 0,5 — cena jasno ispod procenjenog rasta zarade." };
-  if (pegRatio > 1.5) return { label: "PEG", value: pegRatio.toFixed(2), tone: "skupo", detail: "Iznad 1,5 — cena je napred u odnosu na procenjeni rast zarade." };
-  return { label: "PEG", value: pegRatio.toFixed(2), tone: "neutralno", detail: "Između 0,5 i 1,5 — cena je u skladu sa rastom." };
+  if (pegRatio < 0.5) return { label: "PEG", value: pegRatio.toFixed(2), tone: "povoljno", detail: `PEG ${pegRatio.toFixed(2)} je ispod 0,5 — cena je jasno ispod procenjenog rasta zarade.` };
+  if (pegRatio > 1.5) return { label: "PEG", value: pegRatio.toFixed(2), tone: "skupo", detail: `PEG ${pegRatio.toFixed(2)} je iznad 1,5 — cena je napred u odnosu na procenjeni rast zarade.` };
+  return { label: "PEG", value: pegRatio.toFixed(2), tone: "neutralno", detail: `PEG ${pegRatio.toFixed(2)} je između 0,5 i 1,5 — cena je u skladu sa rastom.` };
 }
 
-// Komponenta 3 — EV/EBITDA. Takođe stroži pragovi (12×/20×) nego opšti model
-// (15×/30×), iz istog razloga kao kod PEG-a iznad.
+// EV/EBITDA — takođe stroži pragovi (12×/20×) nego opšti model (15×/30×), iz
+// istog razloga kao kod PEG-a iznad.
 function scoreEvEbitda(evToEbitda: number | null): BuyComponent {
   if (evToEbitda == null) return { label: "EV/EBITDA", value: "—", tone: "nepoznato", detail: "EV/EBITDA nije dostupan." };
-  if (evToEbitda < 12) return { label: "EV/EBITDA", value: `${evToEbitda.toFixed(1)}×`, tone: "povoljno", detail: "Ispod 12× — razumna cena za operativnu zaradu." };
-  if (evToEbitda > 20) return { label: "EV/EBITDA", value: `${evToEbitda.toFixed(1)}×`, tone: "skupo", detail: "Iznad 20× — uračunava solidno izvršenje unapred." };
-  return { label: "EV/EBITDA", value: `${evToEbitda.toFixed(1)}×`, tone: "neutralno", detail: "Između 12× i 20× — umereno." };
+  if (evToEbitda < 12) return { label: "EV/EBITDA", value: `${evToEbitda.toFixed(1)}×`, tone: "povoljno", detail: `EV/EBITDA ${evToEbitda.toFixed(1)}× je ispod 12× — razumna cena za operativnu zaradu.` };
+  if (evToEbitda > 20) return { label: "EV/EBITDA", value: `${evToEbitda.toFixed(1)}×`, tone: "skupo", detail: `EV/EBITDA ${evToEbitda.toFixed(1)}× je iznad 20× — uračunava solidno izvršenje unapred.` };
+  return { label: "EV/EBITDA", value: `${evToEbitda.toFixed(1)}×`, tone: "neutralno", detail: `EV/EBITDA ${evToEbitda.toFixed(1)}× je između 12× i 20× — umereno.` };
 }
 
-// Komponenta 4 — FCF prinos (slobodan novčani tok / tržišna kapitalizacija).
-// Pragovi 5%/2% — malo stroži od opšteg modela (6%/2,5%) na gornjoj strani.
+// FCF prinos (slobodan novčani tok / tržišna kapitalizacija). Pragovi 5%/2% —
+// malo stroži od opšteg modela (6%/2,5%) na gornjoj strani.
 function scoreFcfYield(yieldValue: number | null): BuyComponent {
   if (yieldValue == null) return { label: "FCF prinos", value: "—", tone: "nepoznato", detail: "Slobodan novčani tok ili tržišna kapitalizacija nisu dostupni." };
   const pct = `${(yieldValue * 100).toFixed(1)}%`;
-  if (yieldValue < 0) return { label: "FCF prinos", value: pct, tone: "skupo", detail: "Negativan — kompanija trenutno troši više gotovine nego što generiše." };
-  if (yieldValue >= 0.05) return { label: "FCF prinos", value: pct, tone: "povoljno", detail: "5% ili više — generiše mnogo gotovine u odnosu na cenu." };
-  if (yieldValue >= 0.02) return { label: "FCF prinos", value: pct, tone: "neutralno", detail: "Između 2% i 5% — prosečno." };
-  return { label: "FCF prinos", value: pct, tone: "skupo", detail: "Ispod 2% — nizak prinos u odnosu na cenu." };
+  if (yieldValue < 0) return { label: "FCF prinos", value: pct, tone: "skupo", detail: "FCF prinos je negativan — kompanija trenutno troši više gotovine nego što generiše." };
+  if (yieldValue >= 0.05) return { label: "FCF prinos", value: pct, tone: "povoljno", detail: `FCF prinos od ${pct} (5% ili više) — kompanija generiše mnogo gotovine u odnosu na cenu.` };
+  if (yieldValue >= 0.02) return { label: "FCF prinos", value: pct, tone: "neutralno", detail: `FCF prinos od ${pct} — prosečno, između 2% i 5%.` };
+  return { label: "FCF prinos", value: pct, tone: "skupo", detail: `FCF prinos od ${pct} je ispod 2% — nizak prinos u odnosu na cenu.` };
+}
+
+// Ciklični rizik — SAMO upozorenje (nikad "povoljno"): proverava da li je
+// cena blizu višegodišnjeg maksimuma kod ciklično osetljivog sektora. Prag
+// 90% maksimuma je fiksan i dokumentovan — iznad njega se trailing
+// multiplikatori ne smatraju pouzdanim signalom jeftine cene.
+function scoreCyclicalRisk(sector: string | null, currentPrice: number | null, historicalHighPrice: number | null): BuyComponent | null {
+  if (!sector || !CYCLICAL_COMMODITY_SECTORS.has(sector) || currentPrice == null || historicalHighPrice == null || historicalHighPrice <= 0) {
+    return null;
+  }
+  const pctOfHigh = currentPrice / historicalHighPrice;
+  const pctLabel = `${(pctOfHigh * 100).toFixed(0)}% maksimuma`;
+  if (pctOfHigh >= 0.9) {
+    return {
+      label: "Ciklični rizik",
+      value: pctLabel,
+      tone: "skupo",
+      detail: `Cena je na ${pctLabel} iz raspoložive istorije, u sektoru (${sector}) čija je zarada direktno vezana za cenu robe — nizak trailing P/E na vrhu ciklusa često znači da je zarada privremeno naduvana cenom robe, ne da je akcija stvarno jeftina (klasična "value trap" zamka).`,
+    };
+  }
+  return {
+    label: "Ciklični rizik",
+    value: pctLabel,
+    tone: "neutralno",
+    detail: `Ciklično osetljiv sektor (${sector}), ali cena nije blizu višegodišnjeg maksimuma (${pctLabel}) — manji rizik da trailing multiplikatori lažno izgledaju jeftino zbog vrha ciklusa.`,
+  };
+}
+
+// NAV diskont/premija za holding kompanije — zamenjuje P/E/PEG/EV-EBITDA za
+// tikere iz HOLDING_COMPANY_NAV. Pragovi (20%/5%) odražavaju tipičan raspon
+// diskonta kod nordijskih holding kompanija — diskont ispod 5% (ili premija)
+// je neobično uzak/skup, iznad 20% je neobično širok/povoljan.
+function scoreNavDiscount(ticker: string, currentPrice: number | null): BuyComponent | null {
+  const nav = HOLDING_COMPANY_NAV[ticker];
+  if (!nav || currentPrice == null) return null;
+  const discount = (nav.navPerShare - currentPrice) / nav.navPerShare; // pozitivno = cena ispod NAV
+  const discountPct = `${(discount * 100).toFixed(0)}%`;
+  const tone: BuyComponentTone = discount > 0.2 ? "povoljno" : discount >= 0.05 ? "neutralno" : "skupo";
+  const detail =
+    discount >= 0
+      ? `Cena je ${discountPct} ispod NAV od ${nav.navPerShare} ${nav.currency}/akciju (stanje na ${nav.asOf}, izvor: ${nav.source}) — standardna mera vrednosti za holding kompanije, umesto P/E koji za ovaj tip kompanije nije merodavan.`
+      : `Cena je ${Math.abs(discount * 100).toFixed(0)}% IZNAD NAV od ${nav.navPerShare} ${nav.currency}/akciju (stanje na ${nav.asOf}, izvor: ${nav.source}) — neobično za holding kompaniju, koje po pravilu trguju sa diskontom na NAV.`;
+  return { label: "Popust/premija na NAV", value: discountPct, tone, detail };
 }
 
 // Rast — koristi analitičarsku petogodišnju procenu rasta zarade kao primarni
@@ -125,9 +212,9 @@ function scoreGrowth(analystLongTermGrowth: number | null, revenueGrowthTtm: num
     return { label: "Potencijal rasta", value: "—", tone: "nepoznato", detail: "Ni procena analitičara ni rast prihoda nisu dostupni." };
   }
   const pct = `${(growth * 100).toFixed(1)}%`;
-  if (growth >= 0.12) return { label: "Potencijal rasta", value: pct, tone: "povoljno", detail: `${pct} (${source}) — iznad 12%, visok potencijal rasta.` };
-  if (growth >= 0.04) return { label: "Potencijal rasta", value: pct, tone: "neutralno", detail: `${pct} (${source}) — umeren rast, između 4% i 12%.` };
-  return { label: "Potencijal rasta", value: pct, tone: "skupo", detail: `${pct} (${source}) — ispod 4%, slab potencijal rasta.` };
+  if (growth >= 0.12) return { label: "Potencijal rasta", value: pct, tone: "povoljno", detail: `Potencijal rasta ${pct} (${source}) je iznad 12% — visok potencijal rasta.` };
+  if (growth >= 0.04) return { label: "Potencijal rasta", value: pct, tone: "neutralno", detail: `Potencijal rasta ${pct} (${source}) je umeren, između 4% i 12%.` };
+  return { label: "Potencijal rasta", value: pct, tone: "skupo", detail: `Potencijal rasta ${pct} (${source}) je ispod 4% — slab potencijal rasta.` };
 }
 
 function toneToNumber(tone: BuyComponentTone): number | null {
@@ -137,13 +224,69 @@ function toneToNumber(tone: BuyComponentTone): number | null {
   return null;
 }
 
+function buildNarrative(
+  name: string,
+  isHoldco: boolean,
+  components: BuyComponent[],
+  growthComponent: BuyComponent,
+  cyclicalComponent: BuyComponent | null,
+  verdict: BuyCandidateResult["verdict"]
+): string {
+  const sentences: string[] = [];
+
+  if (isHoldco) {
+    const navComponent = components[0];
+    sentences.push(navComponent.detail);
+    sentences.push(
+      "Za holding kompanije ovog tipa standardni multiplikatori (P/E, EV/EBITDA) nisu merodavni jer zarada uglavnom odražava računovodstvene dobitke/gubitke na portfolio ulaganja, ne operativni poslovni rezultat — zato se umesto njih koristi diskont/premija na poslednju objavljenu NAV."
+    );
+  } else {
+    const favorable = components.filter((c) => c.tone === "povoljno" && c.label !== "Ciklični rizik");
+    const expensive = components.filter((c) => c.tone === "skupo" && c.label !== "Ciklični rizik");
+    if (favorable.length > expensive.length) {
+      sentences.push(`Većina ključnih multiplikatora (${favorable.map((c) => c.label).join(", ")}) čita povoljno u odnosu na sektor i apsolutne pragove.`);
+    } else if (expensive.length > favorable.length) {
+      sentences.push(`Većina ključnih multiplikatora (${expensive.map((c) => c.label).join(", ")}) čita skupo.`);
+    } else {
+      sentences.push("Ključni multiplikatori su mešoviti — nema jasnog signala u ni jednom pravcu.");
+    }
+  }
+
+  if (cyclicalComponent?.tone === "skupo") {
+    sentences.push(cyclicalComponent.detail);
+    sentences.push(`Zbog toga ${name} ovde nije rangiran kao "atraktivno za dokupovanje", bez obzira na trailing multiplikatore iznad.`);
+  }
+
+  sentences.push(growthComponent.detail);
+
+  if (verdict === "Atraktivno za dokupovanje") {
+    sentences.push("Kombinacija cene i potencijala rasta je trenutno povoljnija nego kod ostalih pozicija u portfelju.");
+  } else if (verdict === "Skupo") {
+    sentences.push("Trenutna cena ne ostavlja mnogo prostora za grešku — dokupovanje po ovoj ceni nosi veći rizik od ostalih pozicija.");
+  } else if (verdict === "Fer vrednovano") {
+    sentences.push("Cena je razumna, ali ne izrazito povoljna u odnosu na ostale pozicije u portfelju.");
+  } else {
+    sentences.push("Nema dovoljno podataka o multiplikatorima ili rastu za pouzdan zaključak o ovoj poziciji.");
+  }
+
+  return sentences.join(" ");
+}
+
 export function evaluateBuyCandidate(input: BuyCandidateInput): BuyCandidateResult {
-  const components = [
-    scorePe(input.peRatio, input.sectorPeMedian),
-    scorePeg(input.pegRatio),
-    scoreEvEbitda(input.evToEbitda),
-    scoreFcfYield(fcfYield(input.freeCashflowTtm, input.marketCap)),
-  ];
+  const navComponent = scoreNavDiscount(input.ticker, input.currentPrice);
+  const isHoldco = navComponent != null;
+  const cyclicalComponent = isHoldco ? null : scoreCyclicalRisk(input.sector, input.currentPrice, input.historicalHighPrice);
+
+  const components: BuyComponent[] = isHoldco
+    ? [navComponent, scoreFcfYield(fcfYield(input.freeCashflowTtm, input.marketCap))]
+    : [
+        scorePe(input.peRatio, input.sectorPeMedian),
+        scorePeg(input.pegRatio),
+        scoreEvEbitda(input.evToEbitda),
+        scoreFcfYield(fcfYield(input.freeCashflowTtm, input.marketCap)),
+        ...(cyclicalComponent ? [cyclicalComponent] : []),
+      ];
+
   const growthComponent = scoreGrowth(input.analystLongTermGrowth, input.revenueGrowthTtm);
 
   const cheapnessValues = components.map((c) => toneToNumber(c.tone)).filter((v): v is number => v != null);
@@ -160,7 +303,7 @@ export function evaluateBuyCandidate(input: BuyCandidateInput): BuyCandidateResu
   const dataCoverage = cheapnessValues.length;
 
   let verdict: BuyCandidateResult["verdict"];
-  if (dataCoverage < 2 || combinedScore == null) {
+  if (dataCoverage < 1 || combinedScore == null) {
     verdict = "Nedovoljno podataka";
   } else if (combinedScore >= 0.35) {
     verdict = "Atraktivno za dokupovanje";
@@ -170,13 +313,29 @@ export function evaluateBuyCandidate(input: BuyCandidateInput): BuyCandidateResu
     verdict = "Fer vrednovano";
   }
 
+  // Ciklični rizik je samo upozorenje, ne nagrada — ako je cena blizu
+  // višegodišnjeg maksimuma u ciklično osetljivom sektoru, pozicija ne može
+  // biti "atraktivna za dokupovanje" bez obzira na ostale multiplikatore
+  // (konkretan primer koji je doveo do ovog pravila: Vår Energi — nizak P/E
+  // dok su cene nafte i akcije blizu rekordnih nivoa).
+  let cyclicalWarning = false;
+  if (cyclicalComponent?.tone === "skupo" && verdict === "Atraktivno za dokupovanje") {
+    verdict = "Fer vrednovano";
+    cyclicalWarning = true;
+  }
+
+  const narrative = buildNarrative(input.name, isHoldco, components, growthComponent, cyclicalComponent, verdict);
+
   return {
     ticker: input.ticker,
     name: input.name,
     sector: input.sector,
     weightInPortfolio: input.weightInPortfolio,
+    isHoldingCompany: isHoldco,
     valuationComponents: components,
     growthComponent,
+    cyclicalWarning,
+    narrative,
     cheapnessScore,
     growthScore,
     combinedScore,
@@ -210,7 +369,7 @@ export function buildBuyRecommendation(candidates: BuyCandidateInput[]): BuyReco
       verdict: "Postoji atraktivna prilika",
       topPick: best,
       ranked: evaluated,
-      note: `${best.name} trenutno najbolje spaja povoljnu cenu (naspram sektora i sopstvenih multiplikatora) i potencijal rasta među pozicijama u portfelju.`,
+      note: `${best.name} trenutno najbolje spaja povoljnu cenu (naspram sektora i sopstvenih multiplikatora, ili naspram NAV za holding kompanije) i potencijal rasta među pozicijama u portfelju.`,
     };
   }
 
