@@ -200,21 +200,41 @@ function scoreNavDiscount(ticker: string, currentPrice: number | null): BuyCompo
   return { label: "Popust/premija na NAV", value: discountPct, tone, detail };
 }
 
-// Rast — koristi analitičarsku petogodišnju procenu rasta zarade kao primarni
-// izvor (direktno gleda unapred), a rast prihoda (TTM) kao rezervu kad
-// procena analitičara nije dostupna. Pragovi 12%/4% — fiksni, ne zavise od
-// sektora (rast se ovde tretira kao apsolutna poželjna brzina, ne relativna
-// prema industriji).
+// Rast — OBE veličine su već godišnje (anualizovane) stope, ne kumulativne
+// za ceo period: Yahoo-va "+5y" procena (earningsTrend) je analitičarska
+// procena PROSEČNOG GODIŠNJEG rasta zarade kroz narednih 5 godina (ne rast
+// "ukupno za 5 godina"), a rast prihoda (TTM) je rast u odnosu na prethodnih
+// 12 meseci — takođe godišnja stopa. Prva se koristi kao primarni izvor
+// (direktno gleda unapred), druga kao rezerva kad procena analitičara nije
+// dostupna. Pragovi 12%/4% — fiksni, ne zavise od sektora (rast se ovde
+// tretira kao apsolutna poželjna brzina, ne relativna prema industriji).
 function scoreGrowth(analystLongTermGrowth: number | null, revenueGrowthTtm: number | null): BuyComponent {
   const growth = analystLongTermGrowth ?? revenueGrowthTtm;
-  const source = analystLongTermGrowth != null ? "procena analitičara (5G)" : revenueGrowthTtm != null ? "rast prihoda (TTM)" : null;
+  const source = analystLongTermGrowth != null ? "procena analitičara, prosečno godišnje kroz 5 godina" : revenueGrowthTtm != null ? "rast prihoda, godišnje (TTM)" : null;
   if (growth == null || source == null) {
     return { label: "Potencijal rasta", value: "—", tone: "nepoznato", detail: "Ni procena analitičara ni rast prihoda nisu dostupni." };
   }
   const pct = `${(growth * 100).toFixed(1)}%`;
-  if (growth >= 0.12) return { label: "Potencijal rasta", value: pct, tone: "povoljno", detail: `Potencijal rasta ${pct} (${source}) je iznad 12% — visok potencijal rasta.` };
-  if (growth >= 0.04) return { label: "Potencijal rasta", value: pct, tone: "neutralno", detail: `Potencijal rasta ${pct} (${source}) je umeren, između 4% i 12%.` };
-  return { label: "Potencijal rasta", value: pct, tone: "skupo", detail: `Potencijal rasta ${pct} (${source}) je ispod 4% — slab potencijal rasta.` };
+  if (growth >= 0.12) return { label: "Potencijal rasta", value: pct, tone: "povoljno", detail: `Potencijal rasta ${pct} godišnje (${source}) je iznad 12% — visok potencijal rasta.` };
+  if (growth >= 0.04) return { label: "Potencijal rasta", value: pct, tone: "neutralno", detail: `Potencijal rasta ${pct} godišnje (${source}) je umeren, između 4% i 12%.` };
+  return { label: "Potencijal rasta", value: pct, tone: "skupo", detail: `Potencijal rasta ${pct} godišnje (${source}) je ispod 4% — slab potencijal rasta.` };
+}
+
+// Za holding kompanije analitičarska procena rasta ZARADE (EPS) nije
+// merodavna — iz istog razloga zbog kog P/E/PEG/EV-EBITDA nisu merodavni
+// (scoreNavDiscount iznad): "zarada" holding kompanije uglavnom odražava
+// računovodstvene dobitke/gubitke na portfolio ulaganja, ne operativni
+// poslovni rast, pa bi prikazivanje tog broja kao "potencijal rasta" bilo
+// zavaravajuće (konkretan povod: Investor AB je u jednom trenutku ispadao sa
+// VIŠIM potencijalom rasta od NVIDIA-e, upravo zbog ovog izvora podataka).
+function holdcoGrowthComponent(): BuyComponent {
+  return {
+    label: "Potencijal rasta",
+    value: "N/P",
+    tone: "nepoznato",
+    detail:
+      "Analitičarska procena rasta zarade i rast prihoda nisu merodavni za holding kompaniju — zarada uglavnom odražava računovodstvene dobitke/gubitke na portfolio ulaganja, ne operativni rast — zato ocena ove pozicije zavisi samo od diskonta/premije na NAV iznad.",
+  };
 }
 
 function toneToNumber(tone: BuyComponentTone): number | null {
@@ -295,7 +315,7 @@ export function evaluateBuyCandidate(input: BuyCandidateInput): BuyCandidateResu
         ...(cyclicalComponent ? [cyclicalComponent] : []),
       ];
 
-  const growthComponent = scoreGrowth(input.analystLongTermGrowth, input.revenueGrowthTtm);
+  const growthComponent = isHoldco ? holdcoGrowthComponent() : scoreGrowth(input.analystLongTermGrowth, input.revenueGrowthTtm);
 
   const cheapnessValues = components.map((c) => toneToNumber(c.tone)).filter((v): v is number => v != null);
   const cheapnessScore = cheapnessValues.length ? cheapnessValues.reduce((a, b) => a + b, 0) / cheapnessValues.length : null;
@@ -304,6 +324,8 @@ export function evaluateBuyCandidate(input: BuyCandidateInput): BuyCandidateResu
   let combinedScore: number | null = null;
   if (cheapnessScore != null && growthScore != null) {
     combinedScore = cheapnessScore * 0.6 + growthScore * 0.4;
+  } else if (cheapnessScore != null && isHoldco) {
+    combinedScore = cheapnessScore; // rast NIJE slučajno nedostajuć podatak kod holdinga, nego strukturno neprimenljiv — ne penalizuje se skaliranjem
   } else if (cheapnessScore != null) {
     combinedScore = cheapnessScore * 0.6; // nepotpuno, ali bolje nego ništa — dataCoverage ispod prikazuje da rastu podatak nedostaje
   }
