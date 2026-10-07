@@ -615,7 +615,20 @@ export default function PortfolioAnalysis() {
                             {cand.growthComponent.label}: {cand.growthComponent.value}
                           </span>
                         </div>
-                        <p className="text-sm text-zinc-700 dark:text-zinc-300">{cand.narrative}</p>
+                        <dl className="text-sm text-zinc-700 dark:text-zinc-300 space-y-1">
+                          <div className="flex gap-1.5">
+                            <dt className="font-semibold shrink-0">Cena:</dt>
+                            <dd>{cand.narrative.pricing}</dd>
+                          </div>
+                          <div className="flex gap-1.5">
+                            <dt className="font-semibold shrink-0">Rast:</dt>
+                            <dd>{cand.narrative.growth}</dd>
+                          </div>
+                          <div className="flex gap-1.5">
+                            <dt className="font-semibold shrink-0">Zaključak:</dt>
+                            <dd>{cand.narrative.conclusion}</dd>
+                          </div>
+                        </dl>
                       </div>
                     );
                   })}

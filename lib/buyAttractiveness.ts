@@ -73,7 +73,7 @@ export interface BuyCandidateResult {
   valuationComponents: BuyComponent[];
   growthComponent: BuyComponent;
   cyclicalWarning: boolean; // true kad je cikličan rizik oborio ocenu na "Fer vrednovano" ili niže
-  narrative: string; // 3-5 rečenica, sintetizovano iz komponenti iznad — ne nov sud, samo tekstualni spoj već izračunatih brojeva
+  narrative: BuyNarrative; // tri konkretna dela (cena/rast/zaključak) — ne nov sud, samo strukturiran tekstualni spoj već izračunatih brojeva
   cheapnessScore: number | null; // -1..+1, prosek dostupnih valuacionih komponenti
   growthScore: number | null; // -1..+1
   combinedScore: number | null; // -1..+1, cheapness*0.6 + growth*0.4
@@ -224,52 +224,60 @@ function toneToNumber(tone: BuyComponentTone): number | null {
   return null;
 }
 
+// Tri jasno razdvojena, konkretna dela umesto jednog pasusa — svaki kaže
+// nešto što chip-ovi (koji već nose iste brojeve, samo kao tooltip) sami ne
+// pokazuju: KAKO se komponente slažu (ili sudaraju) i ZAŠTO je verdikt baš
+// takav. Nema generičkih rečenica tipa "većina multiplikatora čita povoljno"
+// — svaka linija imenuje konkretnu meru i broj.
+export interface BuyNarrative {
+  pricing: string;
+  growth: string;
+  conclusion: string;
+}
+
+function buildPricingNarrative(isHoldco: boolean, components: BuyComponent[], cyclicalComponent: BuyComponent | null): string {
+  if (isHoldco) return components[0].detail;
+
+  if (cyclicalComponent?.tone === "skupo") return cyclicalComponent.detail;
+
+  // Samo komponente koje stvarno nose signal (povoljno/skupo) — neutralne i
+  // nepoznate ne dodaju ništa korisno u tekst, dovoljno im je mesto u chip-ovima.
+  const decisive = components.filter((c) => (c.tone === "povoljno" || c.tone === "skupo") && c.label !== "Ciklični rizik");
+  if (decisive.length === 0) return "Ključni multiplikatori su u uobičajenom rasponu, bez jasnog signala u ni jednom pravcu.";
+  return decisive.map((c) => c.detail).join(" ");
+}
+
+function buildConclusionNarrative(name: string, verdict: BuyCandidateResult["verdict"], cyclicalWarning: boolean): string {
+  if (verdict === "Atraktivno za dokupovanje") {
+    return `${name} je ovde ocenjen kao atraktivan za dokupovanje — cena i potencijal rasta su trenutno povoljniji nego kod ostalih pozicija u portfelju.`;
+  }
+  if (verdict === "Skupo") {
+    return cyclicalWarning
+      ? `${name} je ocenjen kao skup uprkos niskom trailing P/E — cena blizu višegodišnjeg maksimuma u ciklično osetljivom sektoru nadjačava taj signal.`
+      : `${name} je ocenjen kao skup — trenutna cena ne ostavlja mnogo prostora za grešku.`;
+  }
+  if (verdict === "Fer vrednovano") {
+    return cyclicalWarning
+      ? `${name} bi po trailing multiplikatorima bio "atraktivan", ali ciklični rizik (cena blizu višegodišnjeg maksimuma) ga ovde drži na fer vrednovano.`
+      : `${name} je fer vrednovan — cena je razumna, ali ne izrazito povoljna u odnosu na ostale pozicije.`;
+  }
+  return `Nema dovoljno podataka o multiplikatorima ili rastu za pouzdan zaključak o ${name}.`;
+}
+
 function buildNarrative(
   name: string,
   isHoldco: boolean,
   components: BuyComponent[],
   growthComponent: BuyComponent,
   cyclicalComponent: BuyComponent | null,
-  verdict: BuyCandidateResult["verdict"]
-): string {
-  const sentences: string[] = [];
-
-  if (isHoldco) {
-    const navComponent = components[0];
-    sentences.push(navComponent.detail);
-    sentences.push(
-      "Za holding kompanije ovog tipa standardni multiplikatori (P/E, EV/EBITDA) nisu merodavni jer zarada uglavnom odražava računovodstvene dobitke/gubitke na portfolio ulaganja, ne operativni poslovni rezultat — zato se umesto njih koristi diskont/premija na poslednju objavljenu NAV."
-    );
-  } else {
-    const favorable = components.filter((c) => c.tone === "povoljno" && c.label !== "Ciklični rizik");
-    const expensive = components.filter((c) => c.tone === "skupo" && c.label !== "Ciklični rizik");
-    if (favorable.length > expensive.length) {
-      sentences.push(`Većina ključnih multiplikatora (${favorable.map((c) => c.label).join(", ")}) čita povoljno u odnosu na sektor i apsolutne pragove.`);
-    } else if (expensive.length > favorable.length) {
-      sentences.push(`Većina ključnih multiplikatora (${expensive.map((c) => c.label).join(", ")}) čita skupo.`);
-    } else {
-      sentences.push("Ključni multiplikatori su mešoviti — nema jasnog signala u ni jednom pravcu.");
-    }
-  }
-
-  if (cyclicalComponent?.tone === "skupo") {
-    sentences.push(cyclicalComponent.detail);
-    sentences.push(`Zbog toga ${name} ovde nije rangiran kao "atraktivno za dokupovanje", bez obzira na trailing multiplikatore iznad.`);
-  }
-
-  sentences.push(growthComponent.detail);
-
-  if (verdict === "Atraktivno za dokupovanje") {
-    sentences.push("Kombinacija cene i potencijala rasta je trenutno povoljnija nego kod ostalih pozicija u portfelju.");
-  } else if (verdict === "Skupo") {
-    sentences.push("Trenutna cena ne ostavlja mnogo prostora za grešku — dokupovanje po ovoj ceni nosi veći rizik od ostalih pozicija.");
-  } else if (verdict === "Fer vrednovano") {
-    sentences.push("Cena je razumna, ali ne izrazito povoljna u odnosu na ostale pozicije u portfelju.");
-  } else {
-    sentences.push("Nema dovoljno podataka o multiplikatorima ili rastu za pouzdan zaključak o ovoj poziciji.");
-  }
-
-  return sentences.join(" ");
+  verdict: BuyCandidateResult["verdict"],
+  cyclicalWarning: boolean
+): BuyNarrative {
+  return {
+    pricing: buildPricingNarrative(isHoldco, components, cyclicalComponent),
+    growth: growthComponent.detail,
+    conclusion: buildConclusionNarrative(name, verdict, cyclicalWarning),
+  };
 }
 
 export function evaluateBuyCandidate(input: BuyCandidateInput): BuyCandidateResult {
@@ -324,7 +332,7 @@ export function evaluateBuyCandidate(input: BuyCandidateInput): BuyCandidateResu
     cyclicalWarning = true;
   }
 
-  const narrative = buildNarrative(input.name, isHoldco, components, growthComponent, cyclicalComponent, verdict);
+  const narrative = buildNarrative(input.name, isHoldco, components, growthComponent, cyclicalComponent, verdict, cyclicalWarning);
 
   return {
     ticker: input.ticker,
