@@ -15,7 +15,7 @@ import {
 } from "@/lib/buildModel";
 import { fetchPriceHistory, fetchSpyHistory, fetchStockAnalysisFcf } from "@/lib/clientData";
 import { computeFcfYield } from "@/lib/valuation";
-import { significantRedFlagCount } from "@/lib/model";
+import { getSectorPeMedian, significantRedFlagCount } from "@/lib/model";
 import {
   analyzeConcentration,
   buildPortfolioConclusion,
@@ -25,6 +25,7 @@ import {
   computeTechnicalSnapshot,
   type PortfolioHolding,
 } from "@/lib/portfolio";
+import { buildBuyRecommendation, type BuyCandidateInput } from "@/lib/buyAttractiveness";
 
 const STORAGE_KEY = "nemvida_portfolio_v1";
 const CONCURRENCY = 4;
@@ -192,6 +193,37 @@ export default function PortfolioAnalysis() {
   const stressTest = useMemo(() => stressTestPortfolio(holdings, betaByTicker), [holdings, betaByTicker]);
 
   const hasResults = results.size > 0;
+
+  // Preporuka za dokupovanje — nova, samostalna valuacija (lib/buyAttractiveness.ts),
+  // odvojena od sveobuhvatnog modela gore; rangira SAMO pozicije koje već
+  // postoje u portfelju, uzimajući u obzir sektor (preko sektorske medijane
+  // P/E), ključne multiplikatore i procenu rasta.
+  const buyRecommendation = useMemo(() => {
+    if (!hasResults || total <= 0) return null;
+    const candidates: BuyCandidateInput[] = [];
+    for (const h of holdings) {
+      if (!h.ticker) continue;
+      const r = results.get(h.ticker);
+      const c = r?.computed;
+      if (!c) continue;
+      candidates.push({
+        ticker: h.ticker,
+        name: h.name,
+        sector: c.data.sector,
+        peRatio: c.data.peRatio,
+        pegRatio: c.data.pegRatio,
+        evToEbitda: c.data.evToEbitda,
+        freeCashflowTtm: r.resolvedFcf,
+        marketCap: c.data.marketCap,
+        analystLongTermGrowth: c.data.analystLongTermGrowth,
+        revenueGrowthTtm: c.data.revenueGrowthTtm,
+        sectorPeMedian: getSectorPeMedian(c.data.sector),
+        weightInPortfolio: h.marketValueNok / total,
+      });
+    }
+    if (candidates.length === 0) return null;
+    return buildBuyRecommendation(candidates);
+  }, [hasResults, holdings, results, total]);
 
   // Kvalitet portfelja — ponderisan prosek ocene KVALITETA KOMPANIJA (vidi
   // napomenu kod HoldingResult.qualityScore — poslovanje/moat/menadžment, bez
@@ -514,6 +546,89 @@ export default function PortfolioAnalysis() {
               </table>
             </div>
           </Section>
+
+          {buyRecommendation && (
+            <Section title="Preporuka za dokupovanje ovog meseca">
+              <div
+                className={`inline-block mb-3 px-3 py-1 rounded-full text-xs font-bold ${
+                  buyRecommendation.verdict === "Postoji atraktivna prilika"
+                    ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
+                    : buyRecommendation.verdict === "Nedovoljno podataka"
+                      ? "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400"
+                      : "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
+                }`}
+              >
+                {buyRecommendation.verdict}
+              </div>
+              <p className="text-sm text-zinc-700 dark:text-zinc-300 mb-4">{buyRecommendation.note}</p>
+
+              {buyRecommendation.topPick && (
+                <div className="mb-4 p-3 rounded border border-emerald-300 dark:border-emerald-700 bg-emerald-50 dark:bg-emerald-900/20">
+                  <div className="text-sm font-bold text-emerald-800 dark:text-emerald-300">
+                    Najatraktivnije za dokupovanje: {buyRecommendation.topPick.name}
+                    {buyRecommendation.topPick.sector ? ` (${buyRecommendation.topPick.sector})` : ""}
+                  </div>
+                  <div className="text-xs text-zinc-600 dark:text-zinc-400 mt-0.5">
+                    Trenutni udeo u portfelju: {(buyRecommendation.topPick.weightInPortfolio * 100).toFixed(1)}%
+                  </div>
+                </div>
+              )}
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm border-collapse">
+                  <thead>
+                    <tr>
+                      <th className="text-left text-xs uppercase text-zinc-500 py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800">Pozicija</th>
+                      <th className="text-left text-xs uppercase text-zinc-500 py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800">Sektor</th>
+                      <th className="text-left text-xs uppercase text-zinc-500 py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800">P/E vs sektor</th>
+                      <th className="text-left text-xs uppercase text-zinc-500 py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800">PEG</th>
+                      <th className="text-left text-xs uppercase text-zinc-500 py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800">EV/EBITDA</th>
+                      <th className="text-left text-xs uppercase text-zinc-500 py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800">FCF prinos</th>
+                      <th className="text-left text-xs uppercase text-zinc-500 py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800">Rast</th>
+                      <th className="text-left text-xs uppercase text-zinc-500 py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800">Ocena</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {buyRecommendation.ranked
+                      .slice()
+                      .sort((a, b) => (b.combinedScore ?? -2) - (a.combinedScore ?? -2))
+                      .map((cand) => {
+                        const toneClass = (tone: string) =>
+                          tone === "povoljno"
+                            ? "text-emerald-600 dark:text-emerald-400"
+                            : tone === "skupo"
+                              ? "text-red-600 dark:text-red-400"
+                              : tone === "neutralno"
+                                ? "text-amber-600 dark:text-amber-400"
+                                : "text-zinc-400";
+                        const [peC, pegC, evC, fcfC] = cand.valuationComponents;
+                        return (
+                          <tr key={cand.ticker} className={cand.ticker === buyRecommendation.topPick?.ticker ? "bg-emerald-50/50 dark:bg-emerald-900/10" : ""}>
+                            <td className="py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800 font-medium">
+                              <a href={`/pregled?ticker=${cand.ticker}`} className="hover:underline">{cand.name}</a>
+                            </td>
+                            <td className="py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800 text-xs text-zinc-500 dark:text-zinc-400">{cand.sector ?? "—"}</td>
+                            <td className={`py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800 tabular-nums ${toneClass(peC.tone)}`} title={peC.detail}>{peC.value}</td>
+                            <td className={`py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800 tabular-nums ${toneClass(pegC.tone)}`} title={pegC.detail}>{pegC.value}</td>
+                            <td className={`py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800 tabular-nums ${toneClass(evC.tone)}`} title={evC.detail}>{evC.value}</td>
+                            <td className={`py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800 tabular-nums ${toneClass(fcfC.tone)}`} title={fcfC.detail}>{fcfC.value}</td>
+                            <td className={`py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800 tabular-nums ${toneClass(cand.growthComponent.tone)}`} title={cand.growthComponent.detail}>
+                              {cand.growthComponent.value}
+                            </td>
+                            <td className={`py-1.5 px-2 border-b border-zinc-200 dark:border-zinc-800 text-xs font-semibold ${toneClass(cand.verdict === "Atraktivno za dokupovanje" ? "povoljno" : cand.verdict === "Skupo" ? "skupo" : cand.verdict === "Fer vrednovano" ? "neutralno" : "nepoznato")}`}>
+                              {cand.verdict}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                  </tbody>
+                </table>
+              </div>
+              <p className="text-[11px] text-zinc-400 mt-3 italic">
+                Nova, samostalna valuacija (odvojena od sveobuhvatnog modela gore) napravljena samo za poređenje POZICIJA KOJE VEĆ POSEDUJEŠ — P/E naspram sektorske medijane, PEG, EV/EBITDA i FCF prinos (ponderisano 60%) kombinovano sa procenom rasta (analitičarska 5G procena ili rast prihoda, 40%), po fiksnim pragovima. Ne uzima u obzir trenutnu težinu pozicije u portfelju niti kvalitet kompanije — to je već pokriveno sekcijama iznad.
+              </p>
+            </Section>
+          )}
 
           <Section title="Tehnički pregled (mesečni trend)">
             <div className="overflow-x-auto">
