@@ -894,6 +894,16 @@ export function rateFundamentals(inputs: FundamentalsRatingInputs): Fundamentals
   return { rating, score, signals, details };
 }
 
+// Čitljiv prikaz KONKRETNIH brojeva iza "Jaki"/"Osrednji"/"Slabi" — etiketa
+// sama po sebi ne govori koji signal je presudio (npr. "Osrednji" može
+// značiti "sve je prosečno" ili "sve je jako OSIM jedne loše zaduženosti").
+// Koristi se kao tooltip svuda gde se rating prikazuje, da ocena nikad ne
+// bude "crna kutija" bez uvida u sabiranje koje stoji iza nje.
+export function describeFundamentalsRating(result: FundamentalsRatingResult): string {
+  if (result.signals === 0) return result.details[0];
+  return `Zbir bodova ${result.score} (od ${result.signals} dostupnih signala, prag za "Jaki" je ≥3, za "Slabi" ≤-2): ${result.details.join("; ")}.`;
+}
+
 // ---------- Crvene zastavice (konkretni upozoravajući signali, odvojeno od opšte liste rizika) ----------
 //
 // Nisu sve zastavice podjednako ozbiljne — svaka nosi fiksnu, dokumentovanu

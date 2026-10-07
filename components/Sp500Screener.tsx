@@ -24,7 +24,7 @@ import {
   resolveFcfForYield,
 } from "@/lib/buildModel";
 import { computeFcfYield } from "@/lib/valuation";
-import { significantRedFlagCount, type FundamentalsRating } from "@/lib/model";
+import { describeFundamentalsRating, significantRedFlagCount, type FundamentalsRating } from "@/lib/model";
 import { fetchPriceHistory, fetchSpyHistory, fetchStockAnalysisFcf } from "@/lib/clientData";
 
 const CONCURRENCY = 6;
@@ -55,6 +55,7 @@ interface Row {
   currency: string;
   verdictLabel: string;
   fundamentalsRating: FundamentalsRating;
+  fundamentalsDetail: string;
   redFlagCount: number;
   vsSpy: Record<number, "outperform" | "underperform" | "na">;
   outperformance5y: number | null; // rast iznad SPY na 5g (ukupan prinos akcije − ukupan prinos SPY), za sortiranje
@@ -154,6 +155,7 @@ async function fetchAndScore(ticker: string, nowSeconds: number): Promise<Row> {
     currency: modelData.currency,
     verdictLabel: computed.finalVerdict.verdict,
     fundamentalsRating: computed.fundamentalsRating.rating,
+    fundamentalsDetail: describeFundamentalsRating(computed.fundamentalsRating),
     redFlagCount: significantRedFlagCount(computed.redFlags),
     vsSpy,
     outperformance5y,
@@ -240,6 +242,7 @@ export default function Sp500Screener() {
             currency: "",
             verdictLabel: "—",
             fundamentalsRating: "Nedovoljno podataka",
+            fundamentalsDetail: "Podaci nisu dostupni za ovaj tiker.",
             redFlagCount: 0,
             vsSpy: {},
             outperformance5y: null,
@@ -436,6 +439,7 @@ function ScreenerTable({ rows }: { rows: Row[] }) {
                     ? "text-red-600 dark:text-red-400"
                     : "text-zinc-600 dark:text-zinc-400"
               }`}
+              title={r.fundamentalsDetail}
             >
               {r.fundamentalsRating}
             </td>
