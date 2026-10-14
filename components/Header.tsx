@@ -26,6 +26,9 @@ export default function Header() {
           <Link href="/portfolio" className="hover:text-blue-600 dark:hover:text-blue-400 whitespace-nowrap">
             Portfolio
           </Link>
+          <Link href="/watchlist" className="hover:text-blue-600 dark:hover:text-blue-400 whitespace-nowrap">
+            Watchlist
+          </Link>
         </nav>
       </div>
     </header>
