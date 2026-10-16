@@ -94,8 +94,8 @@ export interface BuyRecommendation {
 // brojke treba ručno osvežiti (isti princip kao portfolio PDF uvoz).
 const HOLDING_COMPANY_NAV: Record<string, { navPerShare: number; currency: string; asOf: string; source: string }> = {
   "AKER.OL": { navPerShare: 1429, currency: "NOK", asOf: "30.6.2026 (2. kvartal 2026)", source: "Aker ASA, kvartalni izveštaj" },
-  "INVE-A.ST": { navPerShare: 397, currency: "SEK", asOf: "30.6.2026 (2. kvartal 2026)", source: "Investor AB, kvartalni izveštaj" },
-  "INVE-B.ST": { navPerShare: 397, currency: "SEK", asOf: "30.6.2026 (2. kvartal 2026)", source: "Investor AB, kvartalni izveštaj" },
+  "INVE-A.ST": { navPerShare: 411, currency: "SEK", asOf: "30.9.2026 (3. kvartal 2026)", source: "Investor AB, kvartalni izveštaj" },
+  "INVE-B.ST": { navPerShare: 411, currency: "SEK", asOf: "30.9.2026 (3. kvartal 2026)", source: "Investor AB, kvartalni izveštaj" },
 };
 
 // Yahoo/GICS sektori čija je zarada direktno vezana za cenu robe (nafta, gas,
