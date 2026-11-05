@@ -93,7 +93,7 @@ export interface BuyRecommendation {
 // IZVOR I DATUM SU DEO PODATKA — kad kompanija objavi sledeći kvartal, ove
 // brojke treba ručno osvežiti (isti princip kao portfolio PDF uvoz).
 const HOLDING_COMPANY_NAV: Record<string, { navPerShare: number; currency: string; asOf: string; source: string }> = {
-  "AKER.OL": { navPerShare: 1429, currency: "NOK", asOf: "30.6.2026 (2. kvartal 2026)", source: "Aker ASA, kvartalni izveštaj" },
+  "AKER.OL": { navPerShare: 1509, currency: "NOK", asOf: "30.9.2026 (3. kvartal 2026)", source: "Aker ASA, kvartalni izveštaj" },
   "INVE-A.ST": { navPerShare: 411, currency: "SEK", asOf: "30.9.2026 (3. kvartal 2026)", source: "Investor AB, kvartalni izveštaj" },
   "INVE-B.ST": { navPerShare: 411, currency: "SEK", asOf: "30.9.2026 (3. kvartal 2026)", source: "Investor AB, kvartalni izveštaj" },
 };
