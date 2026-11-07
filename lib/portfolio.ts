@@ -14,34 +14,34 @@ export interface PortfolioHolding {
   region?: string; // samo za fondove/gotovinu bez tikera, gde se zemlja ne može preuzeti iz Yahoo profila
 }
 
-// Prefilled iz stvarnog izveštaja korisnika (Nordnet, 9.10.2026, dva računa) —
+// Prefilled iz stvarnog izveštaja korisnika (Nordnet, 6.11.2026, dva računa) —
 // samo početna tačka, korisnik može dodati/ukloniti/izmeniti pozicije. Jedina
-// stvarna promena pozicije od prethodnog izveštaja (2.10.2026): American
-// Express je dokupljen (2 → 5 akcija). Ostale razlike u vrednosti su samo
-// pomeranje cena; KLP AksjeAsia i Nordnet Emerging Markets Indeks imaju
-// malo više jedinica (automatska mesečna kupovina/reinvestirana dividenda).
-// Gotovina je zbir oba računa (ASK 26,77 + Investeringskonto Zero 1 404,90).
+// stvarna promena pozicije od prethodnog izveštaja (9.10.2026): KLP
+// AksjeGlobal Indeks N je dokupljen (1,71 → 2,33 jedinice). Ostale razlike u
+// vrednosti su samo pomeranje cena (tržište je u korekciji — NVDA npr. pala
+// ~20% od prošlog izveštaja). Gotovina je zbir oba računa (ASK 16,04 +
+// Investeringskonto Zero 229,12).
 export const DEFAULT_HOLDINGS: PortfolioHolding[] = [
-  { id: "aker", ticker: "AKER.OL", name: "Aker", category: "akcija", shares: 6, currency: "NOK", marketValueNok: 8160.0 },
-  { id: "eqnr", ticker: "EQNR.OL", name: "Equinor", category: "akcija", shares: 46, currency: "NOK", marketValueNok: 19223.4 },
-  { id: "nong", ticker: "NONG.OL", name: "SpareBank 1 Nord-Norge", category: "akcija", shares: 50, currency: "NOK", marketValueNok: 8413.0 },
-  { id: "var", ticker: "VAR.OL", name: "Vår Energi", category: "akcija", shares: 200, currency: "NOK", marketValueNok: 10640.0 },
-  { id: "klp-asia", ticker: null, name: "KLP AksjeAsia Indeks N", category: "fond", shares: 5.89, currency: "NOK", marketValueNok: 10106.78, region: "Azija (razvijena tržišta)" },
-  { id: "nn-em", ticker: null, name: "Nordnet Emerging Markets Indeks", category: "fond", shares: 129.52, currency: "NOK", marketValueNok: 22264.66, region: "Tržišta u razvoju" },
-  { id: "googl", ticker: "GOOGL", name: "Alphabet A", category: "akcija", shares: 4, currency: "USD", marketValueNok: 13450.7 },
-  { id: "amzn", ticker: "AMZN", name: "Amazon.com", category: "akcija", shares: 8, currency: "USD", marketValueNok: 20075.45 },
-  { id: "axp", ticker: "AXP", name: "American Express", category: "akcija", shares: 5, currency: "USD", marketValueNok: 14734.05 },
-  { id: "ko", ticker: "KO", name: "Coca-Cola", category: "akcija", shares: 18, currency: "USD", marketValueNok: 15155.27 },
-  { id: "invea", ticker: "INVE-A.ST", name: "Investor A", category: "akcija", shares: 18, currency: "SEK", marketValueNok: 6986.3 },
-  { id: "ma", ticker: "MA", name: "Mastercard", category: "akcija", shares: 3, currency: "USD", marketValueNok: 16900.58 },
-  { id: "mrk", ticker: "MRK", name: "Merck & Co", category: "akcija", shares: 14, currency: "USD", marketValueNok: 19491.77 },
-  { id: "meta", ticker: "META", name: "Meta Platforms A", category: "akcija", shares: 3, currency: "USD", marketValueNok: 20616.39 },
-  { id: "msft", ticker: "MSFT", name: "Microsoft", category: "akcija", shares: 10, currency: "USD", marketValueNok: 51164.93 },
-  { id: "nvda", ticker: "NVDA", name: "NVIDIA", category: "akcija", shares: 14, currency: "USD", marketValueNok: 30694.18 },
-  { id: "tsm", ticker: "TSM", name: "Taiwan Semiconductor ADR", category: "akcija", shares: 3, currency: "USD", marketValueNok: 13004.04 },
-  { id: "v", ticker: "V", name: "Visa", category: "akcija", shares: 5, currency: "USD", marketValueNok: 18428.92 },
-  { id: "klp-global", ticker: null, name: "KLP AksjeGlobal Indeks N", category: "fond", shares: 1.71, currency: "NOK", marketValueNok: 3266.87, region: "Globalno (razvijena tržišta)" },
-  { id: "cash", ticker: null, name: "Gotovina", category: "gotovina", shares: 0, currency: "NOK", marketValueNok: 1431.67, region: "—" },
+  { id: "aker", ticker: "AKER.OL", name: "Aker", category: "akcija", shares: 6, currency: "NOK", marketValueNok: 6444.0 },
+  { id: "eqnr", ticker: "EQNR.OL", name: "Equinor", category: "akcija", shares: 46, currency: "NOK", marketValueNok: 18165.4 },
+  { id: "nong", ticker: "NONG.OL", name: "SpareBank 1 Nord-Norge", category: "akcija", shares: 50, currency: "NOK", marketValueNok: 9044.0 },
+  { id: "var", ticker: "VAR.OL", name: "Vår Energi", category: "akcija", shares: 200, currency: "NOK", marketValueNok: 9906.0 },
+  { id: "klp-asia", ticker: null, name: "KLP AksjeAsia Indeks N", category: "fond", shares: 5.89, currency: "NOK", marketValueNok: 9602.2, region: "Azija (razvijena tržišta)" },
+  { id: "nn-em", ticker: null, name: "Nordnet Emerging Markets Indeks", category: "fond", shares: 129.52, currency: "NOK", marketValueNok: 19407.92, region: "Tržišta u razvoju" },
+  { id: "googl", ticker: "GOOGL", name: "Alphabet A", category: "akcija", shares: 4, currency: "USD", marketValueNok: 10739.25 },
+  { id: "amzn", ticker: "AMZN", name: "Amazon.com", category: "akcija", shares: 8, currency: "USD", marketValueNok: 19556.77 },
+  { id: "axp", ticker: "AXP", name: "American Express", category: "akcija", shares: 5, currency: "USD", marketValueNok: 15130.95 },
+  { id: "ko", ticker: "KO", name: "Coca-Cola", category: "akcija", shares: 18, currency: "USD", marketValueNok: 16235.02 },
+  { id: "invea", ticker: "INVE-A.ST", name: "Investor A", category: "akcija", shares: 18, currency: "SEK", marketValueNok: 7220.61 },
+  { id: "ma", ticker: "MA", name: "Mastercard", category: "akcija", shares: 3, currency: "USD", marketValueNok: 18460.33 },
+  { id: "mrk", ticker: "MRK", name: "Merck & Co", category: "akcija", shares: 14, currency: "USD", marketValueNok: 19366.52 },
+  { id: "meta", ticker: "META", name: "Meta Platforms A", category: "akcija", shares: 3, currency: "USD", marketValueNok: 17256.89 },
+  { id: "msft", ticker: "MSFT", name: "Microsoft", category: "akcija", shares: 10, currency: "USD", marketValueNok: 50024.19 },
+  { id: "nvda", ticker: "NVDA", name: "NVIDIA", category: "akcija", shares: 14, currency: "USD", marketValueNok: 24634.14 },
+  { id: "tsm", ticker: "TSM", name: "Taiwan Semiconductor ADR", category: "akcija", shares: 3, currency: "USD", marketValueNok: 10618.58 },
+  { id: "v", ticker: "V", name: "Visa", category: "akcija", shares: 5, currency: "USD", marketValueNok: 19923.04 },
+  { id: "klp-global", ticker: null, name: "KLP AksjeGlobal Indeks N", category: "fond", shares: 2.33, currency: "NOK", marketValueNok: 4190.46, region: "Globalno (razvijena tržišta)" },
+  { id: "cash", ticker: null, name: "Gotovina", category: "gotovina", shares: 0, currency: "NOK", marketValueNok: 245.16, region: "—" },
 ];
 
 export function totalValueNok(holdings: PortfolioHolding[]): number {
