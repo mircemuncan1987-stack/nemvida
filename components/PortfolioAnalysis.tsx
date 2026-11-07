@@ -679,7 +679,7 @@ export default function PortfolioAnalysis() {
           )}
 
           {portfolioBalance && (
-            <Section title="Balans portfelja — rast naspram zaštite">
+            <Section title="Balans portfelja — rast, zaštita i koncentracija">
               <div className="flex flex-wrap gap-6 items-start mb-4">
                 <div>
                   <div className="text-xs text-zinc-500 dark:text-zinc-400">Beta portfelja</div>
@@ -694,12 +694,21 @@ export default function PortfolioAnalysis() {
                       ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
                       : portfolioBalance.verdict === "Nedovoljno podataka"
                         ? "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400"
-                        : "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
+                        : portfolioBalance.verdict === "Nedovoljno diverzifikovan — prevelika izloženost jednoj kompaniji"
+                          ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
+                          : "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
                   }`}
                 >
                   {portfolioBalance.verdict}
                 </div>
               </div>
+              {portfolioBalance.concentratedPositions.length > 0 && (
+                <p className="text-sm text-red-600 dark:text-red-400 mb-4">
+                  Preko 20% portfelja u jednoj poziciji:{" "}
+                  {portfolioBalance.concentratedPositions.map((c) => `${c.name} (${(c.weight * 100).toFixed(1)}%)`).join(", ")}. Ovo se tretira kao
+                  ozbiljniji rizik od blage neravnoteže bete — pad baš te kompanije nesrazmerno pogađa ceo portfolio.
+                </p>
+              )}
               <div className="max-w-sm mb-4">
                 <WeightList title="Po tipu rizika (po beti)" rows={portfolioBalance.weightByTier.map((t) => ({ label: t.tier, weight: t.weight }))} />
               </div>
@@ -722,11 +731,12 @@ export default function PortfolioAnalysis() {
                 </div>
               )}
               <p className="text-[11px] text-zinc-400 mt-3 italic">
-                Rizik se meri preko bete (gotovina=0, fond=1, akcija=stvarna beta), isti princip kao stres-test iznad. Zaštitna pozicija: beta ispod
-                0,8. Rastuća/ciklična: beta iznad 1,15. Ciljni raspon bete portfelja (0,9–1,1) je fiksna, umerena referentna tačka, ne univerzalno
-                &ldquo;ispravna&rdquo; vrednost za svakog investitora. Predlozi dokupovanja biraju SAMO među pozicijama koje već poseduješ, sa strane
-                neravnoteže koja nedostaje, rangirano i time da li im je cena trenutno povoljna (iz sekcije iznad) — ne predlaže kupovinu novih,
-                neposedovanih akcija.
+                Dva ravnopravna kriterijuma balansa: (1) rizik, meren preko bete (gotovina=0, fond=1, akcija=stvarna beta, isti princip kao
+                stres-test iznad) — zaštitna pozicija beta ispod 0,8, rastuća/ciklična iznad 1,15, ciljni raspon bete portfelja 0,9–1,1; (2)
+                koncentracija — preko 20% portfelja u jednoj poziciji je ozbiljan rizik bez obzira na betu (isti prag kao &ldquo;Koncentracija i
+                diverzifikacija&rdquo; sekcija), i uvek se tretira kao prioritetniji problem od neravnoteže bete. Predlozi dokupovanja biraju SAMO
+                među pozicijama koje već poseduješ, nikad nešto što je već preko 20%, rangirano i time da li im je cena trenutno povoljna (iz
+                sekcije iznad) — ne predlaže kupovinu novih, neposedovanih akcija.
               </p>
             </Section>
           )}
