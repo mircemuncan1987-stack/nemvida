@@ -766,8 +766,9 @@ export default function PortfolioAnalysis() {
                 stres-test iznad) — zaštitna pozicija beta ispod 0,8, rastuća/ciklična iznad 1,15, ciljni raspon bete portfelja 0,9–1,1; (2)
                 koncentracija — preko 20% portfelja u jednoj poziciji je ozbiljan rizik bez obzira na betu (isti prag kao &ldquo;Koncentracija i
                 diverzifikacija&rdquo; sekcija), i uvek se tretira kao prioritetniji problem od neravnoteže bete. Predlozi dokupovanja biraju SAMO
-                među pozicijama koje već poseduješ, nikad nešto što je već preko 20%, rangirano i time da li im je cena trenutno povoljna (iz
-                sekcije iznad) — ne predlaže kupovinu novih, neposedovanih akcija.
+                među pozicijama koje već poseduješ, nikad nešto što je već preko 20%. Trenutni udeo pozicije je PRIMARNI kriterijum ranga (najmanje
+                zastupljene prve) — da se ne bi predložila pozicija koja je, iako ispod 20%, već jedna od najvećih u portfelju. Cena (iz sekcije
+                iznad) je tek tie-breaker između pozicija sa sličnim udelom — ne predlaže kupovinu novih, neposedovanih akcija.
               </p>
             </Section>
           )}

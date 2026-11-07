@@ -32,11 +32,15 @@
 // dok je beta neravnoteža blaža i lakše se ispravlja tokom vremena.
 //
 // Predlog dokupovanja je uvek SAMO među pozicijama koje korisnik VEĆ
-// poseduje, rangiran i time da li je pozicija trenutno povoljna za dokup
-// (buyVerdict iz lib/buyAttractiveness.ts) — da predlog ne gura dokup nečega
-// skupog samo zato što mu beta/udeo odgovara. Nikad se ne predlaže dokup
-// pozicije koja je već preko granice ozbiljne koncentracije (20%), čak ni
-// kad bi to ispravilo betu.
+// poseduje. IZLOŽENOST (trenutni udeo pozicije) je PRIMARNI kriterijum
+// rangiranja predloga, ne samo tvrda granica od 20% — bez ovoga bi se mogla
+// predložiti pozicija koja je, recimo, već DRUGA najveća u portfelju (ispod
+// 20%, ali daleko od malog udela), što pogoršava koncentraciju umesto da je
+// balansira. Cenovna atraktivnost (buyVerdict iz lib/buyAttractiveness.ts) i
+// beta su tek tie-breakeri između pozicija sa SLIČNIM (do 2 procentna poena)
+// udelom — cena ne sme nadjačati izloženost kao kriterijum. Nikad se ne
+// predlaže dokup pozicije koja je već preko granice ozbiljne koncentracije
+// (20%), čak ni kad bi to ispravilo betu.
 
 export type RiskTier = "zaštitna" | "neutralna" | "rastuća";
 export type BuyVerdict = "Atraktivno za dokupovanje" | "Fer vrednovano" | "Skupo" | "Nedovoljno podataka" | null;
@@ -171,10 +175,13 @@ export function analyzePortfolioBalance(positions: BalanceInputPosition[]): Port
     const concentratedNames = concentratedPositions.map((c) => c.name).join(", ");
     suggestions = resolved
       .filter((r) => r.normWeight <= SEVERE_CONCENTRATION_THRESHOLD)
+      // Najmanji trenutni udeo prvi — isti princip kao ispod (rebalans
+      // bete): izloženost jednoj kompaniji je PRIMARNI kriterijum, cena je
+      // samo tie-breaker, ne obrnuto.
       .sort((a, b) => {
-        const rankDiff = verdictRank(a.position.buyVerdict) - verdictRank(b.position.buyVerdict);
-        if (rankDiff !== 0) return rankDiff;
-        return a.normWeight - b.normWeight;
+        const weightDiff = a.normWeight - b.normWeight;
+        if (Math.abs(weightDiff) > 0.005) return weightDiff;
+        return verdictRank(a.position.buyVerdict) - verdictRank(b.position.buyVerdict);
       })
       .slice(0, 3)
       .map((r) => ({
@@ -198,7 +205,15 @@ export function analyzePortfolioBalance(positions: BalanceInputPosition[]): Port
         // koncentraciju (preko 20%) — beta cilj ne sme da pogorša drugi
         // kriterijum balansa.
         .filter((r) => r.normWeight <= SEVERE_CONCENTRATION_THRESHOLD)
+        // Najmanji trenutni udeo je PRIMARNI kriterijum, ne samo tvrda
+        // granica od 20% — bez ovoga bi se mogla predložiti pozicija koja je
+        // već, recimo, druga najveća u portfelju (ispod 20%, ali daleko od
+        // malog udela), što pogoršava izloženost umesto da je balansira.
+        // Cenovna atraktivnost i beta su tek tie-breakeri unutar sličnog
+        // udela (razlika do 2 procentna poena tretira se kao "slično").
         .sort((a, b) => {
+          const weightDiff = a.normWeight - b.normWeight;
+          if (Math.abs(weightDiff) > 0.02) return weightDiff;
           const rankDiff = verdictRank(a.position.buyVerdict) - verdictRank(b.position.buyVerdict);
           if (rankDiff !== 0) return rankDiff;
           // Jača beta u traženom pravcu je jači "povučak" ka cilju.
