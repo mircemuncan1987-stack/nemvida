@@ -712,6 +712,37 @@ export default function PortfolioAnalysis() {
               <div className="max-w-sm mb-4">
                 <WeightList title="Po tipu rizika (po beti)" rows={portfolioBalance.weightByTier.map((t) => ({ label: t.tier, weight: t.weight }))} />
               </div>
+              {portfolioBalance.classifiedPositions.length > 0 && (
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+                  {(["rastuća", "neutralna", "zaštitna"] as const).map((tier) => {
+                    const rows = portfolioBalance.classifiedPositions.filter((p) => p.tier === tier);
+                    if (rows.length === 0) return null;
+                    const tierColor =
+                      tier === "rastuća"
+                        ? "text-red-700 dark:text-red-400"
+                        : tier === "zaštitna"
+                          ? "text-emerald-700 dark:text-emerald-400"
+                          : "text-amber-700 dark:text-amber-400";
+                    return (
+                      <div key={tier}>
+                        <h4 className={`text-xs font-semibold uppercase mb-1.5 ${tierColor}`}>
+                          {tier === "rastuća" ? "Rastuće/cikličke (beta > 1,15)" : tier === "zaštitna" ? "Zaštitne (beta < 0,8)" : "Neutralne (beta 0,8–1,15)"}
+                        </h4>
+                        <ul className="space-y-1 text-sm text-zinc-700 dark:text-zinc-300">
+                          {rows.map((p) => (
+                            <li key={p.id} className="flex justify-between gap-2 tabular-nums">
+                              <span className="truncate">{p.name}</span>
+                              <span className="text-zinc-500 dark:text-zinc-400 shrink-0">
+                                β {p.resolvedBeta.toFixed(2)} · {(p.weight * 100).toFixed(1)}%
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
               {portfolioBalance.suggestions.length > 0 && (
                 <div>
                   <h4 className="text-xs font-semibold uppercase text-blue-700 dark:text-blue-400 mb-1.5">Šta dokupiti da se balans popravi</h4>

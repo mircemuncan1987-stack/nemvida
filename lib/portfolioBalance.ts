@@ -69,9 +69,19 @@ export type BalanceVerdict =
   | "Balansiran"
   | "Nedovoljno podataka";
 
+export interface ClassifiedPosition {
+  id: string;
+  name: string;
+  ticker: string | null;
+  tier: RiskTier;
+  resolvedBeta: number;
+  weight: number; // 0-1 od ukupnog portfelja
+}
+
 export interface PortfolioBalanceResult {
   portfolioBeta: number | null;
   weightByTier: { tier: RiskTier; weight: number }[];
+  classifiedPositions: ClassifiedPosition[]; // SVE pozicije, sortirane po betu — za detaljan uvid koja je u kojoj kategoriji
   targetBetaRange: [number, number];
   verdict: BalanceVerdict;
   concentratedPositions: { name: string; weight: number }[]; // preko 20% — isti prag kao analyzeConcentration
@@ -108,6 +118,7 @@ export function analyzePortfolioBalance(positions: BalanceInputPosition[]): Port
   const empty = (verdict: BalanceVerdict): PortfolioBalanceResult => ({
     portfolioBeta: null,
     weightByTier: [],
+    classifiedPositions: [],
     targetBetaRange: TARGET_BETA_RANGE,
     verdict,
     concentratedPositions: [],
@@ -129,6 +140,10 @@ export function analyzePortfolioBalance(positions: BalanceInputPosition[]): Port
   const tierWeights: Record<RiskTier, number> = { "zaštitna": 0, "neutralna": 0, "rastuća": 0 };
   for (const r of resolved) tierWeights[r.tier] += r.normWeight;
   const weightByTier = (["rastuća", "neutralna", "zaštitna"] as RiskTier[]).map((tier) => ({ tier, weight: tierWeights[tier] }));
+
+  const classifiedPositions: ClassifiedPosition[] = resolved
+    .map((r) => ({ id: r.position.id, name: r.position.name, ticker: r.position.ticker, tier: r.tier, resolvedBeta: r.resolvedBeta, weight: r.normWeight }))
+    .sort((a, b) => b.resolvedBeta - a.resolvedBeta);
 
   const concentratedPositions = resolved
     .filter((r) => r.normWeight > SEVERE_CONCENTRATION_THRESHOLD)
@@ -212,5 +227,5 @@ export function analyzePortfolioBalance(positions: BalanceInputPosition[]): Port
     }
   }
 
-  return { portfolioBeta, weightByTier, targetBetaRange: TARGET_BETA_RANGE, verdict, concentratedPositions, suggestions };
+  return { portfolioBeta, weightByTier, classifiedPositions, targetBetaRange: TARGET_BETA_RANGE, verdict, concentratedPositions, suggestions };
 }
