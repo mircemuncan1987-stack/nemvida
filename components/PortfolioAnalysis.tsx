@@ -26,6 +26,7 @@ import {
   type PortfolioHolding,
 } from "@/lib/portfolio";
 import { buildBuyRecommendation, type BuyCandidateInput, type BuyCandidateResult } from "@/lib/buyAttractiveness";
+import { analyzePortfolioBalance, type BalanceInputPosition } from "@/lib/portfolioBalance";
 
 const STORAGE_KEY = "nemvida_portfolio_v1";
 const VERDICT_RANK: Record<BuyCandidateResult["verdict"], number> = {
@@ -233,6 +234,27 @@ export default function PortfolioAnalysis() {
     if (candidates.length === 0) return null;
     return buildBuyRecommendation(candidates);
   }, [hasResults, holdings, results, total]);
+
+  // Balans portfelja (rast naspram zaštite) — lib/portfolioBalance.ts.
+  // Koristi istu rezoluciju bete kao stres-test (gotovina=0, fond=1, akcija
+  // = stvarna beta), i buyVerdict iz preporuke za dokupovanje iznad kao
+  // tie-breaker za predloge (ne gura dokup nečega skupog samo zato što mu
+  // beta odgovara cilju).
+  const portfolioBalance = useMemo(() => {
+    if (total <= 0) return null;
+    const buyVerdictByTicker = new Map<string, BalanceInputPosition["buyVerdict"]>();
+    buyRecommendation?.ranked.forEach((c) => buyVerdictByTicker.set(c.ticker, c.verdict));
+    const positions: BalanceInputPosition[] = holdings.map((h) => ({
+      id: h.id,
+      name: h.name,
+      ticker: h.ticker,
+      weight: h.marketValueNok,
+      category: h.category,
+      beta: h.ticker ? betaByTicker.get(h.ticker) ?? null : null,
+      buyVerdict: h.ticker ? buyVerdictByTicker.get(h.ticker) ?? "Nedovoljno podataka" : "Nedovoljno podataka",
+    }));
+    return analyzePortfolioBalance(positions);
+  }, [holdings, betaByTicker, buyRecommendation, total]);
 
   // Kvalitet portfelja — ponderisan prosek ocene KVALITETA KOMPANIJA (vidi
   // napomenu kod HoldingResult.qualityScore — poslovanje/moat/menadžment, bez
@@ -652,6 +674,59 @@ export default function PortfolioAnalysis() {
               </div>
               <p className="text-[11px] text-zinc-400 mt-3 italic">
                 Nova, samostalna valuacija (odvojena od sveobuhvatnog modela gore) napravljena samo za poređenje POZICIJA KOJE VEĆ POSEDUJEŠ — standardno P/E naspram sektorske medijane, PEG, EV/EBITDA i FCF prinos, uz dve korekcije: (1) kod sektora čija je zarada vezana za cenu robe (energetika, sirovine), cena blizu višegodišnjeg maksimuma sprečava ocenu &ldquo;atraktivno&rdquo; bez obzira na nizak trailing P/E — da se ne bi niska zarada na vrhu ciklusa pogrešno protumačila kao jeftina akcija; (2) za holding kompanije (Aker, Investor) umesto P/E koristi se diskont/premija na poslednju ručno uneti NAV po akciji (izvor i datum su deo podatka u lib/buyAttractiveness.ts), jer standardni multiplikatori za njih nisu merodavni. Sve se kombinuje sa procenom rasta (analitičarska 5G procena ili rast prihoda) po fiksnim pragovima. Ne uzima u obzir trenutnu težinu pozicije u portfelju niti kvalitet kompanije — to je već pokriveno sekcijama iznad.
+              </p>
+            </Section>
+          )}
+
+          {portfolioBalance && (
+            <Section title="Balans portfelja — rast naspram zaštite">
+              <div className="flex flex-wrap gap-6 items-start mb-4">
+                <div>
+                  <div className="text-xs text-zinc-500 dark:text-zinc-400">Beta portfelja</div>
+                  <div className="text-2xl font-bold tabular-nums">{portfolioBalance.portfolioBeta != null ? portfolioBalance.portfolioBeta.toFixed(2) : "—"}</div>
+                  <div className="text-xs text-zinc-400">
+                    Cilj: {portfolioBalance.targetBetaRange[0].toFixed(1)}–{portfolioBalance.targetBetaRange[1].toFixed(1)}
+                  </div>
+                </div>
+                <div
+                  className={`inline-block px-3 py-1 rounded-full text-xs font-bold self-center ${
+                    portfolioBalance.verdict === "Balansiran"
+                      ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
+                      : portfolioBalance.verdict === "Nedovoljno podataka"
+                        ? "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400"
+                        : "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
+                  }`}
+                >
+                  {portfolioBalance.verdict}
+                </div>
+              </div>
+              <div className="max-w-sm mb-4">
+                <WeightList title="Po tipu rizika (po beti)" rows={portfolioBalance.weightByTier.map((t) => ({ label: t.tier, weight: t.weight }))} />
+              </div>
+              {portfolioBalance.suggestions.length > 0 && (
+                <div>
+                  <h4 className="text-xs font-semibold uppercase text-blue-700 dark:text-blue-400 mb-1.5">Šta dokupiti da se balans popravi</h4>
+                  <ul className="space-y-1.5">
+                    {portfolioBalance.suggestions.map((s) => (
+                      <li key={s.id} className="text-sm text-zinc-700 dark:text-zinc-300 flex gap-2">
+                        <span className="text-zinc-400 shrink-0">•</span>
+                        <span>
+                          <b>{s.name}</b> ({(s.weight * 100).toFixed(1)}% portfelja) — {s.reason}
+                          {s.buyVerdict && s.buyVerdict !== "Nedovoljno podataka" && (
+                            <span className="text-xs text-zinc-500 dark:text-zinc-400"> Trenutna cena: {s.buyVerdict}.</span>
+                          )}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              <p className="text-[11px] text-zinc-400 mt-3 italic">
+                Rizik se meri preko bete (gotovina=0, fond=1, akcija=stvarna beta), isti princip kao stres-test iznad. Zaštitna pozicija: beta ispod
+                0,8. Rastuća/ciklična: beta iznad 1,15. Ciljni raspon bete portfelja (0,9–1,1) je fiksna, umerena referentna tačka, ne univerzalno
+                &ldquo;ispravna&rdquo; vrednost za svakog investitora. Predlozi dokupovanja biraju SAMO među pozicijama koje već poseduješ, sa strane
+                neravnoteže koja nedostaje, rangirano i time da li im je cena trenutno povoljna (iz sekcije iznad) — ne predlaže kupovinu novih,
+                neposedovanih akcija.
               </p>
             </Section>
           )}
