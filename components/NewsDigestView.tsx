@@ -165,53 +165,114 @@ function CompanyBody({ d }: { d: NewsDigest }) {
   );
 }
 
+type OkDigest = Extract<DigestResult, { status: "ok" }>;
+
+// Rezime se čuva u pregledaču (localStorage) i Claude se poziva ISKLJUČIVO
+// klikom na dugme — otvaranje stranice nikad ne troši API kredit.
+const STORAGE_PREFIX = "nemvida_digest_v1";
+
+function storageKey(scope: string, ticker: string | null | undefined): string {
+  return `${STORAGE_PREFIX}:${scope}:${ticker ?? "sve"}`;
+}
+
+function loadSaved(scope: "market" | "company", ticker: string | null | undefined): OkDigest | null {
+  try {
+    const raw = localStorage.getItem(storageKey(scope, ticker));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as OkDigest;
+    const expectedKind = scope === "market" ? "market" : "company";
+    if (parsed?.status !== "ok" || parsed.kind !== expectedKind || !parsed.digest) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
 export default function NewsDigestView({ scope, ticker, title }: { scope: "market" | "company"; ticker?: string | null; title: string }) {
-  const [result, setResult] = useState<DigestResult | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [saved, setSaved] = useState<OkDigest | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
   const [showSources, setShowSources] = useState(false);
 
   useEffect(() => {
-    let cancelled = false;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- novo učitavanje pri promeni teme
-    setLoading(true);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- čitanje sačuvanog rezimea pri promeni teme
+    setSaved(loadSaved(scope, ticker));
+    setError(null);
     setShowSources(false);
-    const params = new URLSearchParams({ scope });
-    if (ticker) params.set("ticker", ticker);
-    fetch(`/api/digest?${params.toString()}`, { cache: "no-store" })
-      .then((r) => r.json())
-      .then((json: DigestResult) => !cancelled && setResult(json))
-      .catch(() => !cancelled && setResult({ status: "unavailable", reason: "Rezime trenutno nije dostupan." }))
-      .finally(() => !cancelled && setLoading(false));
-    return () => {
-      cancelled = true;
-    };
   }, [scope, ticker]);
+
+  async function generate() {
+    setLoading(true);
+    setError(null);
+    try {
+      const params = new URLSearchParams({ scope });
+      if (ticker) params.set("ticker", ticker);
+      const res = await fetch(`/api/digest?${params.toString()}`, { cache: "no-store" });
+      const json = (await res.json()) as DigestResult;
+      if (json.status === "ok") {
+        setSaved(json);
+        try {
+          localStorage.setItem(storageKey(scope, ticker), JSON.stringify(json));
+        } catch {
+          /* nije kritično ako localStorage nije dostupan */
+        }
+      } else {
+        setError(json.reason);
+      }
+    } catch {
+      setError("Rezime trenutno nije dostupan.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const costHint = scope === "market" ? "oko 10 centi" : "oko 5 centi";
+  const button = (
+    <button
+      onClick={generate}
+      disabled={loading}
+      className="text-sm px-4 py-1.5 rounded-lg bg-blue-600 disabled:opacity-60 text-white font-semibold"
+      title={`Poziva Claude i troši API kredit (${costHint}). Ako je rezime napisan pre manje od 10 minuta, dobija se isti, bez novog troška.`}
+    >
+      {loading ? "Pišem…" : saved ? "Osveži rezime" : "Napravi rezime"}
+    </button>
+  );
 
   return (
     <section className="rounded-xl border border-zinc-200 dark:border-zinc-800 p-4 sm:p-5 bg-white/60 dark:bg-zinc-900/40">
-      <h2 className="text-base font-bold text-zinc-900 dark:text-zinc-50 mb-3">{title}</h2>
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+        <h2 className="text-base font-bold text-zinc-900 dark:text-zinc-50">{title}</h2>
+        {button}
+      </div>
 
       {loading && (
-        <div className="space-y-2 animate-pulse" aria-label="Pišem rezime">
+        <div className="space-y-2 animate-pulse mb-3" aria-label="Pišem rezime">
           <div className="h-4 bg-zinc-200 dark:bg-zinc-800 rounded w-3/4" />
           <div className="h-3 bg-zinc-200 dark:bg-zinc-800 rounded w-full" />
           <div className="h-3 bg-zinc-200 dark:bg-zinc-800 rounded w-5/6" />
           <p className="text-xs text-zinc-500 dark:text-zinc-400 pt-1">
-            Čitam vesti i pišem analizu… {scope === "market" ? "(prvi put može da potraje i do minut)" : "(prvi put može da potraje do pola minuta)"}
+            Čitam vesti i pišem analizu… {scope === "market" ? "(može da potraje i do minut)" : "(može da potraje do pola minuta)"}
           </p>
         </div>
       )}
 
-      {!loading && result?.status === "unavailable" && <p className="text-sm text-zinc-500 dark:text-zinc-400">{result.reason}</p>}
+      {error && <p className="text-sm text-red-600 dark:text-red-400 mb-3">{error}</p>}
 
-      {!loading && result?.status === "ok" && (
-        <div className="space-y-4">
-          {result.kind === "market" ? <MarketBody d={result.digest} /> : <CompanyBody d={result.digest} />}
+      {!saved && !loading && !error && (
+        <p className="text-sm text-zinc-500 dark:text-zinc-400">
+          Rezime se piše samo kad klikneš dugme — otvaranje stranice ne troši API kredit ({costHint} po rezimeu). Napisan rezime ostaje sačuvan u ovom
+          pregledaču.
+        </p>
+      )}
+
+      {saved && (
+        <div className={`space-y-4 ${loading ? "opacity-50" : ""}`}>
+          {saved.kind === "market" ? <MarketBody d={saved.digest} /> : <CompanyBody d={saved.digest} />}
 
           <div className="pt-2 border-t border-zinc-100 dark:border-zinc-800 text-[11px] text-zinc-400">
-            Rezime je napisala veštačka inteligencija (Claude) {timeAgo(result.generatedAt)}, na osnovu naslova i kratkih opisa {result.sources.length} vesti
-            iz poslednjih 7 dana{result.kind === "market" ? " i stvarnih promena cena" : ""} — ne celih članaka. Osvežava se na svaka 2 sata. Važne
-            informacije proveri pre odluke.{" "}
+            Rezime je napisala veštačka inteligencija (Claude) {timeAgo(saved.generatedAt)}, na osnovu naslova i kratkih opisa {saved.sources.length} vesti
+            iz poslednjih 7 dana{saved.kind === "market" ? " i stvarnih promena cena" : ""} — ne celih članaka. Ne osvežava se sam: novi rezime
+            nastaje samo klikom na dugme. Važne informacije proveri pre odluke.{" "}
             <button onClick={() => setShowSources((v) => !v)} className="underline hover:text-zinc-600 dark:hover:text-zinc-300">
               {showSources ? "Sakrij izvore" : "Prikaži izvore"}
             </button>
@@ -219,7 +280,7 @@ export default function NewsDigestView({ scope, ticker, title }: { scope: "marke
 
           {showSources && (
             <ul className="text-xs space-y-1 max-h-72 overflow-y-auto">
-              {result.sources.map((s) => (
+              {saved.sources.map((s) => (
                 <li key={s.link} className="text-zinc-500 dark:text-zinc-400">
                   <a href={s.link} target="_blank" rel="noopener noreferrer" className="hover:text-blue-600 dark:hover:text-blue-400">
                     {s.title}

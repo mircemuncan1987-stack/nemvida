@@ -13,9 +13,9 @@
 //   povezivanje uzroka, ne samo sažimanje.
 // - KOMPANIJE (Vesti): kraći rezime vesti o izabranoj kompaniji (effort "low").
 //
-// Rezime se kešira 2 sata po temi (Next Data Cache, deli se između svih
-// posetilaca i instanci servera), pa se Claude poziva najviše ~12 puta
-// dnevno po temi, i samo za teme koje neko zaista otvori. Greške se NE
+// Claude se poziva SAMO kad korisnik klikne "Osveži rezime" (klijent čuva
+// poslednji rezime u pregledaču). Servera kešira rezultat 10 minuta po temi
+// (Next Data Cache) da dvostruki klik ne košta dvaput. Greške se NE
 // keširaju (bacaju se iz keširane funkcije) — nakon što se API ključ
 // podesi ili Claude ponovo postane dostupan, sledeći zahtev odmah radi.
 
@@ -68,7 +68,10 @@ export type DigestResult =
   | { status: "unavailable"; reason: string };
 
 const MODEL = "claude-opus-5-5";
-const CACHE_SECONDS = 2 * 60 * 60;
+// Kratak keš samo kao zaštita od slučajnog dvostrukog klika: rezime se pravi
+// isključivo na zahtev korisnika (dugme), pa duži keš ne bi dozvolio da klik
+// zaista osveži rezime.
+const CACHE_SECONDS = 10 * 60;
 const MAX_DESCRIPTION_CHARS = 280;
 
 const TONE = { type: "string", enum: ["pozitivno", "negativno", "neutralno"] } as const;
@@ -325,8 +328,8 @@ ${formatItems(ticker ? items : items.map((i) => ({ ...i, title: `${i.companyName
   return { status: "ok", kind: "company", digest, generatedAt: new Date().toISOString(), sources: toSources(items, COMPANY_MAX_ITEMS), model: MODEL };
 }
 
-const cachedMarketDigest = unstable_cache(buildMarketDigest, ["news-digest", "market", "v2"], { revalidate: CACHE_SECONDS });
-const cachedCompanyDigest = unstable_cache(buildCompanyDigest, ["news-digest", "company", "v2"], { revalidate: CACHE_SECONDS });
+const cachedMarketDigest = unstable_cache(buildMarketDigest, ["news-digest", "market", "v3"], { revalidate: CACHE_SECONDS });
+const cachedCompanyDigest = unstable_cache(buildCompanyDigest, ["news-digest", "company", "v3"], { revalidate: CACHE_SECONDS });
 
 // Vrednost se unosi ručno na Vercel-u, pa čisti česte greške pri lepljenju:
 // razmake i prelome reda, navodnike, i ceo red "ANTHROPIC_API_KEY=sk-ant-…"
