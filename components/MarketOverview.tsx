@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { MARKET_GROUPS, type InstrumentQuote, type MarketInstrument } from "@/lib/marketInstruments";
 import NewsDigestView from "@/components/NewsDigestView";
 
@@ -12,6 +12,14 @@ interface MarketsResponse {
 // Instrumenti kod kojih je RAST loš znak (strah, slabija kruna) — boja se
 // obrće da zeleno uvek znači "povoljno", a crveno "nepovoljno".
 const INVERTED_IDS = new Set(["vix", "usdnok", "eurnok", "gbpnok", "seknok", "dkknok", "chfnok"]);
+
+const REFRESH_MS = 30_000;
+
+function flashClass(dir: "up" | "down" | undefined): string {
+  if (dir === "up") return "bg-emerald-100 dark:bg-emerald-900/50";
+  if (dir === "down") return "bg-red-100 dark:bg-red-900/50";
+  return "";
+}
 
 const HIGHLIGHT_IDS = ["spx", "osebx", "brent", "gold", "us10y", "vix", "usdnok"];
 
@@ -81,25 +89,56 @@ export default function MarketOverview() {
   const [data, setData] = useState<MarketsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [lastCheck, setLastCheck] = useState<Date | null>(null);
+  const [flash, setFlash] = useState<Map<string, "up" | "down">>(new Map());
+  const prevPrices = useRef<Map<string, number>>(new Map());
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+  // "silent" = automatsko osvežavanje u pozadini: postojeći podaci ostaju na
+  // ekranu, nema indikatora učitavanja, a kratka greška mreže se ignoriše
+  // (sledeći pokušaj je za 30 s) umesto da prekrije tabele porukom.
+  const load = useCallback(async (silent = false) => {
+    if (!silent) {
+      setLoading(true);
+      setError(null);
+    }
     try {
       const res = await fetch("/api/markets", { cache: "no-store" });
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error || `HTTP ${res.status}`);
-      setData(json);
+      const next = json as MarketsResponse;
+      const changed = new Map<string, "up" | "down">();
+      for (const q of next.quotes) {
+        const before = prevPrices.current.get(q.id);
+        if (before != null && q.price != null && q.price !== before) changed.set(q.id, q.price > before ? "up" : "down");
+        if (q.price != null) prevPrices.current.set(q.id, q.price);
+      }
+      setData(next);
+      setLastCheck(new Date());
+      if (changed.size > 0) {
+        setFlash(changed);
+        setTimeout(() => setFlash(new Map()), 1500);
+      }
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Greška pri učitavanju");
+      if (!silent) setError(e instanceof Error ? e.message : "Greška pri učitavanju");
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- jednokratno učitavanje pri montiranju
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- prvo učitavanje pri montiranju
     load();
+    // Automatsko osvežavanje samo dok je kartica vidljiva — u pozadinskoj
+    // kartici nema smisla trošiti zahteve; po povratku odmah osveži.
+    const tick = () => {
+      if (document.visibilityState === "visible") load(true);
+    };
+    const id = setInterval(tick, REFRESH_MS);
+    document.addEventListener("visibilitychange", tick);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", tick);
+    };
   }, [load]);
 
   const quoteById = useMemo(() => {
@@ -118,9 +157,21 @@ export default function MarketOverview() {
     <div className="max-w-5xl mx-auto px-4 pb-16">
       <div className="flex flex-wrap items-center justify-between gap-2 mb-5">
         <p className="text-xs text-zinc-500 dark:text-zinc-400">
-          {data ? `Ažurirano ${new Date(data.updatedAt).toLocaleString("sr-Latn-RS")}. Podaci kasne do ~15 min (Yahoo Finance).` : loading ? "Učitavam tržišne podatke…" : ""}
+          {data ? (
+            <span className="inline-flex items-center gap-1.5">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+              </span>
+              Uživo — osvežava se na 30 s{lastCheck ? `, poslednja provera ${lastCheck.toLocaleTimeString("sr-Latn-RS")}` : ""}. Berze van SAD i roba kasne do ~15 min (Yahoo Finance).
+            </span>
+          ) : loading ? (
+            "Učitavam tržišne podatke…"
+          ) : (
+            ""
+          )}
         </p>
-        <button onClick={load} disabled={loading} className="text-sm px-4 py-1.5 rounded-lg bg-blue-600 disabled:opacity-60 text-white font-semibold">
+        <button onClick={() => load()} disabled={loading} className="text-sm px-4 py-1.5 rounded-lg bg-blue-600 disabled:opacity-60 text-white font-semibold">
           {loading ? "Učitavam…" : "Osveži"}
         </button>
       </div>
@@ -139,7 +190,7 @@ export default function MarketOverview() {
                 return (
                   <div key={id} className="rounded-lg border border-zinc-200 dark:border-zinc-800 p-2.5">
                     <div className="text-xs text-zinc-500 dark:text-zinc-400 truncate">{inst.name}</div>
-                    <div className="text-lg font-bold tabular-nums text-zinc-900 dark:text-zinc-50">{fmtPrice(inst, q)}</div>
+                    <div className={`text-lg font-bold tabular-nums text-zinc-900 dark:text-zinc-50 rounded transition-colors duration-700 ${flashClass(flash.get(id))}`}>{fmtPrice(inst, q)}</div>
                     <div className="text-xs">
                       <span className="text-zinc-400">Dan </span>
                       <ChangeCell inst={inst} id={id} abs={q.dayChange} pct={q.dayChangePercent} />
@@ -190,7 +241,7 @@ export default function MarketOverview() {
                               <td colSpan={4} className="py-1.5 pl-2 text-right text-xs italic text-zinc-400">Podatak trenutno nije dostupan</td>
                             ) : (
                               <>
-                                <td className="py-1.5 px-2 text-right tabular-nums whitespace-nowrap font-medium text-zinc-900 dark:text-zinc-100">{fmtPrice(inst, q)}</td>
+                                <td className={`py-1.5 px-2 text-right tabular-nums whitespace-nowrap font-medium text-zinc-900 dark:text-zinc-100 transition-colors duration-700 ${flashClass(flash.get(inst.id))}`}>{fmtPrice(inst, q)}</td>
                                 <td className="py-1.5 px-2 text-right"><ChangeCell inst={inst} id={inst.id} abs={q.dayChange} pct={q.dayChangePercent} /></td>
                                 <td className="py-1.5 px-2 text-right"><ChangeCell inst={inst} id={inst.id} abs={q.weekChange} pct={q.weekChangePercent} /></td>
                                 <td className="hidden sm:table-cell py-1.5 pl-2 text-right"><Sparkline values={q.spark} label={sparkLabel(inst, q)} /></td>
