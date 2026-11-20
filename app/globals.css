@@ -31,6 +31,10 @@
 html {
   background: var(--bg-gradient);
   background-attachment: fixed;
+  /* Osnovna boja ispod gradijenta — propagira se na celo platno strane, pa
+     ispod gradijenta nikad ne proviri belo (npr. iOS Safari ne podržava
+     fixed pozadinu, ili kad je strana viša od ekrana u tamnom režimu). */
+  background-color: var(--background);
 }
 
 body {

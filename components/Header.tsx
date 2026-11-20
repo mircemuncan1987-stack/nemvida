@@ -11,6 +11,9 @@ export default function Header() {
           <Link href="/" className="hover:text-blue-600 dark:hover:text-blue-400 whitespace-nowrap">
             Vesti
           </Link>
+          <Link href="/trziste" className="hover:text-blue-600 dark:hover:text-blue-400 whitespace-nowrap">
+            Tržište
+          </Link>
           <Link href="/pregled" className="hover:text-blue-600 dark:hover:text-blue-400 whitespace-nowrap">
             Pregled
           </Link>
