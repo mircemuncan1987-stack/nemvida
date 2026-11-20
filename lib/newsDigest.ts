@@ -204,7 +204,7 @@ function weekOld(items: FeedItem[]): FeedItem[] {
 }
 
 async function callClaude<T>(system: string, schema: object, effort: "low" | "medium", userContent: string): Promise<T> {
-  const client = new Anthropic();
+  const client = new Anthropic({ apiKey: resolveApiKey() ?? undefined });
   const response = await client.beta.messages.create({
     model: MODEL,
     max_tokens: 16000,
@@ -328,6 +328,31 @@ ${formatItems(ticker ? items : items.map((i) => ({ ...i, title: `${i.companyName
 const cachedMarketDigest = unstable_cache(buildMarketDigest, ["news-digest", "market", "v2"], { revalidate: CACHE_SECONDS });
 const cachedCompanyDigest = unstable_cache(buildCompanyDigest, ["news-digest", "company", "v2"], { revalidate: CACHE_SECONDS });
 
+// Vrednost se unosi ručno na Vercel-u, pa čisti česte greške pri lepljenju:
+// razmake i prelome reda, navodnike, i ceo red "ANTHROPIC_API_KEY=sk-ant-…"
+// nalepljen u polje Value umesto samog ključa.
+function resolveApiKey(): string | null {
+  let key = process.env.ANTHROPIC_API_KEY?.trim();
+  if (!key) return null;
+  key = key.replace(/^ANTHROPIC_API_KEY\s*=\s*/i, "").replace(/^["']|["']$/g, "").replace(/\s+/g, "");
+  return key || null;
+}
+
+// Opis oblika vrednosti kad je Anthropic odbije — bez otkrivanja ključa:
+// samo da li ima očekivani prefiks i koliko je dugačka.
+function describeRejectedKey(): string {
+  const key = resolveApiKey() ?? "";
+  const parts = ["API ključ nije ispravan — Anthropic ga je odbio."];
+  if (!key.startsWith("sk-ant-")) {
+    parts.push("Vrednost ne počinje sa \"sk-ant-\": u polje Value treba nalepiti samo ključ sa console.anthropic.com.");
+  } else if (key.length < 90) {
+    parts.push(`Vrednost ima samo ${key.length} znakova, a ključ obično ima preko 100 — verovatno nije kopiran ceo.`);
+  } else {
+    parts.push("Oblik vrednosti izgleda ispravno, pa je ključ verovatno obrisan ili pripada drugom nalogu: napravi novi ključ na console.anthropic.com i zameni vrednost.");
+  }
+  return parts.join(" ");
+}
+
 // Kad ključ nedostaje, poruka kaže ŠTA tačno nije u redu sa podešavanjem na
 // Vercel-u, jer korisnik ne vidi okruženje servera: pogrešno ime promenljive,
 // ključ upisan u polje za ime umesto u vrednost, ili promenljiva koja nije
@@ -354,13 +379,13 @@ function diagnoseMissingKey(): string {
 }
 
 export async function getDigest(scope: "market" | "company", ticker: string | null): Promise<DigestResult> {
-  if (!process.env.ANTHROPIC_API_KEY?.trim()) {
+  if (!resolveApiKey()) {
     return { status: "unavailable", reason: diagnoseMissingKey() };
   }
   try {
     return scope === "market" ? await cachedMarketDigest() : await cachedCompanyDigest(ticker ? ticker.toUpperCase() : null);
   } catch (e) {
-    if (e instanceof Anthropic.AuthenticationError) return { status: "unavailable", reason: "API ključ nije ispravan." };
+    if (e instanceof Anthropic.AuthenticationError) return { status: "unavailable", reason: describeRejectedKey() };
     if (e instanceof Anthropic.RateLimitError) return { status: "unavailable", reason: "Previše zahteva ka Claude API-ju — pokušaj za minut." };
     if (e instanceof Anthropic.APIError) return { status: "unavailable", reason: `Claude API greška (${e.status ?? "nepoznato"}).` };
     return { status: "unavailable", reason: e instanceof Error ? e.message : "Rezime trenutno nije dostupan." };
