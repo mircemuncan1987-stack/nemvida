@@ -328,9 +328,34 @@ ${formatItems(ticker ? items : items.map((i) => ({ ...i, title: `${i.companyName
 const cachedMarketDigest = unstable_cache(buildMarketDigest, ["news-digest", "market", "v2"], { revalidate: CACHE_SECONDS });
 const cachedCompanyDigest = unstable_cache(buildCompanyDigest, ["news-digest", "company", "v2"], { revalidate: CACHE_SECONDS });
 
+// Kad ključ nedostaje, poruka kaže ŠTA tačno nije u redu sa podešavanjem na
+// Vercel-u, jer korisnik ne vidi okruženje servera: pogrešno ime promenljive,
+// ključ upisan u polje za ime umesto u vrednost, ili promenljiva koja nije
+// uključena za ovo okruženje (Production/Preview). Nikad ne prikazuje
+// vrednost ključa niti ime koje liči na sam ključ.
+function diagnoseMissingKey(): string {
+  const names = Object.keys(process.env);
+  const env = process.env.VERCEL_ENV;
+  const parts = ["Rezime nije podešen: na serveru nedostaje ANTHROPIC_API_KEY."];
+  if (process.env.ANTHROPIC_API_KEY !== undefined) {
+    parts.push("Promenljiva ANTHROPIC_API_KEY postoji, ali joj je vrednost prazna — u polje Value treba nalepiti ključ sk-ant-….");
+  }
+  if (names.some((n) => /^sk-ant/i.test(n))) {
+    parts.push("Pronađena je promenljiva čije IME izgleda kao sam ključ (sk-ant-…): ključ je upisan u polje Key umesto u Value.");
+  }
+  const similar = names.filter((n) => n !== "ANTHROPIC_API_KEY" && !/^sk-/i.test(n) && /an?th?r|antr|anhtr/i.test(n) && /key|token/i.test(n));
+  if (similar.length > 0) {
+    parts.push(`Pronađena je promenljiva sličnog imena: ${similar.join(", ")} — ime mora biti tačno ANTHROPIC_API_KEY.`);
+  }
+  if (env) {
+    parts.push(`Ova verzija sajta je okruženje "${env === "production" ? "Production" : env === "preview" ? "Preview" : env}" — promenljiva mora biti uključena i za njega.`);
+  }
+  return parts.join(" ");
+}
+
 export async function getDigest(scope: "market" | "company", ticker: string | null): Promise<DigestResult> {
-  if (!process.env.ANTHROPIC_API_KEY) {
-    return { status: "unavailable", reason: "Rezime nije podešen: na serveru nedostaje ANTHROPIC_API_KEY." };
+  if (!process.env.ANTHROPIC_API_KEY?.trim()) {
+    return { status: "unavailable", reason: diagnoseMissingKey() };
   }
   try {
     return scope === "market" ? await cachedMarketDigest() : await cachedCompanyDigest(ticker ? ticker.toUpperCase() : null);
