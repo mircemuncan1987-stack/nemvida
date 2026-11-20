@@ -2,19 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { MARKET_GROUPS, type InstrumentQuote, type MarketInstrument } from "@/lib/marketInstruments";
-
-interface NewsItem {
-  title: string;
-  link: string;
-  source: string;
-  isoDate: string;
-  topic: string;
-}
+import NewsDigestView from "@/components/NewsDigestView";
 
 interface MarketsResponse {
   updatedAt: string;
   quotes: InstrumentQuote[];
-  news: NewsItem[];
 }
 
 // Instrumenti kod kojih je RAST loš znak (strah, slabija kruna) — boja se
@@ -83,15 +75,6 @@ function sparkLabel(inst: MarketInstrument, q: InstrumentQuote): string {
   const max = Math.max(...q.spark);
   const fmt = (v: number) => (inst.kind === "fx" ? fmtNumber(v, 4) : fmtNumber(v, 2));
   return `${inst.name}, poslednji mesec: najniže ${fmt(min)}, najviše ${fmt(max)}`;
-}
-
-function timeAgo(iso: string): string {
-  const diffMin = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
-  if (diffMin < 60) return `pre ${Math.max(1, diffMin)} min`;
-  const h = Math.round(diffMin / 60);
-  if (h < 24) return `pre ${h} h`;
-  const d = Math.round(h / 24);
-  return `pre ${d} ${d === 1 ? "dan" : "dana"}`;
 }
 
 export default function MarketOverview() {
@@ -171,6 +154,10 @@ export default function MarketOverview() {
             </div>
           </section>
 
+          <div className="mb-8">
+            <NewsDigestView scope="market" title="Rezime tržišta — najvažniji signali i vesti" />
+          </div>
+
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {MARKET_GROUPS.map((group) => (
               <section key={group.id} className="rounded-xl border border-zinc-200 dark:border-zinc-800 p-4">
@@ -218,26 +205,6 @@ export default function MarketOverview() {
               </section>
             ))}
           </div>
-
-          <section className="mt-8">
-            <h2 className="text-base font-bold text-zinc-900 dark:text-zinc-50 mb-2">Glavne vesti (poslednjih 7 dana)</h2>
-            {data.news.length === 0 ? (
-              <p className="text-sm text-zinc-500 dark:text-zinc-400">Vesti trenutno nisu dostupne.</p>
-            ) : (
-              <ul className="divide-y divide-zinc-100 dark:divide-zinc-800">
-                {data.news.map((n) => (
-                  <li key={n.link} className="py-2">
-                    <a href={n.link} target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-zinc-900 dark:text-zinc-100 hover:text-blue-600 dark:hover:text-blue-400">
-                      {n.title}
-                    </a>
-                    <div className="text-xs text-zinc-500 dark:text-zinc-400">
-                      {n.topic} · {n.source} · {timeAgo(n.isoDate)}
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
 
           <p className="text-[11px] text-zinc-400 mt-6 italic">
             Dnevna promena je u odnosu na prethodno zatvaranje, nedeljna u odnosu na zatvaranje pre 5 trgovačkih dana. Zeleno uvek znači povoljno, crveno
