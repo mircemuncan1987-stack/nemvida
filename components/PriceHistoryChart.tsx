@@ -16,6 +16,7 @@ import {
   type RangeId,
   type SeriesSource,
 } from "@/lib/corrections";
+import { SWING_THRESHOLD, analyzeTrend, detectPatterns, zigzag, type Bias, type Pattern, type TrendResult } from "@/lib/patterns";
 import type { CorrectionsExplanation, ExplainResult } from "@/lib/correctionsExplain";
 
 // Grafikon cene akcije + lista korekcija (padova od vrha), sa objašnjenjem
@@ -57,6 +58,23 @@ const FUNDAMENTALS_LABEL: Record<string, { text: string; cls: string }> = {
   nejasno: { text: "Veza sa fundamentima nejasna", cls: "bg-zinc-500/15 text-zinc-600 dark:text-zinc-400" },
 };
 
+const TREND_CLS: Record<string, string> = {
+  up: "bg-emerald-600/15 text-emerald-700 dark:text-emerald-400",
+  down: "bg-red-600/15 text-red-700 dark:text-red-400",
+  side: "bg-zinc-500/15 text-zinc-700 dark:text-zinc-300",
+};
+const TREND_TEXT: Record<string, string> = {
+  up: "text-emerald-600 dark:text-emerald-400",
+  down: "text-red-600 dark:text-red-400",
+  side: "text-zinc-600 dark:text-zinc-300",
+};
+const BIAS_LABEL: Record<Bias, string> = { bikovska: "bikovska", medvedja: "medveđa", neutralna: "neutralna" };
+const BIAS_CLS: Record<Bias, string> = {
+  bikovska: "bg-emerald-600/10 text-emerald-700 dark:text-emerald-400",
+  medvedja: "bg-red-600/10 text-red-700 dark:text-red-400",
+  neutralna: "bg-zinc-500/15 text-zinc-600 dark:text-zinc-300",
+};
+
 const CATEGORY_LABEL: Record<string, string> = { makro: "Makro", sektor: "Sektor", kompanija: "Kompanija", mesovito: "Mešovito" };
 
 export default function PriceHistoryChart({ symbol, companyName, currency }: { symbol: string; companyName: string; currency: string }) {
@@ -75,20 +93,23 @@ export default function PriceHistoryChart({ symbol, companyName, currency }: { s
   // Svaki izvor (5d/15m, 1y/1d, max/1wk) se učitava tek kad zatreba, za akciju i S&P 500.
   // Komponenta se pravi ispočetka za svaki novi ticker (key u OverviewCard).
   useEffect(() => {
-    const src = cfg.source;
-    const key = `${symbol}:${src}`;
-    if (stock[src] || loading.current.has(key)) return;
-    loading.current.add(key);
-    const req = SOURCE_REQUEST[src];
-    (async () => {
-      const [s, m] = await Promise.all([
-        fetchPriceHistory(symbol, { ...req, rawClose: true }),
-        fetchPriceHistory(MARKET_SYMBOL, { ...req, rawClose: true }),
-      ]);
-      loading.current.delete(key);
-      setStock((prev) => ({ ...prev, [src]: s }));
-      setMarket((prev) => ({ ...prev, [src]: m }));
-    })();
+    // izabrani izvor + dnevni i nedeljni (trebaju za pregled trenda po periodima)
+    const needed = new Set<SeriesSource>([cfg.source, "daily", "weekly"]);
+    for (const src of needed) {
+      const key = `${symbol}:${src}`;
+      if (stock[src] || loading.current.has(key)) continue;
+      loading.current.add(key);
+      const req = SOURCE_REQUEST[src];
+      (async () => {
+        const [s, m] = await Promise.all([
+          fetchPriceHistory(symbol, { ...req, rawClose: true }),
+          fetchPriceHistory(MARKET_SYMBOL, { ...req, rawClose: true }),
+        ]);
+        loading.current.delete(key);
+        setStock((prev) => ({ ...prev, [src]: s }));
+        setMarket((prev) => ({ ...prev, [src]: m }));
+      })();
+    }
   }, [symbol, cfg.source, stock]);
 
   const raw = stock[cfg.source];
@@ -102,12 +123,35 @@ export default function PriceHistoryChart({ symbol, companyName, currency }: { s
     return m && m.length ? attachMarket(found, m) : found;
   }, [points, cfg.threshold, market, cfg.source]);
 
+  // Trend i formacije za izabrani period (deterministički, bez AI).
+  const analysis = useMemo(() => {
+    if (points.length < 12) return null;
+    const pivots = zigzag(points, SWING_THRESHOLD[range]);
+    return { pivots, trend: analyzeTrend(points, range, cfg.source, pivots), patterns: detectPatterns(points, range, pivots) };
+  }, [points, range, cfg.source]);
+  const [showPivots, setShowPivots] = useState(false);
+  const [selPattern, setSelPattern] = useState<string | null>(null);
+  const activePattern: Pattern | null = analysis?.patterns.find((p) => p.id === selPattern) ?? null;
+
+  // Pregled trenda po periodima (iz već učitanih nizova).
+  const multi = useMemo(() => {
+    const ids: RangeId[] = ["1M", "1G", "5G", "MAX"];
+    return ids.map((id) => {
+      const c = RANGES.find((r) => r.id === id)!;
+      const raw = stock[c.source];
+      if (!raw) return { id, label: c.label, trend: null as TrendResult | null };
+      const pts = sliceWindow(raw, id, nowMs);
+      return { id, label: c.label, trend: analyzeTrend(pts, id, c.source) };
+    });
+  }, [stock, nowMs]);
+
   // Objašnjenje: prvo ono iz ove sesije, pa sačuvano u pregledaču (isti ticker i period).
   const explain: CorrectionsExplanation | null = explains[range] ?? readSaved(symbol, range);
 
   function pickRange(id: RangeId) {
     setRange(id);
     setHover(null);
+    setSelPattern(null);
     setExplainState("idle");
     setExplainMsg("");
   }
@@ -280,6 +324,23 @@ export default function PriceHistoryChart({ symbol, companyName, currency }: { s
                 </g>
               ))}
               <path d={geo.line} fill="none" stroke="#2563eb" strokeWidth={1.6} strokeLinejoin="round" />
+              {showPivots &&
+                analysis?.pivots.map((pv, i) => (
+                  <circle key={i} cx={geo.x(pv.ts)} cy={geo.y(pv.price)} r={3} fill={pv.type === "H" ? "#16a34a" : "#dc2626"} fillOpacity={pv.confirmed ? 0.9 : 0.4} />
+                ))}
+              {activePattern && (
+                <g>
+                  {activePattern.lines.map((l, i) => (
+                    <line key={i} x1={geo.x(l.a.ts)} y1={geo.y(l.a.price)} x2={geo.x(l.b.ts)} y2={geo.y(l.b.price)} stroke="#d97706" strokeWidth={1.6} strokeDasharray="6 3" />
+                  ))}
+                  {activePattern.points.length > 1 && (
+                    <polyline points={activePattern.points.map((p) => `${geo.x(p.ts)},${geo.y(p.price)}`).join(" ")} fill="none" stroke="#d97706" strokeWidth={1.2} strokeOpacity={0.7} />
+                  )}
+                  {activePattern.points.map((p, i) => (
+                    <circle key={i} cx={geo.x(p.ts)} cy={geo.y(p.price)} r={4} fill="#d97706" />
+                  ))}
+                </g>
+              )}
               {hp && (
                 <g>
                   <line x1={geo.x(hp.timestamp)} x2={geo.x(hp.timestamp)} y1={PAD.t} y2={H - PAD.b} className="stroke-zinc-400" strokeWidth={1} />
@@ -296,6 +357,73 @@ export default function PriceHistoryChart({ symbol, companyName, currency }: { s
               </div>
             )}
           </div>
+
+          {analysis?.trend && (
+            <div className="mt-4 rounded-lg border border-zinc-200 dark:border-zinc-800 p-3">
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                <h4 className="text-sm font-semibold">Trend i formacije</h4>
+                <label className="flex items-center gap-1.5 text-xs text-zinc-500 dark:text-zinc-400 cursor-pointer">
+                  <input type="checkbox" checked={showPivots} onChange={(e) => setShowPivots(e.target.checked)} />
+                  Prikaži vrhove (zeleno) i dna (crveno)
+                </label>
+              </div>
+              <div className="flex flex-wrap items-center gap-3 mb-2">
+                <span className={`px-2.5 py-1 rounded-md text-sm font-bold ${TREND_CLS[analysis.trend.direction]}`}>{analysis.trend.label}</span>
+                <span className="text-xs text-zinc-500 dark:text-zinc-400">
+                  Izabrani period ({cfg.label}): {fmtPct(analysis.trend.changePct)} · skor {analysis.trend.score > 0 ? "+" : ""}
+                  {analysis.trend.score} od ±{cfg.source === "intraday" ? 3 : 5}
+                </span>
+              </div>
+              <ul className="text-xs text-zinc-600 dark:text-zinc-300 space-y-0.5 list-disc pl-4 mb-3">
+                {analysis.trend.reasons.map((r, i) => (
+                  <li key={i}>{r}</li>
+                ))}
+              </ul>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
+                {multi.map((m) => (
+                  <div key={m.id} className="rounded-md bg-zinc-100 dark:bg-zinc-800/60 px-2.5 py-1.5">
+                    <div className="text-[10px] uppercase tracking-wide text-zinc-500 dark:text-zinc-400">{m.label}</div>
+                    {m.trend ? (
+                      <>
+                        <div className={`text-xs font-semibold ${TREND_TEXT[m.trend.direction]}`}>{m.trend.label}</div>
+                        <div className="text-[11px] text-zinc-500 dark:text-zinc-400">{fmtPct(m.trend.changePct)}</div>
+                      </>
+                    ) : (
+                      <div className="text-xs text-zinc-400">…</div>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              {analysis.patterns.length === 0 ? (
+                <p className="text-sm text-zinc-500 dark:text-zinc-400">U ovom periodu nije prepoznata jasna klasična formacija (dvostruki vrh/dno, glava i ramena, trougao, klin, kanal).</p>
+              ) : (
+                <ul className="space-y-2">
+                  {analysis.patterns.map((pt) => (
+                    <li key={pt.id} className={`rounded-md border p-2.5 text-sm ${selPattern === pt.id ? "border-amber-500" : "border-zinc-200 dark:border-zinc-800"}`}>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <b>{pt.name}</b>
+                        <span className={`text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded ${BIAS_CLS[pt.bias]}`}>{BIAS_LABEL[pt.bias]}</span>
+                        <span className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-zinc-500/15 text-zinc-600 dark:text-zinc-300">{pt.status}</span>
+                        <button onClick={() => setSelPattern(selPattern === pt.id ? null : pt.id)} className="ml-auto text-xs text-blue-600 dark:text-blue-400 hover:underline">
+                          {selPattern === pt.id ? "Sakrij sa grafikona" : "Prikaži na grafikonu"}
+                        </button>
+                      </div>
+                      <p className="mt-1 text-xs text-zinc-600 dark:text-zinc-300">{pt.description}</p>
+                      <p className="mt-1 text-[11px] text-zinc-500 dark:text-zinc-400">
+                        {formatDay(pt.startTs)} – {formatDay(pt.endTs)}
+                        {pt.target != null ? ` · geometrijski cilj ≈ ${fmtPrice(pt.target, currency)}` : ""}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <p className="mt-3 text-[11px] text-zinc-500 dark:text-zinc-400">
+                Trend je zbir pet signala (pravac i pravilnost kretanja, struktura vrhova i dna, cena prema dugom proseku, kratki prema dugom proseku). Formacije se prepoznaju po fiksnim pravilima iz vrhova i dna cene — to je opis oblika grafikona, a ne predviđanje; klasične formacije su istorijski samo skromno pouzdane, pa ih koristi kao jedan od signala, ne kao jedini.
+              </p>
+            </div>
+          )}
 
           <div className="mt-4">
             <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
