@@ -41,7 +41,7 @@ function fmtPct(x: number): string {
 
 function readSaved(symbol: string, range: RangeId): CorrectionsExplanation | null {
   try {
-    const saved = localStorage.getItem(`nemvida_corr_v1:${symbol}:${range}`);
+    const saved = localStorage.getItem(`nemvida_corr_v2:${symbol}:${range}`);
     if (!saved) return null;
     const parsed = JSON.parse(saved) as { data?: CorrectionsExplanation };
     return parsed?.data ?? null;
@@ -49,6 +49,13 @@ function readSaved(symbol: string, range: RangeId): CorrectionsExplanation | nul
     return null;
   }
 }
+
+const FUNDAMENTALS_LABEL: Record<string, { text: string; cls: string }> = {
+  da: { text: "Povezano sa fundamentima", cls: "bg-red-600/10 text-red-700 dark:text-red-400" },
+  delimicno: { text: "Delom fundamenti", cls: "bg-amber-500/15 text-amber-700 dark:text-amber-400" },
+  ne: { text: "Nije fundamentalno", cls: "bg-emerald-600/10 text-emerald-700 dark:text-emerald-400" },
+  nejasno: { text: "Veza sa fundamentima nejasna", cls: "bg-zinc-500/15 text-zinc-600 dark:text-zinc-400" },
+};
 
 const CATEGORY_LABEL: Record<string, string> = { makro: "Makro", sektor: "Sektor", kompanija: "Kompanija", mesovito: "Mešovito" };
 
@@ -129,7 +136,7 @@ export default function PriceHistoryChart({ symbol, companyName, currency }: { s
       setExplains((prev) => ({ ...prev, [range]: json.data }));
       setExplainState("idle");
       try {
-        localStorage.setItem(`nemvida_corr_v1:${symbol}:${range}`, JSON.stringify({ sig, data: json.data }));
+        localStorage.setItem(`nemvida_corr_v2:${symbol}:${range}`, JSON.stringify({ sig, data: json.data }));
       } catch {}
     } catch {
       setExplainState("error");
@@ -335,6 +342,14 @@ export default function PriceHistoryChart({ symbol, companyName, currency }: { s
                       {reason && (
                         <div className="mt-2 text-sm border-l-2 border-blue-500 pl-3">
                           <p>{reason.cause}</p>
+                          {reason.fundamentals && FUNDAMENTALS_LABEL[reason.fundamentals] && (
+                            <p className="mt-1.5 text-sm">
+                              <span className={`text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded mr-2 ${FUNDAMENTALS_LABEL[reason.fundamentals].cls}`}>
+                                {FUNDAMENTALS_LABEL[reason.fundamentals].text}
+                              </span>
+                              {reason.fundamentalsNote}
+                            </p>
+                          )}
                           <p className="mt-1 text-[11px] text-zinc-500 dark:text-zinc-400">
                             {CATEGORY_LABEL[reason.category]} · osnova: {reason.basis === "vesti" ? "naslovi vesti iz tog perioda" : "opšte znanje modela (nije proverena vest)"} · pouzdanost: {reason.confidence}
                           </p>

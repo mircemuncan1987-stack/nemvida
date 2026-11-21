@@ -25,6 +25,9 @@ export interface CorrectionReason {
   category: "makro" | "sektor" | "kompanija" | "mesovito";
   basis: "vesti" | "znanje";
   confidence: "visoka" | "srednja" | "niska";
+  // Da li pad ima veze sa pogoršanjem fundamenata u tom periodu.
+  fundamentals: "da" | "delimicno" | "ne" | "nejasno";
+  fundamentalsNote: string; // šta konkretno: marže, zarada, tržišni udeo, ekonomski rov — ili zašto nije povezano
 }
 
 export interface CorrectionsExplanation {
@@ -49,13 +52,15 @@ const SCHEMA = {
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["index", "cause", "category", "basis", "confidence"],
+        required: ["index", "cause", "category", "basis", "confidence", "fundamentals", "fundamentalsNote"],
         properties: {
           index: { type: "integer" },
           cause: { type: "string" },
           category: { type: "string", enum: ["makro", "sektor", "kompanija", "mesovito"] },
           basis: { type: "string", enum: ["vesti", "znanje"] },
           confidence: { type: "string", enum: ["visoka", "srednja", "niska"] },
+          fundamentals: { type: "string", enum: ["da", "delimicno", "ne", "nejasno"] },
+          fundamentalsNote: { type: "string" },
         },
       },
     },
@@ -70,9 +75,10 @@ Pravila:
 - Ako tržište nije palo, traži uzrok u kompaniji ili sektoru (rezultati, smanjene prognoze, regulativa, sektorska rotacija...).
 - "basis": "vesti" samo ako se uzrok oslanja na dostavljene naslove; inače "znanje" (tvoje opšte poznavanje događaja).
 - "confidence": "visoka" samo ako si siguran u događaj i vremensku vezu; "niska" ako je to pretpostavka. NIKAD ne izmišljaj konkretne događaje, brojeve ili izjave — radije reci "uzrok nije jasan iz dostupnih podataka" sa niskom pouzdanošću.
+- "fundamentals": da li je pad povezan sa stvarnim pogoršanjem fundamenata kompanije u tom periodu: pad marži, pad zarade ili prihoda, gubitak dela tržišta, slabljenje ekonomskog rova (konkurentske prednosti). "da" = jasno povezano; "delimicno" = delom; "ne" = pad je pretežno rezultat tržišnih faktora, raspoloženja ili valuacije (multipla) dok su fundamenti ostali stabilni; "nejasno" = ne znaš dovoljno. U "fundamentalsNote" u 1–2 rečenice navedi ŠTA konkretno (npr. "operativna marža pala sa X na Y" samo ako to zaista znaš) ili zašto nema veze. Razlikuj pad zbog sniženja valuacije (isti poslovni rezultati, niži multipl) od pada zbog slabijeg poslovanja. Ne izmišljaj brojeve; ako ih ne znaš, opiši smer promene bez brojeva ili reci "nejasno".
 - Ne analiziraj rast, samo padove. Ne daj preporuku da kupi ili proda.
 - "index" je redni broj korekcije iz ulaza (počinje od 0).
-- "pattern": 2–3 rečenice o tome šta se ponavlja kroz korekcije ove akcije (npr. osetljivost na kamate, sezonalnost rezultata, brzina oporavka), samo ako se vidi iz podataka.`;
+- "pattern": 2–3 rečenice o tome šta se ponavlja kroz korekcije ove akcije (npr. osetljivost na kamate, sezonalnost rezultata, brzina oporavka) i koliko su korekcije bile povezane sa fundamentima, a koliko sa tržištem ili valuacijom, samo ako se vidi iz podataka.`;
 
 const dateStr = (ts: number) => new Date(ts * 1000).toISOString().slice(0, 10);
 const pct = (x: number | null) => (x == null ? "n/a" : `${x >= 0 ? "+" : ""}${(x * 100).toFixed(1)}%`);
@@ -117,7 +123,7 @@ async function build(ticker: string, companyName: string, corrections: Correctio
   );
 }
 
-const cachedBuild = unstable_cache(build, ["corrections-explain", "v1"], { revalidate: 24 * 60 * 60 });
+const cachedBuild = unstable_cache(build, ["corrections-explain", "v2"], { revalidate: 24 * 60 * 60 });
 
 export async function explainCorrections(
   ticker: string,
