@@ -454,3 +454,87 @@ export function detectPatterns(points: PricePoint[], range: RangeId, pivots?: Pi
   // novije i potvrđene prvo
   return found.sort((a, b) => b.endTs - a.endTs || (a.status === "potvrđena" ? -1 : 1));
 }
+
+// ------------------------------------------------------------- zaključci
+
+// Šta se iz pojedine formacije može zaključiti, šta je potvrđuje a šta poništava.
+export function implication(p: Pattern): string {
+  const confirmed = p.status === "potvrđena";
+  const top = Math.max(...p.points.map((x) => x.price));
+  const bottom = Math.min(...p.points.map((x) => x.price));
+  const tgt = p.target != null ? ` Geometrijski cilj (visina formacije primenjena od linije vrata) je oko ${fmt(p.target)}.` : "";
+  const neck = p.level ? fmt(p.level.price) : "";
+  switch (p.id) {
+    case "dvostruki-vrh":
+      return confirmed
+        ? `Kupci dvaput nisu uspeli da pređu isti nivo, a sada je pukla i podrška (${neck}). To sugeriše da se rast završio i da sledi pad ili duža korekcija.${tgt} Zaključak se poništava ako cena ponovo zatvori iznad vrha (~${fmt(top)}).`
+        : `Dvaput je odbijen otpor oko ${fmt(top)}, što je upozorenje da rast slabi. Dok linija vrata (${neck}) ne pukne, to je samo signal opreza, ne obrt. Zaključak se poništava ako cena zatvori iznad ${fmt(top)}.`;
+    case "dvostruko-dno":
+      return confirmed
+        ? `Prodavci dvaput nisu uspeli da spuste cenu ispod istog nivoa, a sada je probijen i otpor (${neck}). To sugeriše da je pad završen i da sledi oporavak.${tgt} Zaključak se poništava ako cena zatvori ispod dna (~${fmt(bottom)}).`
+        : `Podrška oko ${fmt(bottom)} je dvaput izdržala, što je znak da prodavci slabe. Dok otpor (${neck}) ne pukne, to je samo signal moguće promene smera. Zaključak se poništava ako cena zatvori ispod ${fmt(bottom)}.`;
+    case "glava-ramena":
+      return confirmed
+        ? `Najpouzdanija klasična formacija obrta: uzlazni trend je izgubio snagu (glava je poslednji pokušaj), a linija vrata (${neck}) je probijena. Sugeriše prelazak u silazni trend.${tgt} Poništava se ako cena ponovo pređe vrh desnog ramena.`
+        : `Oblik je prepoznat, ali nije potvrđen: dok cena ne zatvori ispod linije vrata (${neck}), uzlazni trend se i dalje nije slomio. Poništava se ako cena pređe vrh glave (${fmt(top)}).`;
+    case "obrnuta-glava-ramena":
+      return confirmed
+        ? `Klasična formacija obrta: silazni trend je izgubio snagu, a linija vrata (${neck}) je probijena naviše. Sugeriše prelazak u uzlazni trend.${tgt} Poništava se ako cena zatvori ispod dna desnog ramena.`
+        : `Oblik je prepoznat, ali nije potvrđen: dok cena ne zatvori iznad linije vrata (${neck}), silazni trend se nije slomio. Poništava se ako cena padne ispod dna glave (${fmt(bottom)}).`;
+    case "rastući-trougao":
+      return p.status === "probijena"
+        ? "Otpor je probijen naviše uz rastuća dna — potvrda nastavka rasta. Probijeni otpor često postaje nova podrška."
+        : "Kupci sve višim dnima pritiskaju isti otpor. Najčešći ishod je probijanje naviše, ali tek zatvaranje iznad otpora to potvrđuje; pad ispod linije rastućih dna poništava formaciju.";
+    case "padajući-trougao":
+      return p.status === "probijena"
+        ? "Podrška je probijena naniže uz opadajuće vrhove — potvrda nastavka pada."
+        : "Prodavci sve nižim vrhovima pritiskaju istu podršku. Najčešći ishod je probijanje naniže, ali tek zatvaranje ispod podrške to potvrđuje; rast iznad linije opadajućih vrhova poništava formaciju.";
+    case "simetrični-trougao":
+      return p.status === "probijena"
+        ? "Cena je napustila trougao — smer probijanja pokazuje smer nastavka, najčešće u pravcu trenda koji je prethodio formaciji."
+        : "Sužavanje raspona znači da se energija skuplja; smer nije unapred poznat, a najčešće je u pravcu trenda koji je prethodio formaciji. Pravi signal je tek zatvaranje izvan trougla.";
+    case "rastući-klin":
+      return "Rast se nastavlja uz sve manji raspon, što obično znači slabljenje zamaha. Najčešće se završava probijanjem naniže, ali dok donja linija ne pukne, trend naviše ostaje na snazi.";
+    case "padajući-klin":
+      return "Pad se nastavlja uz sve manji raspon, što obično znači slabljenje pritiska prodavaca. Najčešće se završava probijanjem naviše, ali dok gornja linija ne pukne, trend naniže ostaje na snazi.";
+    case "rastući-kanal":
+      return "Uređen uzlazni trend: svaka korekcija se zaustavlja na višem nivou. Dok cena ostaje u kanalu, trend je netaknut; zatvaranje ispod donje linije bi bilo upozorenje na slabljenje.";
+    case "padajući-kanal":
+      return "Uređen silazni trend: svaki odskok staje na nižem nivou. Dok cena ostaje u kanalu, trend je netaknut; zatvaranje iznad gornje linije bi bilo prvi znak da pritisak popušta.";
+    default:
+      return p.name.startsWith("Bočni")
+        ? "Ravnoteža kupaca i prodavaca: cena se kreće između podrške i otpora. Nema usmerenog trenda dok jedna od granica ne pukne; probijanje uz porast prometa je pouzdaniji signal."
+        : "";
+  }
+}
+
+// Zbirni zaključak: spaja trend i formacije.
+export function conclusion(trend: TrendResult, patterns: Pattern[]): string {
+  const dir = trend.direction;
+  const dirText = dir === "up" ? "uzlazni" : dir === "down" ? "silazni" : "bočni";
+  const parts: string[] = [`Trend izabranog perioda je ${dirText}.`];
+  if (patterns.length === 0) {
+    parts.push("Nema jasne klasične formacije, pa zaključak počiva samo na trendu: dok se struktura vrhova i dna ne promeni, razumno je očekivati nastavak postojećeg pravca, ali bez dodatne potvrde to je slabiji signal.");
+    return parts.join(" ");
+  }
+  const reversals = patterns.filter((p) => (dir === "up" && p.bias === "medvedja") || (dir === "down" && p.bias === "bikovska"));
+  const continuations = patterns.filter((p) => (dir === "up" && p.bias === "bikovska") || (dir === "down" && p.bias === "medvedja"));
+  const names = (list: Pattern[]) => list.map((p) => `${p.name.toLowerCase()} (${p.status})`).join(", ");
+  if (reversals.length) {
+    const conf = reversals.some((p) => p.status !== "u formiranju");
+    parts.push(
+      `Prepoznata je formacija koja ide protiv trenda: ${names(reversals)}. ${
+        conf
+          ? "Pošto je potvrđena probijanjem, to je ozbiljno upozorenje na mogući obrt trenda."
+          : "Još nije potvrđena, pa je to upozorenje na mogući obrt, a ne zaključak da se trend okrenuo."
+      }`
+    );
+  }
+  if (continuations.length) {
+    parts.push(`Prepoznata je formacija u smeru trenda: ${names(continuations)}, što ide u prilog nastavku postojećeg pravca.`);
+  }
+  const neutral = patterns.filter((p) => !reversals.includes(p) && !continuations.includes(p));
+  if (neutral.length) parts.push(`Neutralna formacija: ${names(neutral)} — smer određuje probijanje jedne od granica.`);
+  parts.push("Najveću težinu ima potvrđena formacija (probijena linija vrata ili granica), a formacije u formiranju treba tretirati kao hipotezu koju cena tek treba da potvrdi.");
+  return parts.join(" ");
+}

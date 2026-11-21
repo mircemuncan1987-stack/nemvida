@@ -16,7 +16,7 @@ import {
   type RangeId,
   type SeriesSource,
 } from "@/lib/corrections";
-import { SWING_THRESHOLD, analyzeTrend, detectPatterns, zigzag, type Bias, type Pattern, type TrendResult } from "@/lib/patterns";
+import { SWING_THRESHOLD, analyzeTrend, conclusion, implication, detectPatterns, zigzag, type Bias, type Pattern, type TrendResult } from "@/lib/patterns";
 import type { CorrectionsExplanation, ExplainResult } from "@/lib/correctionsExplain";
 
 // Grafikon cene akcije + lista korekcija (padova od vrha), sa objašnjenjem
@@ -374,6 +374,10 @@ export default function PriceHistoryChart({ symbol, companyName, currency }: { s
                   {analysis.trend.score} od ±{cfg.source === "intraday" ? 3 : 5}
                 </span>
               </div>
+              <div className="mb-3 rounded-md bg-blue-600/10 border border-blue-600/20 p-2.5 text-sm">
+                <b>Zaključak: </b>
+                {conclusion(analysis.trend, analysis.patterns)}
+              </div>
               <ul className="text-xs text-zinc-600 dark:text-zinc-300 space-y-0.5 list-disc pl-4 mb-3">
                 {analysis.trend.reasons.map((r, i) => (
                   <li key={i}>{r}</li>
@@ -411,6 +415,12 @@ export default function PriceHistoryChart({ symbol, companyName, currency }: { s
                         </button>
                       </div>
                       <p className="mt-1 text-xs text-zinc-600 dark:text-zinc-300">{pt.description}</p>
+                      {implication(pt) && (
+                        <p className="mt-1 text-xs">
+                          <b>Šta se može zaključiti: </b>
+                          {implication(pt)}
+                        </p>
+                      )}
                       <p className="mt-1 text-[11px] text-zinc-500 dark:text-zinc-400">
                         {formatDay(pt.startTs)} – {formatDay(pt.endTs)}
                         {pt.target != null ? ` · geometrijski cilj ≈ ${fmtPrice(pt.target, currency)}` : ""}
