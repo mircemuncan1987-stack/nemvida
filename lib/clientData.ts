@@ -4,7 +4,10 @@
 
 import type { HistoricalPricePoint } from "@/lib/buildModel";
 
-export async function fetchPriceHistory(symbol: string, options?: { range?: string; interval?: string }): Promise<HistoricalPricePoint[]> {
+// rawClose: true vraća stvarnu zaključnu cenu (prilagođenu samo podelama akcija),
+// bez dividendi — za grafikon cene i korekcije, gde se prikazuje cena akcije, a
+// ne ukupan prinos.
+export async function fetchPriceHistory(symbol: string, options?: { range?: string; interval?: string; rawClose?: boolean }): Promise<HistoricalPricePoint[]> {
   try {
     const params = new URLSearchParams({ symbol, type: "history" });
     if (options?.range) params.set("range", options.range);
@@ -21,7 +24,7 @@ export async function fetchPriceHistory(symbol: string, options?: { range?: stri
     const adjCloses: (number | null)[] = chartResult?.indicators?.adjclose?.[0]?.adjclose || [];
     const points: HistoricalPricePoint[] = [];
     for (let i = 0; i < timestamps.length; i++) {
-      const c = adjCloses[i] ?? closes[i];
+      const c = options?.rawClose ? closes[i] : adjCloses[i] ?? closes[i];
       if (c != null) points.push({ timestamp: timestamps[i], close: c });
     }
     return points;

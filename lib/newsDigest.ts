@@ -206,7 +206,7 @@ function weekOld(items: FeedItem[]): FeedItem[] {
   return items.filter((i) => new Date(i.isoDate).getTime() >= weekAgo);
 }
 
-async function callClaude<T>(system: string, schema: object, effort: "low" | "medium", userContent: string): Promise<T> {
+export async function callClaude<T>(system: string, schema: object, effort: "low" | "medium", userContent: string): Promise<T> {
   const client = new Anthropic({ apiKey: resolveApiKey() ?? undefined });
   const response = await client.beta.messages.create({
     model: MODEL,
@@ -334,7 +334,7 @@ const cachedCompanyDigest = unstable_cache(buildCompanyDigest, ["news-digest", "
 // Vrednost se unosi ručno na Vercel-u, pa čisti česte greške pri lepljenju:
 // razmake i prelome reda, navodnike, i ceo red "ANTHROPIC_API_KEY=sk-ant-…"
 // nalepljen u polje Value umesto samog ključa.
-function resolveApiKey(): string | null {
+export function resolveApiKey(): string | null {
   let key = process.env.ANTHROPIC_API_KEY?.trim();
   if (!key) return null;
   key = key.replace(/^ANTHROPIC_API_KEY\s*=\s*/i, "").replace(/^["']|["']$/g, "").replace(/\s+/g, "");
@@ -361,7 +361,7 @@ function describeRejectedKey(): string {
 // ključ upisan u polje za ime umesto u vrednost, ili promenljiva koja nije
 // uključena za ovo okruženje (Production/Preview). Nikad ne prikazuje
 // vrednost ključa niti ime koje liči na sam ključ.
-function diagnoseMissingKey(): string {
+export function diagnoseMissingKey(): string {
   const names = Object.keys(process.env);
   const env = process.env.VERCEL_ENV;
   const parts = ["Rezime nije podešen: na serveru nedostaje ANTHROPIC_API_KEY."];
@@ -379,6 +379,14 @@ function diagnoseMissingKey(): string {
     parts.push(`Ova verzija sajta je okruženje "${env === "production" ? "Production" : env === "preview" ? "Preview" : env}" — promenljiva mora biti uključena i za njega.`);
   }
   return parts.join(" ");
+}
+
+// Zajednički prevod greške Claude poziva u poruku za korisnika.
+export function describeClaudeError(e: unknown): string {
+  if (e instanceof Anthropic.AuthenticationError) return describeRejectedKey();
+  if (e instanceof Anthropic.RateLimitError) return "Previše zahteva ka Claude API-ju — pokušaj za minut.";
+  if (e instanceof Anthropic.APIError) return `Claude API greška (${e.status ?? "nepoznato"}).`;
+  return e instanceof Error ? e.message : "Objašnjenje trenutno nije dostupno.";
 }
 
 export async function getDigest(scope: "market" | "company", ticker: string | null): Promise<DigestResult> {

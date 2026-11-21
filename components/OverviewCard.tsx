@@ -23,6 +23,7 @@ import {
   type MultipleReadingTone,
 } from "@/lib/buildModel";
 import { type FilterCheck } from "@/lib/model";
+import PriceHistoryChart from "@/components/PriceHistoryChart";
 import { fetchDailyPriceHistory, fetchPriceHistory, fetchStockAnalysisFcf, searchSymbols, translateToSerbian, type SearchResult } from "@/lib/clientData";
 
 const fmtMoney = (x: number | null | undefined, currency: string) =>
@@ -478,6 +479,9 @@ export default function OverviewCard() {
             </div>
           </div>
         </div>
+
+        {/* Grafikon cene i korekcije */}
+        <PriceHistoryChart key={analyzedTicker} symbol={analyzedTicker} companyName={data.companyName} currency={data.currency} />
 
         {/* Kompozitni skor + dimenzije */}
         <div className="border border-zinc-200 dark:border-zinc-800 bg-white/70 dark:bg-zinc-900/50 rounded-xl p-4">
