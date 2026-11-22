@@ -913,7 +913,7 @@ export default function PortfolioAnalysis() {
 
           <div className="text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed border border-zinc-200 dark:border-zinc-800 rounded-xl p-4">
             Automatska analiza vesti po pojedinačnoj poziciji (koja vest utiče na koju akciju i koliko) nije još
-            integrisana na sajtu — za najsvežije vesti pogledaj <Link href="/" className="underline">Vesti</Link>. Model
+            integrisana na sajtu — za opšti pregled tržišta pogledaj <Link href="/trziste" className="underline">Tržište</Link>. Model
             pokriva samo američka i evropska tržišta; svi zaključci su automatski izvedeni iz javno dostupnih podataka
             prema fiksnim pravilima.
           </div>
