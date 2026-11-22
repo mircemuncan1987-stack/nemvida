@@ -13,7 +13,7 @@ interface MarketsResponse {
 // obrće da zeleno uvek znači "povoljno", a crveno "nepovoljno".
 const INVERTED_IDS = new Set(["vix", "usdnok", "eurnok", "gbpnok", "seknok", "dkknok", "chfnok"]);
 
-const REFRESH_MS = 30_000;
+const REFRESH_MS = 15_000;
 
 function flashClass(dir: "up" | "down" | undefined): string {
   if (dir === "up") return "bg-emerald-100 dark:bg-emerald-900/50";
@@ -95,7 +95,7 @@ export default function MarketOverview() {
 
   // "silent" = automatsko osvežavanje u pozadini: postojeći podaci ostaju na
   // ekranu, nema indikatora učitavanja, a kratka greška mreže se ignoriše
-  // (sledeći pokušaj je za 30 s) umesto da prekrije tabele porukom.
+  // (sledeći pokušaj je za 15 s) umesto da prekrije tabele porukom.
   const load = useCallback(async (silent = false) => {
     if (!silent) {
       setLoading(true);
@@ -163,7 +163,7 @@ export default function MarketOverview() {
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
               </span>
-              Uživo — osvežava se na 30 s{lastCheck ? `, poslednja provera ${lastCheck.toLocaleTimeString("sr-Latn-RS")}` : ""}. Berze van SAD i roba kasne do ~15 min (Yahoo Finance).
+              Uživo — osvežava se na 15 s{lastCheck ? `, poslednja provera ${lastCheck.toLocaleTimeString("sr-Latn-RS")}` : ""}. Berze van SAD i roba kasne do ~15 min (Yahoo Finance).
             </span>
           ) : loading ? (
             "Učitavam tržišne podatke…"
@@ -221,8 +221,8 @@ export default function MarketOverview() {
                         <th className="text-left font-medium py-1 pr-2">Instrument</th>
                         <th className="text-right font-medium py-1 px-2">Cena</th>
                         <th className="text-right font-medium py-1 px-2">Dan</th>
-                        <th className="text-right font-medium py-1 px-2">Nedelja</th>
-                        <th className="hidden sm:table-cell text-right font-medium py-1 pl-2">Mesec</th>
+                        {!group.dailyOnly && <th className="text-right font-medium py-1 px-2">Nedelja</th>}
+                        {!group.dailyOnly && <th className="hidden sm:table-cell text-right font-medium py-1 pl-2">Mesec</th>}
                       </tr>
                     </thead>
                     <tbody>
@@ -238,13 +238,13 @@ export default function MarketOverview() {
                               )}
                             </td>
                             {missing ? (
-                              <td colSpan={4} className="py-1.5 pl-2 text-right text-xs italic text-zinc-400">Podatak trenutno nije dostupan</td>
+                              <td colSpan={group.dailyOnly ? 2 : 4} className="py-1.5 pl-2 text-right text-xs italic text-zinc-400">Podatak trenutno nije dostupan</td>
                             ) : (
                               <>
                                 <td className={`py-1.5 px-2 text-right tabular-nums whitespace-nowrap font-medium text-zinc-900 dark:text-zinc-100 transition-colors duration-700 ${flashClass(flash.get(inst.id))}`}>{fmtPrice(inst, q)}</td>
                                 <td className="py-1.5 px-2 text-right"><ChangeCell inst={inst} id={inst.id} abs={q.dayChange} pct={q.dayChangePercent} /></td>
-                                <td className="py-1.5 px-2 text-right"><ChangeCell inst={inst} id={inst.id} abs={q.weekChange} pct={q.weekChangePercent} /></td>
-                                <td className="hidden sm:table-cell py-1.5 pl-2 text-right"><Sparkline values={q.spark} label={sparkLabel(inst, q)} /></td>
+                                {!group.dailyOnly && <td className="py-1.5 px-2 text-right"><ChangeCell inst={inst} id={inst.id} abs={q.weekChange} pct={q.weekChangePercent} /></td>}
+                                {!group.dailyOnly && <td className="hidden sm:table-cell py-1.5 pl-2 text-right"><Sparkline values={q.spark} label={sparkLabel(inst, q)} /></td>}
                               </>
                             )}
                           </tr>

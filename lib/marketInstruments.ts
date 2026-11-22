@@ -24,6 +24,7 @@ export interface MarketGroup {
   title: string;
   description: string;
   instruments: MarketInstrument[];
+  dailyOnly?: boolean; // prikazuje samo cenu i dnevnu promenu (npr. fjučersi)
 }
 
 export const MARKET_GROUPS: MarketGroup[] = [
@@ -57,6 +58,7 @@ export const MARKET_GROUPS: MarketGroup[] = [
   },
   {
     id: "fjucersi",
+    dailyOnly: true,
     title: "Fjučersi",
     description: "Terminski ugovori na američke indekse — trguju se skoro 24h, pa pokazuju raspoloženje i pre otvaranja berze.",
     instruments: [

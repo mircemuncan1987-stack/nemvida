@@ -61,14 +61,14 @@ function buildQuote(id: string, symbol: string, parsed: NonNullable<ReturnType<t
   };
 }
 
-const LIVE_CACHE_SECONDS = 30;
+const LIVE_CACHE_SECONDS = 15;
 
 export async function fetchInstrument(inst: MarketInstrument): Promise<InstrumentQuote> {
   for (const symbol of inst.symbols) {
     try {
-      // Keš od 30 s: stranica /trziste se sama osvežava svakih 30 s, a keš je
+      // Keš od 15 s: stranica /trziste se sama osvežava svakih 15 s, a keš je
       // zajednički za sve posetioce, pa Yahoo dobija najviše jedan zahtev po
-      // instrumentu na 30 s bez obzira na broj otvorenih stranica.
+      // instrumentu na 15 s bez obzira na broj otvorenih stranica.
       const json = await fetchUpstream(
         (crumb) => `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=1mo&interval=1d&crumb=${encodeURIComponent(crumb)}`,
         false,
