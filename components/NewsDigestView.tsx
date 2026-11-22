@@ -131,6 +131,50 @@ function MarketBody({ d }: { d: MarketDigest }) {
         </div>
       )}
 
+      {d.outlook && d.outlook.length > 0 && (
+        <div>
+          <SubHeading>Izgledi — kvalifikovane procene</SubHeading>
+          {d.outlookSummary && <p className={`${prose} mb-2`}>{d.outlookSummary}</p>}
+          {(["1-2 nedelje", "1-3 meseca"] as const).map((h) => {
+            const rows = d.outlook.filter((o) => o.horizon === h);
+            if (rows.length === 0) return null;
+            return (
+              <div key={h} className="mb-3">
+                <div className="text-xs font-semibold text-zinc-500 dark:text-zinc-400 mb-1">Horizont: {h}</div>
+                <div className="space-y-2">
+                  {rows.map((o, i) => {
+                    const arrow = o.direction === "rast" ? "▲" : o.direction === "pad" ? "▼" : "▬";
+                    const cls =
+                      o.direction === "rast" ? "text-emerald-700 dark:text-emerald-400" : o.direction === "pad" ? "text-red-700 dark:text-red-400" : "text-zinc-600 dark:text-zinc-300";
+                    return (
+                      <div key={i} className="rounded-lg border border-zinc-200 dark:border-zinc-800 p-2.5 text-sm">
+                        <div className="flex flex-wrap items-baseline gap-x-2">
+                          <b className="text-zinc-900 dark:text-zinc-100">{o.market}</b>
+                          <span className={`font-semibold ${cls}`}>
+                            {arrow} verovatnije {o.direction === "bočno" ? "bočno kretanje" : o.direction === "rast" ? "rast" : "pad"}
+                          </span>
+                          <span className="text-[11px] text-zinc-500 dark:text-zinc-400">pouzdanost: {o.confidence}</span>
+                        </div>
+                        <p className="text-zinc-700 dark:text-zinc-300 mt-1">{o.reasoning}</p>
+                        <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
+                          <b>Važi ako:</b> {o.condition}
+                        </p>
+                        <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                          <b>Poništava se ako:</b> {o.invalidation}
+                        </p>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+          <p className="text-[11px] text-zinc-400">
+            Procene su verovatnoće koje je AI izveo iz trenutnih cena i vesti, ne prognoza ni preporuka. Kratkoročna kretanja tržišta su blizu nasumičnih, pa i procene sa „umerenom“ pouzdanošću često budu pogrešne — koristi ih kao jedan od ulaza za razmišljanje o riziku.
+          </p>
+        </div>
+      )}
+
       <WatchList items={d.watch} />
     </>
   );

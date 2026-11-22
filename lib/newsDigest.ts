@@ -45,6 +45,17 @@ export interface MarketDigest {
   macro: { factor: string; detail: string }[];
   trend: string;
   scenarios: { direction: "rast" | "pad"; title: string; triggers: string; signals: string }[];
+  // Kvalifikovane procene: smer, pouzdanost, uslov i šta ih poništava.
+  outlookSummary: string;
+  outlook: {
+    horizon: "1-2 nedelje" | "1-3 meseca";
+    market: string;
+    direction: "rast" | "pad" | "bočno";
+    confidence: "niska" | "umerena" | "visoka";
+    reasoning: string;
+    condition: string;
+    invalidation: string;
+  }[];
   watch: string[];
 }
 
@@ -106,7 +117,7 @@ const COMPANY_SCHEMA = {
 const MARKET_SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["headline", "sentiment", "whatHappened", "drivers", "macro", "trend", "scenarios", "watch"],
+  required: ["headline", "sentiment", "whatHappened", "drivers", "macro", "trend", "scenarios", "outlookSummary", "outlook", "watch"],
   properties: {
     headline: { type: "string", description: "Jedna rečenica: glavna poruka — šta se desilo i glavni razlog." },
     sentiment: SENTIMENT,
@@ -161,6 +172,28 @@ const MARKET_SCHEMA = {
         },
       },
     },
+    outlookSummary: {
+      type: "string",
+      description: "2-3 rečenice: opšta procena kuda tržišta verovatno idu u naredne nedelje i mesece, uz iskreno priznanje neizvesnosti i šta najviše utiče na tu procenu.",
+    },
+    outlook: {
+      type: "array",
+      description: "5-8 kvalifikovanih procena po tržištima (npr. američke akcije, evropske/skandinavske akcije, nafta, zlato, kamate/prinosi, norveška kruna), svaka za jedan horizont.",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["horizon", "market", "direction", "confidence", "reasoning", "condition", "invalidation"],
+        properties: {
+          horizon: { type: "string", enum: ["1-2 nedelje", "1-3 meseca"] },
+          market: { type: "string", description: "Tržište ili instrument, npr. \"Američke akcije (S&P 500, Nasdaq)\"." },
+          direction: { type: "string", enum: ["rast", "pad", "bočno"] },
+          confidence: { type: "string", enum: ["niska", "umerena", "visoka"] },
+          reasoning: { type: "string", description: "2-3 rečenice: zašto je ovaj smer verovatniji, uz konkretne brojeve iz ulaza." },
+          condition: { type: "string", description: "Uslov pod kojim procena važi (npr. \"ako prinos na 10-godišnje obveznice ostane ispod 4,5%\")." },
+          invalidation: { type: "string", description: "Šta bi je poništilo — konkretan događaj ili nivo koji bi okrenuo procenu." },
+        },
+      },
+    },
     watch: { type: "array", description: "2-5 konkretnih događaja ili podataka narednih dana/nedelja (objave, sastanci centralnih banaka, rezultati).", items: { type: "string" } },
   },
 } as const;
@@ -178,8 +211,15 @@ const MARKET_SYSTEM = `Ti si iskusan makro i tržišni analitičar koji piše dn
 ${BASE_RULES}
 - Za svaki pokretač objasni mehanizam (npr. "viši prinosi na obveznice → skuplje zaduživanje i manje privlačne akcije rasta → pad tehnologije"), ne samo da se nešto desilo.
 - Poveži kretanja: ako se nafta, kruna i Oslo berza kreću zajedno, ili ako kamate i tehnologija idu u suprotnim smerovima, to istakni.
-- O budućnosti NE predviđaj. Piši scenarije: šta bi moralo da se desi za dalji rast, a šta za dalji pad, i koji rani znaci to najavljuju. Oba scenarija moraju biti realna i zasnovana na ulazu.
-- Ukupno oko 500-700 reči.`;
+- Scenariji: šta bi moralo da se desi za dalji rast, a šta za dalji pad, i koji rani znaci to najavljuju. Oba moraju biti realna i zasnovana na ulazu.
+- KVALIFIKOVANE PROCENE (outlook): daj procenu kuda se pojedina tržišta VEROVATNO kreću, ali ODGOVORNO:
+  * Nikad ne tvrdi da će se nešto desiti; piši u terminima verovatnoće. Budućnost je neizvesna, a kratkoročno kretanje tržišta je blizu nasumičnog.
+  * "confidence": "visoka" koristi samo kad se više nezavisnih signala iz ulaza slaže I postoji jasan mehanizam; za kratak horizont (1-2 nedelje) gotovo nikad ne daj "visoka". Kad su signali pomešani, daj "niska" ili smer "bočno". Za akcije je osnovna verovatnoća rasta kroz 1-3 meseca tek nešto veća od polovine — odstupaj od toga samo uz jasne razloge.
+  * Svaka procena mora imati uslov ("važi ako…") i šta je poništava — konkretan nivo ili događaj iz ulaza.
+  * Osloni se samo na dostavljene brojeve (nedeljne i mesečne promene, nivoe, VIX, prinose) i vesti, uključujući objave i sastanke koji se u njima pominju. Ne izmišljaj datume, brojeve ni događaje kojih nema u ulazu.
+  * Pokrij bar: američke akcije, evropske/skandinavske akcije (Stokholm, Oslo), nafta, kamate/prinosi, i bar jedan od: zlato, norveška kruna; mešaj horizonte (1-2 nedelje i 1-3 meseca).
+  * Ne daj preporuke za kupovinu ili prodaju — samo procenu smera.
+- Ukupno oko 700-1000 reči.`;
 
 const COMPANY_SYSTEM = `Ti si finansijski analitičar koji piše kratak, pregledan rezime vesti za privatnog investitora koji živi u Norveškoj i ulaže dugoročno.
 
@@ -285,7 +325,7 @@ async function buildMarketDigest(): Promise<Extract<DigestResult, { kind: "marke
     .filter(Boolean)
     .join("\n\n");
 
-  const user = `Napiši pregled tržišta za danas i ovu nedelju: šta se desilo, zašto, koji makro faktori su umešani, kakva je tendencija i scenariji daljeg rasta i pada.
+  const user = `Napiši pregled tržišta za danas i ovu nedelju: šta se desilo, zašto, koji makro faktori su umešani, kakva je tendencija, scenariji daljeg rasta i pada, i kvalifikovane procene kretanja po tržištima.
 
 TRŽIŠNI PODACI (stvarne cene; promena za dan, za 5 trgovačkih dana i za oko mesec dana):
 ${marketLines || "nisu dostupni"}
@@ -328,7 +368,7 @@ ${formatItems(ticker ? items : items.map((i) => ({ ...i, title: `${i.companyName
   return { status: "ok", kind: "company", digest, generatedAt: new Date().toISOString(), sources: toSources(items, COMPANY_MAX_ITEMS), model: MODEL };
 }
 
-const cachedMarketDigest = unstable_cache(buildMarketDigest, ["news-digest", "market", "v3"], { revalidate: CACHE_SECONDS });
+const cachedMarketDigest = unstable_cache(buildMarketDigest, ["news-digest", "market", "v4"], { revalidate: CACHE_SECONDS });
 const cachedCompanyDigest = unstable_cache(buildCompanyDigest, ["news-digest", "company", "v3"], { revalidate: CACHE_SECONDS });
 
 // Vrednost se unosi ručno na Vercel-u, pa čisti česte greške pri lepljenju:
