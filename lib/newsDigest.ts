@@ -47,6 +47,15 @@ export interface MarketDigest {
   scenarios: { direction: "rast" | "pad"; title: string; triggers: string; signals: string }[];
   // Kvalifikovane procene: smer, pouzdanost, uslov i šta ih poništava.
   outlookSummary: string;
+  // Glavna hipoteza: najjača procena daljeg kretanja, sa dokazima za i protiv.
+  hypothesis: {
+    thesis: string;
+    confidence: "niska" | "umerena" | "visoka";
+    trendEvidence: string[];
+    analystViews: { source: string; view: string; direction: "rast" | "pad" | "bočno" | "nejasno" }[];
+    counterEvidence: string[];
+    consensus: string;
+  };
   outlook: {
     horizon: "1-2 nedelje" | "1-3 meseca";
     market: string;
@@ -117,7 +126,7 @@ const COMPANY_SCHEMA = {
 const MARKET_SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["headline", "sentiment", "whatHappened", "drivers", "macro", "trend", "scenarios", "outlookSummary", "outlook", "watch"],
+  required: ["headline", "sentiment", "whatHappened", "drivers", "macro", "trend", "scenarios", "outlookSummary", "hypothesis", "outlook", "watch"],
   properties: {
     headline: { type: "string", description: "Jedna rečenica: glavna poruka — šta se desilo i glavni razlog." },
     sentiment: SENTIMENT,
@@ -176,6 +185,33 @@ const MARKET_SCHEMA = {
       type: "string",
       description: "2-3 rečenice: opšta procena kuda tržišta verovatno idu u naredne nedelje i mesece, uz iskreno priznanje neizvesnosti i šta najviše utiče na tu procenu.",
     },
+    hypothesis: {
+      type: "object",
+      additionalProperties: false,
+      required: ["thesis", "confidence", "trendEvidence", "analystViews", "counterEvidence", "consensus"],
+      description: "Glavna hipoteza: najjača, argumentovana procena kuda se tržišta kreću u narednim nedeljama i mesecima.",
+      properties: {
+        thesis: { type: "string", description: "3-5 rečenica: jasno formulisana hipoteza (smer, glavni mehanizam, približan horizont), napisana u terminima verovatnoće, ne sigurnosti." },
+        confidence: { type: "string", enum: ["niska", "umerena", "visoka"] },
+        trendEvidence: { type: "array", description: "3-5 dokaza iz TENDENCIJA u dostavljenim brojevima (nedeljne/mesečne promene, VIX, prinosi, širina kretanja), svaki sa konkretnim brojem.", items: { type: "string" } },
+        analystViews: {
+          type: "array",
+          description: "2-6 izjava ili procena analitičara, banaka, centralnih banaka ili institucija KOJE SE POMINJU U DOSTAVLJENIM VESTIMA. Ako ih nema u ulazu, vrati prazan niz — ne izmišljaj.",
+          items: {
+            type: "object",
+            additionalProperties: false,
+            required: ["source", "view", "direction"],
+            properties: {
+              source: { type: "string", description: "Ko je rekao (npr. naziv banke, centralne banke ili analitičara kako se pominje u vestima)." },
+              view: { type: "string", description: "Sažeto šta tvrdi, 1-2 rečenice, bez izmišljenih brojeva." },
+              direction: { type: "string", enum: ["rast", "pad", "bočno", "nejasno"] },
+            },
+          },
+        },
+        counterEvidence: { type: "array", description: "2-4 argumenta ili podatka koji ne ide u prilog hipotezi (šta bi mogla da bude greška).", items: { type: "string" } },
+        consensus: { type: "string", description: "1-2 rečenice: slažu li se izjave analitičara međusobno i sa tendencijama, ili se razilaze (i šta to znači za pouzdanost hipoteze)." },
+      },
+    },
     outlook: {
       type: "array",
       description: "5-8 kvalifikovanih procena po tržištima (npr. američke akcije, evropske/skandinavske akcije, nafta, zlato, kamate/prinosi, norveška kruna), svaka za jedan horizont.",
@@ -212,6 +248,7 @@ ${BASE_RULES}
 - Za svaki pokretač objasni mehanizam (npr. "viši prinosi na obveznice → skuplje zaduživanje i manje privlačne akcije rasta → pad tehnologije"), ne samo da se nešto desilo.
 - Poveži kretanja: ako se nafta, kruna i Oslo berza kreću zajedno, ili ako kamate i tehnologija idu u suprotnim smerovima, to istakni.
 - Scenariji: šta bi moralo da se desi za dalji rast, a šta za dalji pad, i koji rani znaci to najavljuju. Oba moraju biti realna i zasnovana na ulazu.
+- GLAVNA HIPOTEZA (hypothesis): na osnovu tendencija iz brojeva (nedeljne i mesečne promene, VIX, prinosi, širina kretanja) I izjava analitičara, banaka i centralnih banaka koje se pominju u vestima, formuliši najjaču argumentovanu hipotezu kuda tržišta idu. Neka bude konkretna i odlučna u smeru (reci šta je VEROVATNIJE), ali izražena kao verovatnoća, ne kao sigurnost. Navedi dokaze iz tendencija, tuđe procene sa imenom izvora tačno kako se pominje u vestima (ne izmišljaj izvore, imena ni brojeve; ako ih nema, vrati prazan niz), argumente protiv, i da li se izjave slažu ili razilaze. Kad se analitičari razilaze, to snižava pouzdanost; kad se slažu sa tendencijama, povećava je.
 - KVALIFIKOVANE PROCENE (outlook): daj procenu kuda se pojedina tržišta VEROVATNO kreću, ali ODGOVORNO:
   * Nikad ne tvrdi da će se nešto desiti; piši u terminima verovatnoće. Budućnost je neizvesna, a kratkoročno kretanje tržišta je blizu nasumičnog.
   * "confidence": "visoka" koristi samo kad se više nezavisnih signala iz ulaza slaže I postoji jasan mehanizam; za kratak horizont (1-2 nedelje) gotovo nikad ne daj "visoka". Kad su signali pomešani, daj "niska" ili smer "bočno". Za akcije je osnovna verovatnoća rasta kroz 1-3 meseca tek nešto veća od polovine — odstupaj od toga samo uz jasne razloge.
@@ -294,8 +331,12 @@ const MARKET_QUERIES = [
   { query: "Asian markets Nikkei Shanghai", label: "Azija" },
   { query: "earnings season results guidance", label: "Rezultati kompanija" },
   { query: "geopolitics tariffs markets", label: "Geopolitika / carine" },
+  { query: "stock market outlook forecast strategists", label: "Prognoze stratega" },
+  { query: "Goldman Sachs Morgan Stanley JPMorgan S&P 500 target", label: "Ciljevi banaka" },
+  { query: "Fed officials rate path expectations", label: "Očekivanja o kamatama" },
+  { query: "analysts expect oil prices outlook", label: "Prognoze nafte" },
 ];
-const MARKET_MAX_ITEMS = 90;
+const MARKET_MAX_ITEMS = 110;
 
 async function buildMarketDigest(): Promise<Extract<DigestResult, { kind: "market" }>> {
   const [feeds, quotes] = await Promise.all([
@@ -368,7 +409,7 @@ ${formatItems(ticker ? items : items.map((i) => ({ ...i, title: `${i.companyName
   return { status: "ok", kind: "company", digest, generatedAt: new Date().toISOString(), sources: toSources(items, COMPANY_MAX_ITEMS), model: MODEL };
 }
 
-const cachedMarketDigest = unstable_cache(buildMarketDigest, ["news-digest", "market", "v4"], { revalidate: CACHE_SECONDS });
+const cachedMarketDigest = unstable_cache(buildMarketDigest, ["news-digest", "market", "v5"], { revalidate: CACHE_SECONDS });
 const cachedCompanyDigest = unstable_cache(buildCompanyDigest, ["news-digest", "company", "v3"], { revalidate: CACHE_SECONDS });
 
 // Vrednost se unosi ručno na Vercel-u, pa čisti česte greške pri lepljenju:

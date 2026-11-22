@@ -131,6 +131,53 @@ function MarketBody({ d }: { d: MarketDigest }) {
         </div>
       )}
 
+      {d.hypothesis && d.hypothesis.thesis && (
+        <div className="rounded-xl border border-blue-300 dark:border-blue-800 bg-blue-50/60 dark:bg-blue-950/30 p-3">
+          <SubHeading>Glavna hipoteza — kuda tržište najverovatnije ide</SubHeading>
+          <p className={prose}>{d.hypothesis.thesis}</p>
+          <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-1">Pouzdanost hipoteze: <b>{d.hypothesis.confidence}</b></p>
+
+          {d.hypothesis.trendEvidence.length > 0 && (
+            <div className="mt-2">
+              <div className="text-xs font-semibold text-zinc-600 dark:text-zinc-300">Šta kažu tendencije</div>
+              <ul className="list-disc pl-5 text-sm text-zinc-700 dark:text-zinc-300 space-y-0.5">
+                {d.hypothesis.trendEvidence.map((t, i) => (
+                  <li key={i}>{t}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          <div className="mt-2">
+            <div className="text-xs font-semibold text-zinc-600 dark:text-zinc-300">Šta kažu analitičari i institucije (iz vesti)</div>
+            {d.hypothesis.analystViews.length > 0 ? (
+              <ul className="space-y-1 text-sm text-zinc-700 dark:text-zinc-300">
+                {d.hypothesis.analystViews.map((a, i) => (
+                  <li key={i}>
+                    <span className="mr-1">{a.direction === "rast" ? "▲" : a.direction === "pad" ? "▼" : a.direction === "bočno" ? "▬" : "?"}</span>
+                    <b>{a.source}:</b> {a.view}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-sm text-zinc-500 dark:text-zinc-400">U vestima ovog puta nema jasnih izjava analitičara — hipoteza počiva samo na tendencijama.</p>
+            )}
+            {d.hypothesis.consensus && <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">{d.hypothesis.consensus}</p>}
+          </div>
+
+          {d.hypothesis.counterEvidence.length > 0 && (
+            <div className="mt-2">
+              <div className="text-xs font-semibold text-zinc-600 dark:text-zinc-300">Šta ne ide u prilog hipotezi</div>
+              <ul className="list-disc pl-5 text-sm text-zinc-700 dark:text-zinc-300 space-y-0.5">
+                {d.hypothesis.counterEvidence.map((t, i) => (
+                  <li key={i}>{t}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
+
       {d.outlook && d.outlook.length > 0 && (
         <div>
           <SubHeading>Izgledi — kvalifikovane procene</SubHeading>
