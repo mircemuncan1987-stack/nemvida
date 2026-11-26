@@ -23,12 +23,14 @@ import {
   stressTestPortfolio,
   totalValueNok,
   computeTechnicalSnapshot,
+  DEFAULT_HOLDINGS_VERSION,
   type PortfolioHolding,
 } from "@/lib/portfolio";
 import { buildBuyRecommendation, type BuyCandidateInput, type BuyCandidateResult } from "@/lib/buyAttractiveness";
 import { analyzePortfolioBalance, type BalanceInputPosition } from "@/lib/portfolioBalance";
 
 const STORAGE_KEY = "nemvida_portfolio_v1";
+const VERSION_KEY = "nemvida_portfolio_version";
 const VERDICT_RANK: Record<BuyCandidateResult["verdict"], number> = {
   "Atraktivno za dokupovanje": 0,
   "Fer vrednovano": 1,
@@ -79,6 +81,8 @@ interface HoldingResult {
 
 function loadHoldings(): PortfolioHolding[] {
   try {
+    // Sačuvane pozicije iz starijeg izveštaja se odbacuju (vidi DEFAULT_HOLDINGS_VERSION).
+    if (localStorage.getItem(VERSION_KEY) !== DEFAULT_HOLDINGS_VERSION) return DEFAULT_HOLDINGS;
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return DEFAULT_HOLDINGS;
     const parsed = JSON.parse(raw);
@@ -110,6 +114,7 @@ export default function PortfolioAnalysis() {
     if (!loaded) return;
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(holdings));
+      localStorage.setItem(VERSION_KEY, DEFAULT_HOLDINGS_VERSION);
     } catch {
       /* nije kritično ako localStorage nije dostupan */
     }
